@@ -1,7 +1,5 @@
 # 3.4 Sequence diagram các luồng nghiệp vụ chính
 
-> Bổ sung sớm một phần mục 3.4 trong roadmap (`.claude/PLAN.md`, dự kiến Tuần 3) — vẽ trước dạng sequence diagram thay vì activity diagram theo yêu cầu, do use case diagram (`docs/use-case-diagram.md`) khá gọn nên cần bổ sung góc nhìn chi tiết hơn về tương tác giữa các thành phần. Tên thành phần (Controller/Service/Repository) bám theo kiến trúc đã chốt ở `.claude/PLAN.md` mục 3.2 — có thể đổi tên khi cài đặt thực tế, không ảnh hưởng bản chất luồng.
-
 ## 1. Luồng nhập dữ liệu từ Excel
 
 Áp dụng chung cho cả 3 loại dữ liệu (đơn hàng, tồn kho, định mức BOM) — minh họa bằng luồng nhập đơn hàng. Toàn bộ lượt nhập được xử lý trong 1 transaction: nếu có dòng lỗi, hủy toàn bộ và trả lỗi chi tiết (đúng yêu cầu phi chức năng "tính toàn vẹn khi nhập liệu" ở `docs/requirements-functional.md`).
