@@ -1,9 +1,5 @@
 # 3.1.2 Biểu đồ ca sử dụng
 
-> Bản nháp cho Chương 3.1 — mục 1.3 trong roadmap (`.claude/PLAN.md`). Vẽ bằng Mermaid (flowchart) để GitHub render trực tiếp trong file Markdown — Mermaid không có kiểu diagram UML use-case chuyên biệt, nên actor được biểu diễn bằng hình chữ nhật, ca sử dụng bằng hình oval (stadium shape), đường nối thể hiện quan hệ thực hiện (association). Danh sách ca sử dụng bám sát 4 nhóm chức năng đã chốt ở `docs/requirements-functional.md`.
-
-Hệ thống có hai tác nhân: **PLANNER** (vận hành nghiệp vụ hằng ngày — đơn hàng, tồn kho, sinh phương án cắt) và **ADMIN** (quản trị dữ liệu nền tảng — định mức BOM, tài khoản người dùng). Hai tác nhân chia sẻ nhóm ca sử dụng chung về tài khoản (đăng nhập, đăng xuất, đổi mật khẩu); phần còn lại tách biệt rõ theo đúng ranh giới trách nhiệm đã phân tích ở mục yêu cầu chức năng — PLANNER không có quyền chỉnh sửa BOM hay quản lý người dùng, ADMIN không trực tiếp vận hành quy trình cắt hằng ngày.
-
 ```mermaid
 flowchart LR
     PLANNER(["🧑 PLANNER"])
