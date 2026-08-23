@@ -1,0 +1,73 @@
+# 3.1.2 Biểu đồ ca sử dụng
+
+> Bản nháp cho Chương 3.1 — mục 1.3 trong roadmap (`.claude/PLAN.md`). Vẽ bằng Mermaid (flowchart) để GitHub render trực tiếp trong file Markdown — Mermaid không có kiểu diagram UML use-case chuyên biệt, nên actor được biểu diễn bằng hình chữ nhật, ca sử dụng bằng hình oval (stadium shape), đường nối thể hiện quan hệ thực hiện (association). Danh sách ca sử dụng bám sát 4 nhóm chức năng đã chốt ở `docs/requirements-functional.md`.
+
+Hệ thống có hai tác nhân: **PLANNER** (vận hành nghiệp vụ hằng ngày — đơn hàng, tồn kho, sinh phương án cắt) và **ADMIN** (quản trị dữ liệu nền tảng — định mức BOM, tài khoản người dùng). Hai tác nhân chia sẻ nhóm ca sử dụng chung về tài khoản (đăng nhập, đăng xuất, đổi mật khẩu); phần còn lại tách biệt rõ theo đúng ranh giới trách nhiệm đã phân tích ở mục yêu cầu chức năng — PLANNER không có quyền chỉnh sửa BOM hay quản lý người dùng, ADMIN không trực tiếp vận hành quy trình cắt hằng ngày.
+
+```mermaid
+flowchart LR
+    PLANNER["PLANNER"]
+    ADMIN["ADMIN"]
+
+    subgraph SYS["Hệ thống tối ưu cắt nan cửa cuốn"]
+        direction TB
+
+        subgraph G0["Tài khoản (dùng chung)"]
+            UC1(["Đăng nhập"])
+            UC2(["Đăng xuất"])
+            UC3(["Đổi mật khẩu cá nhân"])
+        end
+
+        subgraph G1["Nhóm 1 — Đơn hàng & tồn kho"]
+            UC4(["Nhập đơn hàng từ Excel"])
+            UC5(["Xem / tìm kiếm / lọc đơn hàng"])
+            UC6(["Chỉnh sửa đơn hàng thủ công"])
+            UC7(["Nhập tồn kho từ Excel"])
+            UC8(["Xem tồn kho theo loại thanh"])
+            UC9(["Cập nhật tồn kho thủ công"])
+        end
+
+        subgraph G3["Nhóm 3 — Sinh phương án cắt"]
+            UC10(["Sinh phương án cắt"])
+            UC11(["Xem / xuất kết quả phương án cắt"])
+        end
+
+        subgraph G2["Nhóm 2 — Định mức BOM"]
+            UC12(["Quản lý định mức BOM"])
+            UC13(["Nhập định mức BOM từ Excel"])
+            UC14(["Tra cứu định mức BOM"])
+        end
+
+        subgraph G4["Nhóm 4 — Tài khoản & phân quyền (ADMIN)"]
+            UC15(["Quản lý tài khoản người dùng"])
+        end
+    end
+
+    PLANNER --- UC1
+    PLANNER --- UC2
+    PLANNER --- UC3
+    PLANNER --- UC4
+    PLANNER --- UC5
+    PLANNER --- UC6
+    PLANNER --- UC7
+    PLANNER --- UC8
+    PLANNER --- UC9
+    PLANNER --- UC10
+    PLANNER --- UC11
+
+    ADMIN --- UC1
+    ADMIN --- UC2
+    ADMIN --- UC3
+    ADMIN --- UC12
+    ADMIN --- UC13
+    ADMIN --- UC14
+    ADMIN --- UC15
+```
+
+## Ghi chú từng nhóm ca sử dụng
+
+- **Tài khoản (dùng chung)**: điểm khởi đầu bắt buộc cho cả hai tác nhân trước khi tiếp cận bất kỳ chức năng nào khác; đăng nhập trả về JWT dùng cho các request tiếp theo.
+- **Nhóm 1 — Đơn hàng & tồn kho** (chỉ PLANNER): nhập/xem/chỉnh sửa dữ liệu đầu vào của quy trình cắt.
+- **Nhóm 3 — Sinh phương án cắt** (chỉ PLANNER): ca sử dụng lõi của khóa luận — "Sinh phương án cắt" kéo theo (include) việc sinh nhu cầu cắt từ BOM và chạy thuật toán 4 mức ưu tiên (xem chi tiết luồng trong `docs/sequence-diagrams.md`).
+- **Nhóm 2 — Định mức BOM** (chỉ ADMIN): quản lý dữ liệu nền tảng ít thay đổi nhưng quyết định độ chính xác của nhu cầu cắt sinh ra.
+- **Nhóm 4 — Tài khoản & phân quyền** (chỉ ADMIN): quản lý tài khoản PLANNER, gán vai trò.
