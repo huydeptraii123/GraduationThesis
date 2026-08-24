@@ -36,7 +36,7 @@ sequenceDiagram
 
 ## 2. Luồng sinh phương án cắt (luồng lõi)
 
-Luồng quan trọng nhất của khóa luận — thể hiện đúng 4 mức ưu tiên đã chốt (`.claude/PLAN.md` mục 3.4.4): khớp gần đúng → cắt theo bội số (cùng đợt xử lý) → ghép nối nhiều đơn (cùng đợt xử lý) → best-fit/nhập kho/shortage.
+Luồng quan trọng nhất của khóa luận — thể hiện đúng 4 mức ưu tiên đã chốt: khớp gần đúng → cắt theo bội số (cùng đợt xử lý) → ghép nối nhiều đơn (cùng đợt xử lý) → best-fit/nhập kho/shortage.
 
 ```mermaid
 sequenceDiagram
