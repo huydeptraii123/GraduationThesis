@@ -1,0 +1,43 @@
+# Claude Code project config / memory (may reference internal business data)
+.claude/
+
+# Business data (real company data — orders, inventory, BOM, etc.)
+# Confidential: used only for local testing of the thesis system, must never be committed.
+data/
+Data/
+dataset/
+datasets/
+raw_data/
+*.csv
+*.xlsx
+*.xls
+*.db
+*.sqlite
+*.sqlite3
+*.json.bak
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Environment / secrets
+.env
+.env.*
+
+# Common build artifacts (adjust once tech stack is chosen)
+node_modules/
+__pycache__/
+*.pyc
+venv/
+.venv/
+dist/
+build/
+
+.gitignore
+
+docs/Nguyễn_Trần_Công_Hoàng___KLTN2-2.pdf
+
+# Tài liệu mật công ty — lỡ commit rồi bị phát hiện, đã purge khỏi history (2026-08-24)
+docs/Tối ưu nan.pdf
