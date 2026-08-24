@@ -36,7 +36,7 @@ sequenceDiagram
 
 ## 2. Luồng sinh phương án cắt (luồng lõi)
 
-Luồng quan trọng nhất của khóa luận — thể hiện đúng 4 mức ưu tiên đã chốt (`.claude/PLAN.md` mục 3.4.4): khớp gần đúng → cắt theo bội số (cùng ngày giao) → ghép nối nhiều đơn (cùng ngày giao) → best-fit/nhập kho/shortage.
+Luồng quan trọng nhất của khóa luận — thể hiện đúng 4 mức ưu tiên đã chốt (`.claude/PLAN.md` mục 3.4.4): khớp gần đúng → cắt theo bội số (cùng đợt xử lý) → ghép nối nhiều đơn (cùng đợt xử lý) → best-fit/nhập kho/shortage.
 
 ```mermaid
 sequenceDiagram
@@ -52,7 +52,8 @@ sequenceDiagram
     U->>FE: Bấm "Sinh phương án cắt"
     FE->>C: POST /api/v1/cutting-plans/generate
     C->>DS: buildDemands()
-    DS->>DB: lấy SalesOrder chưa cắt + BomItem tương ứng
+    DS->>DB: lấy SalesOrder trong phạm vi đợt xử lý (reqd_delivery_date <= t+3, tổng đơn < 70;
+             ngoài phạm vi -> "nhóm 99") + BomItem tương ứng
     DB-->>DS: rows
     DS-->>C: List<CuttingDemand> (slatMaterial, cutLength, qty, reqd_delivery_date, soNumber)
 
@@ -67,11 +68,11 @@ sequenceDiagram
             alt Mức 1 — khớp gần đúng (dư < 30cm)
                 CS->>POOL: findNearFit(X)
                 POOL-->>CS: thanh khớp -> cắt, dư "bỏ"
-            else Mức 2 — cắt theo bội số (cùng reqd_delivery_date với X)
+            else Mức 2 — cắt theo bội số (cùng đợt xử lý với X, không cần cùng ngày giao)
                 CS->>POOL: findMultipleOfSameLength(X)
                 POOL-->>CS: thanh dài gấp k lần -> cắt k đoạn, dư = 0
-            else Mức 3 — ghép nối nhiều đơn (cùng reqd_delivery_date với X)
-                CS->>POOL: findCombination(X, hàng đợi cùng ngày giao)
+            else Mức 3 — ghép nối nhiều đơn (cùng đợt xử lý với X, không cần cùng ngày giao)
+                CS->>POOL: findCombination(X, hàng đợi trong đợt xử lý hiện tại)
                 POOL-->>CS: tổ hợp khớp 1 thanh -> cắt, gán đúng đơn, dư "bỏ"
             else Mức 4 — best-fit / nhập kho / lãng phí / shortage
                 CS->>POOL: bestFit(X)
