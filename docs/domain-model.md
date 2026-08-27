@@ -66,6 +66,126 @@ Mục này ánh xạ các entity ở mục 3.3.1 sang bảng MySQL cụ thể: t
 - **Timestamp**: bảng dữ liệu nền tảng/nghiệp vụ có thể chỉnh sửa qua thời gian (Nhóm 1, Nhóm 2 yêu cầu chức năng) có thêm `created_at`, `updated_at DATETIME`. Bảng lưu kết quả một lần chạy thuật toán (`cutting_plan` và các bảng con) không cần `updated_at` vì chỉ ghi một lần, không có luồng chỉnh sửa sau đó.
 - **Naming**: tên bảng/cột theo `snake_case`, tự động từ tên entity/field `camelCase` qua naming strategy mặc định của Spring Boot (Hibernate `SpringPhysicalNamingStrategy`).
 
+## Sơ đồ ERD chi tiết
+
+Sơ đồ dưới đây thể hiện đúng 12 bảng vật lý và các khóa ngoại tương ứng — cùng bộ quan hệ như sơ đồ khái niệm ở 3.3.1, nay gắn với tên bảng/cột thật và đánh dấu khóa chính (PK), khóa ngoại (FK), khóa duy nhất (UK).
+
+```mermaid
+erDiagram
+    role {
+        bigint id PK
+        varchar code UK
+        varchar name
+    }
+    app_user {
+        bigint id PK
+        varchar username UK
+        varchar password_hash
+        bigint role_id FK
+        boolean enabled
+    }
+    customer {
+        bigint id PK
+        varchar code UK
+        varchar name
+    }
+    door_product {
+        bigint id PK
+        varchar code UK "cùng color"
+        varchar name
+        varchar color UK "cùng code"
+    }
+    slat_material {
+        bigint id PK
+        varchar code UK
+        varchar name
+        enum slat_group
+    }
+    bom_item {
+        bigint id PK
+        bigint door_product_id FK "cùng slat_material_id"
+        bigint slat_material_id FK "cùng door_product_id"
+        decimal width_offset_m
+        decimal height_offset_m
+        decimal slat_count_slope
+        decimal slat_count_intercept
+        decimal r2
+    }
+    inventory_batch {
+        bigint id PK
+        bigint slat_material_id FK "cùng length_mm"
+        int length_mm UK "cùng slat_material_id"
+        decimal stock_m
+        enum stock_status
+    }
+    sales_order {
+        bigint id PK
+        varchar sales_document UK
+        varchar production_order_no
+        bigint customer_id FK
+        date reqd_delivery_date
+        int height_mm
+        int width_mm
+    }
+    sales_order_line {
+        bigint id PK
+        bigint sales_order_id FK "cùng sales_order_item"
+        varchar sales_order_item UK "cùng sales_order_id"
+        bigint door_product_id FK
+        int quantity
+    }
+    cutting_plan {
+        bigint id PK
+        datetime run_at
+        enum status
+        decimal total_waste_m
+        date scope_cutoff_date
+        int scope_order_count
+    }
+    cutting_plan_detail {
+        bigint id PK
+        bigint cutting_plan_id FK
+        bigint slat_material_id FK
+        int source_length_mm
+        varchar pattern_code
+        int remainder_mm
+        enum remainder_type
+    }
+    cutting_plan_detail_item {
+        bigint id PK
+        bigint cutting_plan_detail_id FK "cùng sales_order_line_id"
+        bigint sales_order_line_id FK "cùng cutting_plan_detail_id"
+        int cut_length_mm
+        int cut_quantity
+        boolean is_original_order
+    }
+    shortage_record {
+        bigint id PK
+        bigint cutting_plan_id FK "cùng sales_order_line_id, slat_material_id"
+        bigint sales_order_line_id FK "cùng cutting_plan_id, slat_material_id"
+        bigint slat_material_id FK "cùng cutting_plan_id, sales_order_line_id"
+        int missing_quantity
+        decimal missing_length_m
+    }
+
+    role ||--o{ app_user : "có vai trò"
+    customer ||--o{ sales_order : "đặt"
+    sales_order ||--|{ sales_order_line : "gồm"
+    door_product ||--o{ sales_order_line : "thuộc mẫu cửa"
+    door_product ||--o{ bom_item : "định mức cho"
+    slat_material ||--o{ bom_item : "cần dùng trong"
+    slat_material ||--o{ inventory_batch : "tồn kho theo lô"
+    slat_material ||--o{ cutting_plan_detail : "cắt từ"
+    cutting_plan ||--o{ cutting_plan_detail : "gồm các phôi"
+    cutting_plan ||--o{ shortage_record : "phát sinh thiếu hụt"
+    cutting_plan_detail ||--o{ cutting_plan_detail_item : "chia đoạn cho"
+    sales_order_line ||--o{ cutting_plan_detail_item : "được cắt bởi"
+    sales_order_line ||--o{ shortage_record : "thiếu vật tư ở"
+    slat_material ||--o{ shortage_record : "loại thanh thiếu"
+```
+
+Chú thích `"cùng ..."` trên một cột đánh dấu UK/FK nghĩa là ràng buộc UNIQUE hoặc mục đích của khóa ngoại đó là **composite** (nhiều cột cộng lại), mermaid không có ký hiệu riêng cho UNIQUE nhiều cột nên ghi chú trực tiếp bên cạnh — ví dụ `door_product.code` + `door_product.color` là một UNIQUE tổ hợp (không phải hai UNIQUE riêng lẻ).
+
 ## Bảng dữ liệu nền tảng
 
 ### `role`
