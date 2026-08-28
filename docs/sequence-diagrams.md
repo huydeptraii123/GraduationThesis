@@ -24,7 +24,7 @@ sequenceDiagram
         FE-->>U: Hiển thị lỗi theo từng dòng
     else Toàn bộ hợp lệ
         C->>SVC: upsertAll(rows)  // trong 1 transaction
-        SVC->>REPO: upsert theo sales_document + item
+        SVC->>REPO: upsert theo ycsx + z_item
         REPO->>DB: INSERT / UPDATE
         DB-->>REPO: OK
         REPO-->>SVC: OK
@@ -43,6 +43,7 @@ sequenceDiagram
     actor U as PLANNER
     participant FE as Frontend
     participant C as CuttingPlanController
+    participant SVC as CuttingPlanService
     participant DS as CuttingDemandService
     participant CS as CuttingStrategy
     participant POOL as InventoryPool
@@ -51,19 +52,20 @@ sequenceDiagram
 
     U->>FE: Bấm "Sinh phương án cắt"
     FE->>C: POST /api/v1/cutting-plans/generate
-    C->>DS: buildDemands()
+    C->>SVC: generatePlan()
+    SVC->>DS: buildDemands()
     DS->>DB: lấy SalesOrder trong phạm vi đợt xử lý (reqd_delivery_date <= t+3, tổng đơn < 70;
              ngoài phạm vi -> "nhóm 99") + BomItem tương ứng
     DB-->>DS: rows
-    DS-->>C: List<CuttingDemand> (slatMaterial, cutLength, qty, reqd_delivery_date, soNumber)
+    DS-->>SVC: List<CuttingDemand> (slatMaterial, cutLength, qty, reqd_delivery_date, ycsx, zItem)
 
-    C->>POOL: load(InventoryBatch hiện có)
-    POOL-->>C: pool sẵn sàng
+    SVC->>POOL: load(InventoryBatch hiện có)
+    POOL-->>SVC: pool sẵn sàng (số thanh còn lại theo từng slatMaterial + độ dài)
 
-    C->>CS: computePlan(demands, pool)
+    SVC->>CS: computePlan(demands, pool)
 
     loop mỗi slatMaterial group
-        CS->>CS: sort hàng đợi theo (reqd_delivery_date, so_number)
+        CS->>CS: sort hàng đợi theo (reqd_delivery_date, ycsx, z_item)
         loop while hàng đợi còn đoạn X chưa cắt
             alt Mức 1 — khớp gần đúng (dư < 30cm)
                 CS->>POOL: findNearFit(X)
@@ -85,14 +87,51 @@ sequenceDiagram
         end
     end
 
-    CS-->>C: CuttingPlanResult (chi tiết cắt từng thanh, danh sách shortage, tổng waste)
-    C->>REPO: save(CuttingPlan, CuttingPlanDetail[])
-    REPO->>DB: INSERT
+    CS-->>SVC: CuttingPlanResult (chi tiết cắt từng thanh, danh sách shortage, tổng waste)
+    SVC->>POOL: diff() — số thanh đã trừ theo từng slatMaterial/độ dài, số thanh mới thêm (nhập lại kho dư >3m)
+    POOL-->>SVC: InventoryBatch cần cập nhật (UPDATE stick_count giảm | UPSERT lô mới cho phần dư nhập kho)
+    SVC->>REPO: save(CuttingPlan, CuttingPlanDetail[], InventoryBatch cần cập nhật)  // trong 1 transaction
+    REPO->>DB: INSERT CuttingPlan/CuttingPlanDetail[] + UPDATE/UPSERT inventory_batch
     DB-->>REPO: OK
-    REPO-->>C: CuttingPlan đã lưu (id)
+    REPO-->>SVC: CuttingPlan đã lưu (id)
+    SVC-->>C: CuttingPlanDto
     C-->>FE: CuttingPlanDto
     FE-->>U: Vẽ sơ đồ cắt (CuttingBarDiagram) + trạng thái từng đơn (đủ vật tư / thiếu vật tư)
 ```
+
+**Bổ sung so với bản trước — trừ tồn kho sau khi cắt.** Bản trước chỉ lưu `CuttingPlan`/`CuttingPlanDetail` mà không có bước nào cập nhật lại `inventory_batch.stick_count` — nghĩa là tồn kho trong DB sẽ không bao giờ giảm sau mỗi lần chạy, vi phạm trực tiếp yêu cầu phi chức năng "cân bằng vật liệu" (lần chạy sau sẽ tính trên tồn kho không đúng thực tế). Toàn bộ việc trừ/cộng tồn kho phải nằm trong đúng 1 transaction với việc lưu `CuttingPlan`, để đảm bảo không có trạng thái nửa-lưu nếu có lỗi giữa chừng.
+
+### Công thức tính nhu cầu cắt (`CuttingDemandService.buildDemands()`)
+
+Bước `DS->>DB: lấy SalesOrder ... + BomItem tương ứng` ở trên sinh ra `CuttingDemand` cho từng cặp (`SalesOrder`, `BomItem` của `doorProductId` tương ứng) theo công thức đã xác nhận với PLANNER (nguồn gốc từ view nội bộ `v_door_slats_norm` → `v_mps_kc04_slats_demand` mà doanh nghiệp đang dùng). Gọi `doorAreaM2 = zChieuCaoDh × zChieuRongDh`:
+
+**Bước 1 — Chiều rộng sản xuất** (dùng chung cho các nhóm không phải Nan chính):
+```
+productionWidthM = zChieuRongDh - widthOffsetM
+    (fallback nếu widthOffsetM NULL: zChieuRongDh × 0.976)
+```
+
+**Bước 2 — `cutDimM`** (chiều dài phôi cần cắt cho 1 thanh), khác nhau theo `slatGroup`:
+
+| `slatGroup` | `cutDimM` |
+|---|---|
+| MAIN_SLAT (Nan chính) | `zChieuRongDh` (đúng bằng chiều rộng cửa, KHÔNG trừ offset — nan có đột lỗ, phải chừa đầu) |
+| BOTTOM_BAR, SUB_SLAT (Thanh đáy, Nan phụ) | `productionWidthM` |
+| RAIL (Ray) | `zChieuCaoDh - heightOffsetM` |
+| OTHER (Khác) | không xác định theo nhóm — luôn rơi vào fallback toàn phần ở Bước 4 |
+
+**Bước 3 — `requiredPieces`** (số lượng thanh cần), khác nhau theo `slatGroup`:
+
+| `slatGroup` | `requiredPieces` |
+|---|---|
+| MAIN_SLAT | Ưu tiên `ROUND(slatCountSlope × zChieuCaoDh + slatCountIntercept)` — chỉ dùng khi `slatCountR2 >= 0.5`; nếu không (NULL hoặc < 0.5): fallback `ROUND(doorAreaM2 × dinhMucMPerM2 / zChieuRongDh)` |
+| BOTTOM_BAR, SUB_SLAT | luôn = 1 |
+| RAIL | luôn = 2 |
+| OTHER | không xác định theo nhóm |
+
+**Bước 4 — Fallback toàn phần**: khi `slatGroup = OTHER` hoặc thiếu dữ liệu để tính `cutDimM`/`requiredPieces` ở trên, hệ thống **không tự suy ra được độ dài đoạn cần cắt** — chỉ có tổng độ dài ước tính `= dinhMucTbMPerBoCua` (mét/bộ cửa). Vì thuật toán cắt 1D cần biết độ dài từng đoạn cụ thể (không chỉ tổng mét), các `BomItem` rơi vào trường hợp này **không sinh được `CuttingDemand` tự động** — cần ghi log cảnh báo và loại khỏi phạm vi thuật toán ở giai đoạn khóa luận này, chờ ADMIN bổ sung công thức riêng nếu phát sinh thực tế (tới nay dữ liệu thật cho thấy đây là thiểu số).
+
+`CuttingDemand.cutLength = cutDimM` (quy đổi mm), `CuttingDemand.quantity = requiredPieces` (không nhân thêm với "số lượng đặt hàng" vì mỗi `SalesOrder` đã luôn là đúng 1 bộ cửa — xem điểm 1, mục 3.3.1).
 
 ## 3. Luồng xem / xuất kết quả phương án cắt
 
