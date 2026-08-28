@@ -51,7 +51,7 @@ Việc tách interface này khỏi phần điều phối nghiệp vụ (`Cutting
 
 Controller không bao giờ nhận hoặc trả trực tiếp entity JPA; mọi request/response đi qua DTO riêng, chuyển đổi qua entity bằng MapStruct (sinh code tại compile-time, không dùng reflection runtime). Lý do tách riêng hai mô hình:
 
-- Entity domain phản ánh đúng ràng buộc CSDL (ví dụ quan hệ N-N giữa `CuttingPlanDetail` và `SalesOrderLine`, mục 3.3), trong khi API contract cần một hình thức đơn giản, ổn định cho frontend — hai mối quan tâm này thay đổi độc lập với nhau.
+- Entity domain phản ánh đúng ràng buộc CSDL (ví dụ quan hệ N-N giữa `CuttingPlanDetail` và `SalesOrder`, mục 3.3), trong khi API contract cần một hình thức đơn giản, ổn định cho frontend — hai mối quan tâm này thay đổi độc lập với nhau.
 - Tránh lộ chi tiết nội bộ (ví dụ trường kỹ thuật dùng cho thuật toán) ra ngoài API, và tránh vòng lặp serialize vô hạn khi entity có quan hệ hai chiều.
 
 ## 3.2.4 Tổ chức mã nguồn
