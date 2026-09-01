@@ -37,7 +37,7 @@ Một request đi qua đúng một chiều Controller → Service → (Repositor
 
 ## 3.2.2 Strategy Pattern cho thuật toán cắt
 
-Thuật toán sinh phương án cắt (BFD mở rộng 4 mức ưu tiên, mục 3.4.4) được đóng gói qua một interface duy nhất:
+Thuật toán sinh phương án cắt (BFD mở rộng 4 mức ưu tiên, xem `docs/sequence-diagrams.md` mục "2. Luồng sinh phương án cắt (luồng lõi)") được đóng gói qua một interface duy nhất:
 
 ```java
 public interface CuttingStrategy {
