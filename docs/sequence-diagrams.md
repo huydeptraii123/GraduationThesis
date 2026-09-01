@@ -54,10 +54,9 @@ sequenceDiagram
     FE->>C: POST /api/v1/cutting-plans/generate
     C->>SVC: generatePlan()
     SVC->>DS: buildDemands()
-    DS->>DB: lấy SalesOrder trong phạm vi đợt xử lý (reqd_delivery_date <= t+3, tổng đơn < 70;
-             ngoài phạm vi -> "nhóm 99") + BomItem tương ứng
+    DS->>DB: lấy SalesOrder CHƯA có CuttingPlanDetailItem/ShortageRecord nào tham chiếu tới (chưa xử lý), trong phạm vi đợt xử lý (reqd_delivery_date <= t+3, tổng đơn < 70, ngoài phạm vi -> "nhóm 99") + BomItem tương ứng
     DB-->>DS: rows
-    DS-->>SVC: List<CuttingDemand> (slatMaterial, cutLength, qty, reqd_delivery_date, ycsx, zItem)
+    DS-->>SVC: List<CuttingDemand> (slatMaterial, cutLengthMm, qty, reqd_delivery_date, ycsx, zItem)
 
     SVC->>POOL: load(InventoryBatch hiện có)
     POOL-->>SVC: pool sẵn sàng (số thanh còn lại theo từng slatMaterial + độ dài)
@@ -103,7 +102,7 @@ sequenceDiagram
 
 ### Công thức tính nhu cầu cắt (`CuttingDemandService.buildDemands()`)
 
-Bước `DS->>DB: lấy SalesOrder ... + BomItem tương ứng` ở trên sinh ra `CuttingDemand` cho từng cặp (`SalesOrder`, `BomItem` của `doorProductId` tương ứng) theo công thức đã xác nhận với PLANNER (nguồn gốc từ view nội bộ `v_door_slats_norm` → `v_mps_kc04_slats_demand` mà doanh nghiệp đang dùng). Gọi `doorAreaM2 = zChieuCaoDh × zChieuRongDh`:
+Bước `DS->>DB: lấy SalesOrder ... + BomItem tương ứng` ở trên sinh ra `CuttingDemand` cho từng cặp (`SalesOrder`, `BomItem` của `doorProductId` tương ứng) theo công thức đã xác nhận với PLANNER (nguồn gốc từ view nội bộ `v_door_slats_norm` → `v_mps_kc04_slats_demand` mà doanh nghiệp đang dùng). Gọi `doorAreaM2 = zChieuCaoDh × zChieuRongDh`, `slatGroup = bomItem.slatMaterial.slatGroup` (tra qua quan hệ `BomItem → SlatMaterial`, không phải cột riêng trên `BomItem`):
 
 **Bước 1 — Chiều rộng sản xuất** (dùng chung cho các nhóm không phải Nan chính):
 ```

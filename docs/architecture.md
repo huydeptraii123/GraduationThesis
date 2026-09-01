@@ -45,7 +45,7 @@ public interface CuttingStrategy {
 }
 ```
 
-Việc tách interface này khỏi phần điều phối nghiệp vụ (`CuttingPlanService` — chịu trách nhiệm sinh `CuttingDemand` từ BOM, gọi `CuttingStrategy`, rồi lưu `CuttingPlanResult`) tuân theo nguyên tắc Open/Closed: thêm một chiến lược cắt khác (ví dụ một cách tiếp cận dựa trên ILP để làm đối chứng ở Chương 4) chỉ cần thêm một lớp cài đặt mới `implements CuttingStrategy`, không cần sửa Controller, Service điều phối hay Repository. Đây cũng là lý do khóa luận không chọn ILP/OR-Tools làm engine chính ngay từ đầu — tránh native dependency nặng trong khi mục tiêu đánh giá là chất lượng kiến trúc, nhưng vẫn giữ đường mở rộng sang benchmark thuật toán khác nếu cần.
+Việc tách interface này khỏi phần điều phối nghiệp vụ (`CuttingPlanService` — điều phối luồng: gọi `CuttingDemandService` để sinh `CuttingDemand` từ BOM, gọi `CuttingStrategy` để tính phương án, rồi lưu `CuttingPlanResult` cùng cập nhật tồn kho, xem chi tiết ở `docs/sequence-diagrams.md`) tuân theo nguyên tắc Open/Closed: thêm một chiến lược cắt khác (ví dụ một cách tiếp cận dựa trên ILP để làm đối chứng ở Chương 4) chỉ cần thêm một lớp cài đặt mới `implements CuttingStrategy`, không cần sửa Controller, Service điều phối hay Repository. Đây cũng là lý do khóa luận không chọn ILP/OR-Tools làm engine chính ngay từ đầu — tránh native dependency nặng trong khi mục tiêu đánh giá là chất lượng kiến trúc, nhưng vẫn giữ đường mở rộng sang benchmark thuật toán khác nếu cần.
 
 ## 3.2.3 DTO và Mapper — tách domain khỏi API contract
 
