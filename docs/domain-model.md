@@ -221,7 +221,7 @@ Chú thích `"cùng ..."` trên một cột đánh dấu UK/FK nghĩa là ràng 
 | customer_name | VARCHAR(255) | NOT NULL |
 | created_at / updated_at | DATETIME | NOT NULL |
 
-Cột `customer` (mã khách hàng SAP, ví dụ `1000000634`) khớp nguyên văn cột `customer` ở `don_hang.csv`; kiểu `BIGINT` vì toàn bộ giá trị mẫu là số nguyên không có số 0 dẫn đầu.
+Cột `customer` (mã khách hàng SAP, ví dụ `1000000001`) khớp nguyên văn cột `customer` ở `don_hang.csv`; kiểu `BIGINT` vì toàn bộ giá trị mẫu là số nguyên không có số 0 dẫn đầu.
 
 ### `door_product`
 | Cột | Kiểu | Ràng buộc |
@@ -232,7 +232,7 @@ Cột `customer` (mã khách hàng SAP, ví dụ `1000000634`) khớp nguyên v�
 | z_mau_sac | VARCHAR(20) | NOT NULL |
 | created_at / updated_at | DATETIME | NOT NULL |
 
-UNIQUE (`material`, `z_mau_sac`): xác nhận đúng với dữ liệu thật — cùng 1 `material` có thể tồn tại ở nhiều màu khác nhau (ví dụ `material=21000870` xuất hiện với `z_mau_sac` = `#02`/`#03`/`#05` trong `bom_dinh_muc.csv`), mỗi tổ hợp là một `DoorProduct` riêng.
+UNIQUE (`material`, `z_mau_sac`): xác nhận đúng với dữ liệu thật — cùng 1 `material` có thể tồn tại ở nhiều màu khác nhau (ví dụ `material=90000001` xuất hiện với `z_mau_sac` = `#02`/`#03`/`#05` trong `bom_dinh_muc.csv`), mỗi tổ hợp là một `DoorProduct` riêng.
 
 ### `slat_material`
 | Cột | Kiểu | Ràng buộc |

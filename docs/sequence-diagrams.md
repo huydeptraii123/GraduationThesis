@@ -88,7 +88,7 @@ sequenceDiagram
 
     CS-->>SVC: CuttingPlanResult (chi tiết cắt từng thanh, danh sách shortage, tổng waste)
     SVC->>POOL: diff() — số thanh đã trừ theo từng slatMaterial/độ dài, số thanh mới thêm (nhập lại kho dư >3m)
-    POOL-->>SVC: InventoryBatch cần cập nhật (UPDATE stick_count giảm | UPSERT lô mới cho phần dư nhập kho)
+    POOL-->>SVC: InventoryBatch cần cập nhật (UPDATE so_thanh giảm | UPSERT lô mới cho phần dư nhập kho)
     SVC->>REPO: save(CuttingPlan, CuttingPlanDetail[], InventoryBatch cần cập nhật)  // trong 1 transaction
     REPO->>DB: INSERT CuttingPlan/CuttingPlanDetail[] + UPDATE/UPSERT inventory_batch
     DB-->>REPO: OK
@@ -98,7 +98,7 @@ sequenceDiagram
     FE-->>U: Vẽ sơ đồ cắt (CuttingBarDiagram) + trạng thái từng đơn (đủ vật tư / thiếu vật tư)
 ```
 
-**Bổ sung so với bản trước — trừ tồn kho sau khi cắt.** Bản trước chỉ lưu `CuttingPlan`/`CuttingPlanDetail` mà không có bước nào cập nhật lại `inventory_batch.stick_count` — nghĩa là tồn kho trong DB sẽ không bao giờ giảm sau mỗi lần chạy, vi phạm trực tiếp yêu cầu phi chức năng "cân bằng vật liệu" (lần chạy sau sẽ tính trên tồn kho không đúng thực tế). Toàn bộ việc trừ/cộng tồn kho phải nằm trong đúng 1 transaction với việc lưu `CuttingPlan`, để đảm bảo không có trạng thái nửa-lưu nếu có lỗi giữa chừng.
+**Bổ sung so với bản trước — trừ tồn kho sau khi cắt.** Bản trước chỉ lưu `CuttingPlan`/`CuttingPlanDetail` mà không có bước nào cập nhật lại `inventory_batch.so_thanh` — nghĩa là tồn kho trong DB sẽ không bao giờ giảm sau mỗi lần chạy, vi phạm trực tiếp yêu cầu phi chức năng "cân bằng vật liệu" (lần chạy sau sẽ tính trên tồn kho không đúng thực tế). Toàn bộ việc trừ/cộng tồn kho phải nằm trong đúng 1 transaction với việc lưu `CuttingPlan`, để đảm bảo không có trạng thái nửa-lưu nếu có lỗi giữa chừng.
 
 ### Công thức tính nhu cầu cắt (`CuttingDemandService.buildDemands()`)
 
