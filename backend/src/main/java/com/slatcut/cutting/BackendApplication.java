@@ -1,4 +1,4 @@
-package com.austdoor.cutting;
+package com.slatcut.cutting;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

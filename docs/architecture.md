@@ -59,7 +59,7 @@ Controller không bao giờ nhận hoặc trả trực tiếp entity JPA; mọi 
 ```
 GraduationtThesis/
 ├── backend/                # Spring Boot 4.1.1 (Java 21 target, build JDK 23), Maven
-│   └── src/main/java/com/austdoor/cutting/
+│   └── src/main/java/com/slatcut/cutting/
 │       ├── domain/         # Entity JPA
 │       ├── repository/     # Spring Data JPA repositories
 │       ├── service/        # Business logic (interfaces + impl)

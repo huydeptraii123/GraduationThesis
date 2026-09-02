@@ -1,4 +1,4 @@
-package com.austdoor.cutting;
+package com.slatcut.cutting;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
