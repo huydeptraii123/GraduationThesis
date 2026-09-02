@@ -34,9 +34,11 @@ sequenceDiagram
     end
 ```
 
+Kết quả của luồng luôn thuộc đúng một trong hai trường hợp: nếu phát hiện bất kỳ dòng lỗi nào, không bản ghi nào được lưu và người thực hiện (PLANNER với đơn hàng/tồn kho, ADMIN với định mức BOM) phải sửa lại file nguồn rồi nhập lại từ đầu; nếu toàn bộ dữ liệu hợp lệ, mọi bản ghi được lưu trong đúng một giao dịch và sẵn sàng phục vụ ngay cho các luồng tiếp theo — đơn hàng và định mức BOM phục vụ bước sinh nhu cầu cắt, tồn kho phục vụ `InventoryPool` ở luồng "2. Luồng sinh phương án cắt" bên dưới.
+
 ## 2. Luồng sinh phương án cắt (luồng lõi)
 
-Luồng quan trọng nhất của khóa luận — thể hiện đúng 4 mức ưu tiên đã chốt: khớp gần đúng → cắt theo bội số (cùng đợt xử lý) → ghép nối nhiều đơn (cùng đợt xử lý) → best-fit/nhập kho/shortage.
+PLANNER kích hoạt luồng này sau khi dữ liệu đơn hàng, tồn kho và định mức BOM (Nhóm 1, Nhóm 2) đã sẵn sàng — từ luồng 1 (nhập Excel) hoặc từ thao tác quản lý thủ công — không cần tự chọn hay lọc trước đơn hàng nào cần xử lý — đây là luồng quan trọng nhất của khóa luận, thể hiện đúng 4 mức ưu tiên đã chốt: khớp gần đúng → cắt theo bội số (cùng đợt xử lý) → ghép nối nhiều đơn (cùng đợt xử lý) → best-fit/nhập kho/shortage.
 
 ```mermaid
 sequenceDiagram
@@ -98,7 +100,7 @@ sequenceDiagram
     FE-->>U: Vẽ sơ đồ cắt (CuttingBarDiagram) + trạng thái từng đơn (đủ vật tư / thiếu vật tư)
 ```
 
-**Bổ sung so với bản trước — trừ tồn kho sau khi cắt.** Bản trước chỉ lưu `CuttingPlan`/`CuttingPlanDetail` mà không có bước nào cập nhật lại `inventory_batch.so_thanh` — nghĩa là tồn kho trong DB sẽ không bao giờ giảm sau mỗi lần chạy, vi phạm trực tiếp yêu cầu phi chức năng "cân bằng vật liệu" (lần chạy sau sẽ tính trên tồn kho không đúng thực tế). Toàn bộ việc trừ/cộng tồn kho phải nằm trong đúng 1 transaction với việc lưu `CuttingPlan`, để đảm bảo không có trạng thái nửa-lưu nếu có lỗi giữa chừng.
+Kết thúc luồng, hệ thống trả về đồng thời hai loại kết quả gắn theo từng loại thanh nan trong mỗi đơn hàng, không phải theo cả đơn: `CuttingPlanDetailItem` (phương án cắt cụ thể — dùng thanh tồn kho nào, cắt thành đoạn nào, phần dư xử lý ra sao) cho những loại thanh đã cắt được, và `ShortageRecord` (loại thanh nan, số lượng/độ dài còn thiếu) cho những loại thanh bị cạn kho. Một đơn hàng hoàn toàn có thể vừa có `CuttingPlanDetailItem` cho loại thanh đủ tồn kho, vừa có `ShortageRecord` cho loại thanh khác bị thiếu — trường hợp này vẫn được tính là "thiếu vật tư" ở mức tổng quan (đúng công thức đã chốt ở `docs/domain-model.md` mục 3.3.1), dù đơn đó đã có một phần phương án cắt cụ thể. Toàn bộ việc trừ/cộng tồn kho (`inventory_batch.so_thanh`) phải nằm trong đúng 1 transaction với việc lưu `CuttingPlan`, vừa đảm bảo không có trạng thái nửa-lưu nếu có lỗi giữa chừng, vừa giữ đúng nguyên tắc "cân bằng vật liệu" — yêu cầu phi chức năng quan trọng nhất của hệ thống (tổng độ dài đã cắt cộng mọi loại phần dư phải bằng đúng tổng độ dài tồn kho đã dùng).
 
 ### Công thức tính nhu cầu cắt (`CuttingDemandService.buildDemands()`)
 
@@ -133,6 +135,8 @@ productionWidthM = zChieuRongDh - widthOffsetM
 `CuttingDemand.cutLength = cutDimM` (quy đổi mm), `CuttingDemand.quantity = requiredPieces` (không nhân thêm với "số lượng đặt hàng" vì mỗi `SalesOrder` đã luôn là đúng 1 bộ cửa — xem điểm 1, mục 3.3.1).
 
 ## 3. Luồng xem / xuất kết quả phương án cắt
+
+Sau khi đã có ít nhất một lần chạy ở luồng 2, PLANNER dùng luồng này để tra cứu lại lịch sử các lần chạy, xem chi tiết một phương án cụ thể, và xuất kết quả ra Excel để chỉ đạo sản xuất thực tế. Xuất Excel là bước tùy chọn — PLANNER có thể chỉ xem sơ đồ cắt trên giao diện mà không cần xuất file mỗi lần xem.
 
 ```mermaid
 sequenceDiagram
