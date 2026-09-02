@@ -130,3 +130,42 @@ flowchart TD
 ```
 
 Điểm dễ hiểu nhầm nhất, cần nhấn lại: thứ tự **xử lý** trong hàng đợi luôn theo đúng ưu tiên `(reqd_delivery_date, ycsx, z_item)` — đoạn X ở bước "Lấy đoạn X ưu tiên cao nhất còn lại" luôn là đoạn đầu hàng đợi, không bao giờ bị bỏ qua để chờ ghép; khác với phạm vi **ghép nối** ở Mức 2 và Mức 3, chỉ áp dụng giữa các đoạn cùng nằm trong đợt xử lý hiện tại (đã giới hạn bởi bước "Xác định phạm vi đợt xử lý" ở đầu sơ đồ), không bao giờ ghép với đơn thuộc "nhóm 99" hay đợt xử lý sau. Ngoài ra, mỗi nhóm `slatMaterial` ở vòng lặp ngoài được xử lý độc lập với nhau — vì tồn kho (`InventoryBatch`) đã tách riêng theo `slatMaterial`, không có ràng buộc chéo giữa các nhóm.
+
+## 4. Luồng xem/xuất kết quả phương án cắt
+
+Sơ đồ dưới đây bổ sung góc nhìn ra quyết định cho luồng đã có ở `docs/sequence-diagrams.md` mục "3. Luồng xem / xuất kết quả phương án cắt" (thể hiện thành phần nào gọi thành phần nào, khá tuyến tính: xem danh sách → xem chi tiết → xuất Excel). Phần bổ sung giá trị nhất ở đây là cách hệ thống **tính và sắp xếp "đợt cắt"** để hiển thị ở mức tổng quan — quy tắc nghiệp vụ có nhiều rẽ nhánh nhất của luồng này, đã chốt ở `docs/requirements-functional.md` Nhóm 3 nhưng chưa từng thể hiện dưới dạng flowchart quyết định.
+
+```mermaid
+flowchart TD
+    A([Bắt đầu]) --> A0["PLANNER mở màn hình lịch sử phương án cắt"]
+    A0 --> B["Xem danh sách các lần chạy:<br/>thời điểm, tổng waste, trạng thái"]
+    B --> C{"Chọn 1 lần chạy<br/>để xem chi tiết?"}
+    C -- "Không" --> Z([Kết thúc])
+    C -- "Có" --> D["Tải chi tiết lần chạy:<br/>CuttingPlanDetail + CuttingPlanDetailItem + ShortageRecord"]
+
+    D --> E["Nhóm các đơn hàng đã xử lý<br/>theo DoorProduct (mẫu cửa + màu)"]
+    E --> F{"Còn nhóm DoorProduct<br/>chưa chia đợt cắt?"}
+    F -- "Có" --> G["Sắp đơn hàng trong nhóm theo<br/>(reqd_delivery_date, ycsx, z_item)"]
+    G --> H{"Nhóm còn trên 7 bộ cửa<br/>chưa gán đợt?"}
+    H -- "Có" --> I["Gán 7 bộ cửa ưu tiên cao nhất<br/>còn lại vào 1 đợt cắt mới"]
+    I --> H
+    H -- "Không" --> J["Gán toàn bộ số bộ còn lại<br/>(từ 1 đến 7 bộ) vào 1 đợt cắt cuối của nhóm"]
+    J --> F
+    F -- "Không" --> K["Sắp xếp toàn bộ đợt cắt theo ngày giao sớm nhất trong đợt;<br/>trùng ngày giao sớm nhất → đợt có nhiều bộ hơn cùng rơi<br/>đúng ngày đó được xếp trước"]
+
+    K --> L["Hiển thị mức tổng quan: tổng số bộ cửa, tỷ lệ phế trung bình,<br/>tỷ trọng đủ/thiếu vật tư, biểu đồ theo ngày giao và theo mẫu cửa,<br/>danh sách đợt cắt đã sắp xếp"]
+
+    L --> M{"PLANNER chọn thao tác tiếp theo"}
+    M -- "Xem chi tiết theo đơn hàng" --> N["Hiển thị từng dòng nhu cầu cắt:<br/>thứ tự ưu tiên, thông tin đơn, loại vật tư,<br/>độ dài cần cắt, trạng thái đủ/thiếu, mô tả cách cắt"]
+    N --> M
+    M -- "Xem chi tiết theo phôi xuất kho" --> O["Hiển thị từng dòng phôi đã dùng:<br/>đợt cắt, lệnh sản xuất, vật tư, độ dài phôi,<br/>số lượng phôi, mã pattern, đơn gốc + đơn ghép thêm (nếu có)"]
+    O --> M
+    M -- "Lọc theo lệnh sản xuất / bộ cửa" --> P["Lọc lại dữ liệu đang hiển thị theo điều kiện nhập"]
+    P --> M
+    M -- "Xuất Excel" --> Q["Sinh file Excel theo cấu trúc mức chi tiết phôi xuất kho"]
+    Q --> R["PLANNER tải file Excel về máy"]
+    R --> M
+    M -- "Kết thúc xem" --> Z
+```
+
+Điểm cần lưu ý: "đợt cắt" không phải một entity lưu trữ riêng (xem `docs/domain-model.md` mục "Ghi chú khác") — toàn bộ khối tính đợt cắt (bước D đến K) là kết quả tính **tại thời điểm hiển thị**, không đọc từ cột trạng thái nào. Vì vậy mỗi lần PLANNER mở lại cùng một `CuttingPlan` đã lưu trước đó, thứ tự và nội dung các đợt cắt luôn được suy ra lại từ dữ liệu gốc (`CuttingPlanDetailItem`, `SalesOrder`) chứ không phải đọc một giá trị đã chốt cứng — đảm bảo không bị lệch (stale) nếu logic nhóm đợt cắt thay đổi sau này.
