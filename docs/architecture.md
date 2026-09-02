@@ -58,7 +58,7 @@ Controller không bao giờ nhận hoặc trả trực tiếp entity JPA; mọi 
 
 ```
 GraduationtThesis/
-├── backend/                # Spring Boot 3.x (Java 21), Maven
+├── backend/                # Spring Boot 4.1.1 (Java 21 target, build JDK 23), Maven
 │   └── src/main/java/com/austdoor/cutting/
 │       ├── domain/         # Entity JPA
 │       ├── repository/     # Spring Data JPA repositories
