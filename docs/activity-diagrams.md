@@ -40,3 +40,44 @@ flowchart TD
 Điểm cần lưu ý: hai vòng lặp (kiểm tra định dạng và upsert) được tách rời — chỉ bước sang giai đoạn upsert khi **toàn bộ** các dòng đã qua kiểm tra định dạng, tránh trường hợp nhập được một phần rồi mới phát hiện lỗi ở dòng sau.
 
 Riêng luồng nhập tồn kho có thêm một hành vi không thể hiện ở sơ đồ trên để giữ sơ đồ chung đơn giản: nếu một tổ hợp (loại thanh, độ dài) từng tồn tại trong hệ thống nhưng không còn xuất hiện trong file mới nhập, hệ thống chủ động đưa số thanh còn lại về 0 thay vì giữ nguyên giá trị cũ — khác với hành vi upsert thuần túy (chỉ thêm/sửa, không xóa/reset) áp dụng cho đơn hàng và BOM.
+
+## 2. Luồng quản lý đơn hàng & BOM
+
+Áp dụng chung cho luồng quản lý đơn hàng (PLANNER và ADMIN đều thao tác được) và luồng quản lý định mức BOM (chỉ ADMIN) — cùng là thao tác CRUD cơ bản (xem/tìm-lọc, thêm mới, sửa, xóa) trên dữ liệu thường đã có sẵn trong hệ thống từ luồng nhập Excel ở mục 1, nhưng khác nhau ở tác nhân thực hiện, khóa nghiệp vụ dùng để kiểm tra trùng lặp khi thêm mới, và điều kiện lọc danh sách: đơn hàng lọc theo ngày giao yêu cầu, khách hàng hoặc trạng thái xử lý (trạng thái này không phải cột lưu sẵn mà suy ra từ việc đơn đã có kết quả cắt/thiếu vật tư tham chiếu hay chưa — xem `docs/domain-model.md` mục 3.3.1); BOM lọc theo mẫu cửa hoặc nhóm thanh nan.
+
+```mermaid
+flowchart TD
+    A([Bắt đầu]) --> B["Người dùng vào màn hình quản lý<br/>(đơn hàng: PLANNER hoặc ADMIN — BOM: chỉ ADMIN)"]
+    B --> C["Nhập điều kiện tìm kiếm/lọc (nếu có)<br/>và xem danh sách bản ghi"]
+    C --> D{"Chọn hành động"}
+
+    D -- "Chỉ xem" --> Z([Kết thúc])
+
+    D -- "Thêm mới" --> E["Nhập thông tin bản ghi mới"]
+    E --> F{"Đủ trường bắt buộc<br/>và đúng định dạng?"}
+    F -- "Không" --> F1["Báo lỗi, giữ nguyên form"]
+    F1 --> E
+    F -- "Có" --> G{"Đã tồn tại bản ghi<br/>cùng khóa nghiệp vụ?<br/>(đơn hàng: ycsx+z_item —<br/>BOM: mẫu cửa+loại thanh nan)"}
+    G -- "Có" --> G1["Báo lỗi trùng khóa nghiệp vụ"]
+    G1 --> E
+    G -- "Không" --> H["Tạo bản ghi mới"]
+    H --> R["Cập nhật lại danh sách hiển thị"]
+    R --> Z
+
+    D -- "Sửa" --> J["Chọn bản ghi, tải dữ liệu hiện tại lên form"]
+    J --> K["Chỉnh sửa thông tin"]
+    K --> L{"Đủ trường bắt buộc<br/>và đúng định dạng?"}
+    L -- "Không" --> L1["Báo lỗi, giữ nguyên form"]
+    L1 --> K
+    L -- "Có" --> M["Cập nhật bản ghi"]
+    M --> R
+
+    D -- "Xóa" --> N["Chọn bản ghi cần xóa"]
+    N --> O{"Là đơn hàng và đã có<br/>kết quả cắt tham chiếu?<br/>(CuttingPlanDetailItem/ShortageRecord)"}
+    O -- "Có" --> O1["Từ chối xóa, báo lỗi<br/>'đơn đã được xử lý, không thể xóa'"]
+    O1 --> Z
+    O -- "Không" --> P["Xóa bản ghi"]
+    P --> R
+```
+
+Điểm cần lưu ý: nhánh xóa có rẽ nhánh riêng cho đơn hàng — một khi đơn hàng đã được đưa vào ít nhất một lần chạy thuật toán (có `CuttingPlanDetailItem` hoặc `ShortageRecord` tham chiếu tới, xem `docs/domain-model.md` mục 3.3.1), hệ thống từ chối xóa thay vì để phát sinh lỗi ràng buộc khóa ngoại ở tầng cơ sở dữ liệu. BOM không có bảng con nào tham chiếu trực tiếp đến `BomItem` nên nhánh này luôn cho phép xóa bình thường. Luồng quản lý tồn kho thanh nan không nằm trong sơ đồ này — tồn kho được nhập/cập nhật chủ yếu qua luồng Excel ở mục 1 (bao gồm cả chỉnh sửa thủ công theo cùng khóa nghiệp vụ loại thanh + độ dài), không có luồng CRUD tách rời riêng.
