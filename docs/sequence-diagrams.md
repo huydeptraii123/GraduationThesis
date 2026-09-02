@@ -89,8 +89,8 @@ sequenceDiagram
     CS-->>SVC: CuttingPlanResult (chi tiết cắt từng thanh, danh sách shortage, tổng waste)
     SVC->>POOL: diff() — số thanh đã trừ theo từng slatMaterial/độ dài, số thanh mới thêm (nhập lại kho dư >3m)
     POOL-->>SVC: InventoryBatch cần cập nhật (UPDATE so_thanh giảm | UPSERT lô mới cho phần dư nhập kho)
-    SVC->>REPO: save(CuttingPlan, CuttingPlanDetail[], InventoryBatch cần cập nhật)  // trong 1 transaction
-    REPO->>DB: INSERT CuttingPlan/CuttingPlanDetail[] + UPDATE/UPSERT inventory_batch
+    SVC->>REPO: save(CuttingPlan, CuttingPlanDetail[], CuttingPlanDetailItem[], ShortageRecord[], InventoryBatch cần cập nhật)  // trong 1 transaction
+    REPO->>DB: INSERT CuttingPlan/CuttingPlanDetail[]/CuttingPlanDetailItem[]/ShortageRecord[] + UPDATE/UPSERT inventory_batch
     DB-->>REPO: OK
     REPO-->>SVC: CuttingPlan đã lưu (id)
     SVC-->>C: CuttingPlanDto

@@ -81,3 +81,52 @@ flowchart TD
 ```
 
 Điểm cần lưu ý: nhánh xóa có rẽ nhánh riêng cho đơn hàng — một khi đơn hàng đã được đưa vào ít nhất một lần chạy thuật toán (có `CuttingPlanDetailItem` hoặc `ShortageRecord` tham chiếu tới, xem `docs/domain-model.md` mục 3.3.1), hệ thống từ chối xóa thay vì để phát sinh lỗi ràng buộc khóa ngoại ở tầng cơ sở dữ liệu. BOM không có bảng con nào tham chiếu trực tiếp đến `BomItem` nên nhánh này luôn cho phép xóa bình thường. Luồng quản lý tồn kho thanh nan không nằm trong sơ đồ này — tồn kho được nhập/cập nhật chủ yếu qua luồng Excel ở mục 1 (bao gồm cả chỉnh sửa thủ công theo cùng khóa nghiệp vụ loại thanh + độ dài), không có luồng CRUD tách rời riêng.
+
+## 3. Luồng thuật toán sinh phương án cắt (luồng lõi)
+
+Đây là luồng nghiệp vụ quan trọng nhất của khóa luận — thuật toán Best Fit Decreasing mở rộng 4 mức ưu tiên. Sơ đồ dưới đây bổ sung góc nhìn ra quyết định cho luồng đã có ở `docs/sequence-diagrams.md` mục "2. Luồng sinh phương án cắt" (thể hiện thành phần nào gọi thành phần nào); công thức chi tiết sinh `CuttingDemand` từ `SalesOrder`+`BomItem` cũng đã trình bày đầy đủ ở đó, không lặp lại ở đây.
+
+```mermaid
+flowchart TD
+    A([Bắt đầu]) --> A0["PLANNER bấm 'Sinh phương án cắt'"]
+    A0 --> B["Xác định phạm vi đợt xử lý:<br/>SalesOrder chưa có kết quả cắt tham chiếu,<br/>reqd_delivery_date sớm hơn hoặc bằng t+3 ngày,<br/>tổng số đơn trong phạm vi dưới 70<br/>(ngoài phạm vi → 'nhóm 99', chờ lần chạy sau)"]
+    B --> C["Sinh CuttingDemand từ SalesOrder + BomItem tương ứng<br/>(công thức chi tiết xem docs/sequence-diagrams.md)"]
+    C --> D["Nạp InventoryPool từ tồn kho hiện có"]
+    D --> E["Nhóm CuttingDemand theo slatMaterial"]
+    E --> F{"Còn nhóm slatMaterial<br/>chưa xử lý?"}
+
+    F -- "Không" --> G["Lưu CuttingPlan + CuttingPlanDetail + CuttingPlanDetailItem<br/>+ ShortageRecord, cập nhật tồn kho (trừ/cộng), trong 1 transaction"]
+    G --> Z([Kết thúc])
+
+    F -- "Có" --> H["Lấy 1 nhóm slatMaterial tiếp theo,<br/>sắp xếp hàng đợi đoạn cần cắt theo<br/>(reqd_delivery_date tăng dần, ycsx, z_item)"]
+    H --> I{"Hàng đợi còn<br/>đoạn chưa cắt?"}
+    I -- "Không" --> F
+
+    I -- "Có" --> J["Lấy đoạn X ưu tiên cao nhất còn lại<br/>(không bao giờ trì hoãn đoạn ưu tiên cao nhất)"]
+
+    J --> K{"Mức 1: tồn tại thanh khớp X,<br/>dư dự kiến dưới 30cm?"}
+    K -- "Có" --> K1["Cắt thanh đó; dư dưới 30cm → 'bỏ';<br/>loại X khỏi hàng đợi"]
+    K1 --> I
+
+    K -- "Không" --> L{"Mức 2: có N-1 đoạn khác<br/>cùng độ dài X đang chờ trong<br/>cùng đợt xử lý, và tồn tại thanh<br/>dài gấp k lần cutLength(X), k≥2, đủ dùng?"}
+    L -- "Có" --> L1["Cắt thanh thành k đoạn,<br/>gán X + (k−1) đoạn cùng độ dài;<br/>dư = 0; loại các đoạn đã gán"]
+    L1 --> I
+
+    L -- "Không" --> M{"Mức 3: tồn tại tổ hợp<br/>{X, 1 hoặc nhiều đoạn khác<br/>trong cùng đợt xử lý} khớp 1 thanh,<br/>dư dự kiến dưới 30cm?"}
+    M -- "Có" --> M1["Cắt thanh đó, gán từng đoạn<br/>về đúng đơn của nó;<br/>dư dưới 30cm → 'bỏ'; loại các đoạn đã gán"]
+    M1 --> I
+
+    M -- "Không" --> N{"Mức 4: tìm thanh ngắn nhất<br/>đủ chứa X (best-fit, gồm cả<br/>phần dư trên 3m vừa nhập kho<br/>trong lần chạy này)?"}
+    N -- "Có thanh đủ dài" --> N1["Cắt thanh đó"]
+    N1 --> N2{"Phân loại phần dư"}
+    N2 -- "Trên 3m" --> N3["'Nhập lại kho' — thêm vào pool"]
+    N2 -- "Từ 30cm đến 3m" --> N4["'Lãng phí' — ghi nhận cảnh báo"]
+    N3 --> N5["Loại X khỏi hàng đợi"]
+    N4 --> N5
+    N5 --> I
+
+    N -- "Không còn thanh đủ dài" --> O["Đánh dấu shortage cho X<br/>(slatMaterial + số lượng/độ dài thiếu);<br/>loại X khỏi hàng đợi<br/>(không chặn đoạn ưu tiên thấp hơn)"]
+    O --> I
+```
+
+Điểm dễ hiểu nhầm nhất, cần nhấn lại: thứ tự **xử lý** trong hàng đợi luôn theo đúng ưu tiên `(reqd_delivery_date, ycsx, z_item)` — đoạn X ở bước "Lấy đoạn X ưu tiên cao nhất còn lại" luôn là đoạn đầu hàng đợi, không bao giờ bị bỏ qua để chờ ghép; khác với phạm vi **ghép nối** ở Mức 2 và Mức 3, chỉ áp dụng giữa các đoạn cùng nằm trong đợt xử lý hiện tại (đã giới hạn bởi bước "Xác định phạm vi đợt xử lý" ở đầu sơ đồ), không bao giờ ghép với đơn thuộc "nhóm 99" hay đợt xử lý sau. Ngoài ra, mỗi nhóm `slatMaterial` ở vòng lặp ngoài được xử lý độc lập với nhau — vì tồn kho (`InventoryBatch`) đã tách riêng theo `slatMaterial`, không có ràng buộc chéo giữa các nhóm.
