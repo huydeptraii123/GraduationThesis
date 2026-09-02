@@ -175,3 +175,5 @@ sequenceDiagram
         FE-->>U: Tải file Excel kết quả cắt
     end
 ```
+
+Luồng này khép lại vòng đời một lần sinh phương án cắt đã mở ra ở luồng 2: PLANNER không chỉ chạy thuật toán mà còn cần tra cứu lại, kiểm tra trực quan trên giao diện, và đưa kết quả xuống xưởng sản xuất qua file Excel. `findByIdWithDetails` luôn nạp lại đúng `CuttingPlanDetail`/`CuttingPlanDetailItem`/`ShortageRecord` đã lưu tại thời điểm chạy, nên xem lại một phương án cũ luôn cho kết quả nhất quán, không bị ảnh hưởng bởi các thay đổi tồn kho phát sinh sau đó.
