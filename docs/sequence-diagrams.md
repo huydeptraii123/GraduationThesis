@@ -155,9 +155,9 @@ sequenceDiagram
     U->>FE: Chọn 1 phương án để xem chi tiết
     FE->>C: GET /api/v1/cutting-plans/{id}
     C->>REPO: findByIdWithDetails(id)
-    REPO->>DB: SELECT ... JOIN CuttingPlanDetail
+    REPO->>DB: SELECT ... JOIN CuttingPlanDetail, CuttingPlanDetailItem, ShortageRecord
     DB-->>REPO: rows
-    REPO-->>C: CuttingPlan + CuttingPlanDetail[]
+    REPO-->>C: CuttingPlan + CuttingPlanDetail[] + CuttingPlanDetailItem[] + ShortageRecord[]
     C-->>FE: CuttingPlanDetailDto
     FE-->>U: Vẽ sơ đồ cắt từng thanh (SVG)
 
@@ -165,7 +165,7 @@ sequenceDiagram
         FE->>C: GET /api/v1/cutting-plans/{id}/export
         C->>EXP: export(id)
         EXP->>REPO: findByIdWithDetails(id)
-        REPO-->>EXP: CuttingPlan + CuttingPlanDetail[]
+        REPO-->>EXP: CuttingPlan + CuttingPlanDetail[] + CuttingPlanDetailItem[] + ShortageRecord[]
         EXP-->>C: file Excel (byte stream, Apache POI)
         C-->>FE: 200 + file
         FE-->>U: Tải file Excel kết quả cắt
