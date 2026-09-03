@@ -7,5 +7,9 @@ spring:
     password: ${DB_PASSWORD:root}
   jpa:
     hibernate:
-      ddl-auto: none
+      ddl-auto: validate
     open-in-view: false
+
+jwt:
+  secret: ${JWT_SECRET:local-dev-secret-key-please-override-in-real-deployments-0123456789}
+  expiration-ms: ${JWT_EXPIRATION_MS:28800000}
