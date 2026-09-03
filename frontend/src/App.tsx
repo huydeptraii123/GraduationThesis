@@ -1,13 +1,14 @@
-import { ConfigProvider, Layout, Typography } from 'antd'
+import { ConfigProvider } from 'antd'
+import { RouterProvider } from 'react-router-dom'
+import { router } from './app/router'
+import { AuthProvider } from './features/auth/AuthContext'
 
 function App() {
   return (
     <ConfigProvider>
-      <Layout style={{ minHeight: '100vh' }}>
-        <Layout.Content style={{ padding: 24 }}>
-          <Typography.Title level={3}>Cutting Stock Optimization</Typography.Title>
-        </Layout.Content>
-      </Layout>
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
     </ConfigProvider>
   )
 }
