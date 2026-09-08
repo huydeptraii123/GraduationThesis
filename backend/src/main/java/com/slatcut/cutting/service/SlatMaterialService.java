@@ -1,4 +1,4 @@
-5package com.slatcut.cutting.service;
+package com.slatcut.cutting.service;
 
 import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.config.ResourceNotFoundException;
