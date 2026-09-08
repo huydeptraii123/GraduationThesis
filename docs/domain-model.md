@@ -283,7 +283,7 @@ UNIQUE (`door_product_id`, `slat_material_id`): đã đối chiếu toàn bộ 1
 | slat_material_id | BIGINT | NOT NULL, FK → `slat_material.id` |
 | do_dai_thanh_mm | INT | NOT NULL |
 | so_thanh | INT | NOT NULL, DEFAULT 0 |
-| stock_status | ENUM('OVER_6_MONTHS','3_TO_6_MONTHS','UNDER_3_MONTHS') | NOT NULL |
+| stock_status | ENUM('OVER_6_MONTHS','BETWEEN_3_AND_6_MONTHS','UNDER_3_MONTHS') | NOT NULL |
 | created_at / updated_at | DATETIME | NOT NULL |
 
 `stock_status` không phải cờ AVAILABLE/DEPLETED mà là **nhãn hạn dùng tồn kho thật** (`dataset/processed/ton_kho_thanh_nan.csv` cột `stock_status`, 3 giá trị: "Hữu dụng trên 6 tháng"/"3-6 tháng"/"dưới 3 tháng"). Đối chiếu dữ liệu thật: `ton_m = so_thanh × độ dài` đúng chính xác ở toàn bộ 2.283 dòng — tồn kho luôn là số nguyên lần độ dài chuẩn, nên lưu trực tiếp số lượng thanh (`so_thanh`) làm nguồn số liệu chính xác tuyệt đối; tổng số mét (nếu cần hiển thị cho PLANNER đúng theo yêu cầu chức năng Nhóm 1) tính lại từ `so_thanh × do_dai_thanh_mm / 1000`, không lưu trùng lặp.
