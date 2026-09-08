@@ -1,5 +1,7 @@
 package com.slatcut.cutting.config;
 
+import com.slatcut.cutting.dto.ImportRowError;
+import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +14,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<String> handleNotFound(ResourceNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ex.getMessage());
+    }
+
+    @ExceptionHandler(ImportValidationException.class)
+    public ResponseEntity<List<ImportRowError>> handleImportValidation(ImportValidationException ex) {
+        return ResponseEntity.badRequest().body(ex.getErrors());
     }
 
     @ExceptionHandler(ConflictException.class)
