@@ -6,6 +6,7 @@ import com.slatcut.cutting.domain.SlatMaterial;
 import com.slatcut.cutting.dto.SlatMaterialRequest;
 import com.slatcut.cutting.dto.SlatMaterialResponse;
 import com.slatcut.cutting.mapper.SlatMaterialMapper;
+import com.slatcut.cutting.repository.BomItemRepository;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
 import java.util.List;
@@ -17,14 +18,17 @@ public class SlatMaterialService {
 
     private final SlatMaterialRepository slatMaterialRepository;
     private final InventoryBatchRepository inventoryBatchRepository;
+    private final BomItemRepository bomItemRepository;
     private final SlatMaterialMapper mapper;
 
     public SlatMaterialService(
             SlatMaterialRepository slatMaterialRepository,
             InventoryBatchRepository inventoryBatchRepository,
+            BomItemRepository bomItemRepository,
             SlatMaterialMapper mapper) {
         this.slatMaterialRepository = slatMaterialRepository;
         this.inventoryBatchRepository = inventoryBatchRepository;
+        this.bomItemRepository = bomItemRepository;
         this.mapper = mapper;
     }
 
@@ -61,6 +65,9 @@ public class SlatMaterialService {
         SlatMaterial entity = findEntityById(id);
         if (inventoryBatchRepository.existsBySlatMaterial_Id(id)) {
             throw new ConflictException("Không thể xóa: vẫn còn tồn kho tham chiếu đến loại thanh nan này");
+        }
+        if (bomItemRepository.existsBySlatMaterial_Id(id)) {
+            throw new ConflictException("Không thể xóa: vẫn còn định mức BOM tham chiếu đến loại thanh nan này");
         }
         slatMaterialRepository.delete(entity);
     }
