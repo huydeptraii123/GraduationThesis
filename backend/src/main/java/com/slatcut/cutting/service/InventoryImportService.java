@@ -4,7 +4,6 @@ import com.slatcut.cutting.config.ImportValidationException;
 import com.slatcut.cutting.domain.InventoryBatch;
 import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
-import com.slatcut.cutting.domain.StockStatus;
 import com.slatcut.cutting.dto.ImportRowError;
 import com.slatcut.cutting.dto.InventoryImportResult;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
@@ -33,12 +32,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class InventoryImportService {
 
     private static final List<String> REQUIRED_COLUMNS =
-            List.of("material", "material_description", "batch", "stock_status", "unrestricted");
-
-    private static final Map<String, StockStatus> STOCK_STATUS_BY_LABEL = Map.of(
-            "Hữu dụng dưới 3 tháng", StockStatus.UNDER_3_MONTHS,
-            "Hữu dụng 3-6 tháng", StockStatus.BETWEEN_3_AND_6_MONTHS,
-            "Hữu dụng trên 6 tháng", StockStatus.OVER_6_MONTHS);
+            List.of("material", "material_description", "batch", "unrestricted");
 
     private final SlatMaterialRepository slatMaterialRepository;
     private final InventoryBatchRepository inventoryBatchRepository;
@@ -152,14 +146,6 @@ public class InventoryImportService {
             }
         }
 
-        String stockStatusRaw = readString(row, col.get("stock_status"), evaluator);
-        StockStatus stockStatus = STOCK_STATUS_BY_LABEL.get(stockStatusRaw);
-        if (stockStatusRaw == null || stockStatusRaw.isBlank()) {
-            rowErrors.add("Thiếu tình trạng tồn kho (stock_status)");
-        } else if (stockStatus == null) {
-            rowErrors.add("Tình trạng tồn kho không hợp lệ: " + stockStatusRaw);
-        }
-
         if (material != null && doDaiThanhMm != null) {
             RawKey key = new RawKey(material, doDaiThanhMm);
             if (!seenKeys.add(key)) {
@@ -173,7 +159,7 @@ public class InventoryImportService {
             return;
         }
 
-        rows.add(new ParsedRow(material, materialName, doDaiThanhMm, soThanh, stockStatus));
+        rows.add(new ParsedRow(material, materialName, doDaiThanhMm, soThanh));
     }
 
     private Map<Long, SlatMaterial> upsertSlatMaterials(List<ParsedRow> rows) {
@@ -199,7 +185,6 @@ public class InventoryImportService {
         entity.setSlatMaterial(material);
         entity.setDoDaiThanhMm(row.doDaiThanhMm());
         entity.setSoThanh(row.soThanh());
-        entity.setStockStatus(row.stockStatus());
         inventoryBatchRepository.save(entity);
     }
 
@@ -293,8 +278,7 @@ public class InventoryImportService {
         }
     }
 
-    private record ParsedRow(
-            Long material, String materialName, Integer doDaiThanhMm, Integer soThanh, StockStatus stockStatus) {}
+    private record ParsedRow(Long material, String materialName, Integer doDaiThanhMm, Integer soThanh) {}
 
     private record BatchKey(Long slatMaterialId, Integer doDaiThanhMm) {}
 
