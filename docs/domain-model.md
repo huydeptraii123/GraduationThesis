@@ -11,7 +11,7 @@ Mục này xác định danh sách entity nghiệp vụ và quan hệ giữa ch�
 | `Role` | Vai trò tài khoản (ADMIN, PLANNER) | `code`, `name` |
 | `User` | Tài khoản đăng nhập | `username`, `passwordHash`, `roleId` |
 | `Customer` | Khách hàng đặt đơn (nguồn: `don_hang.csv`) | `customer`, `customerName` |
-| `DoorProduct` | Mẫu cửa + màu cụ thể (nguồn: `bom_dinh_muc.csv`) | `material`, `doorMaterialName`, `zMauSac` |
+| `DoorProduct` | Mẫu cửa + màu cụ thể (nguồn: `bom_dinh_muc.csv`) | `material`, `doorMaterialName`, `mauSac` (cột `z_mau_sac`, xem quy ước tiền tố `z` ở 3.3.2) |
 | `SlatMaterial` | Loại thanh nan (nguồn: `bom_dinh_muc.csv` + `ton_kho_thanh_nan.csv`, xem lưu ý đặt tên ở dưới) | `slatMaterial`, `slatMaterialName`, `slatGroup` (Nan chính/Nan phụ/Thanh đáy/Ray/Khác) |
 | `BomItem` | Định mức: 1 `DoorProduct` cần bao nhiêu đoạn của 1 `SlatMaterial` — thông số do đội kỹ thuật cung cấp trực tiếp (xem 3.3.2) | `widthOffsetM`, `heightOffsetM`, `slatCountSlope`, `slatCountIntercept`, `dinhMucTbMPerBoCua` |
 | `InventoryBatch` | Một lô tồn kho: 1 `SlatMaterial` ở 1 độ dài chuẩn, còn bao nhiêu thanh (nguồn: `ton_kho_thanh_nan.csv`) | `doDaiThanhMm`, `soThanh` |
@@ -229,6 +229,8 @@ Cột `customer` (mã khách hàng SAP, ví dụ `1000000001`) khớp nguyên v�
 | created_at / updated_at | DATETIME | NOT NULL |
 
 UNIQUE (`material`, `z_mau_sac`): xác nhận đúng với dữ liệu thật — cùng 1 `material` có thể tồn tại ở nhiều màu khác nhau (ví dụ `material=90000001` xuất hiện với `z_mau_sac` = `#02`/`#03`/`#05` trong `bom_dinh_muc.csv`), mỗi tổ hợp là một `DoorProduct` riêng.
+
+**Quy ước đặt tên cho các trường có tiền tố `z` của SAP**: tên cột trong cơ sở dữ liệu giữ nguyên tiền tố theo đúng nguồn (`z_mau_sac`, và sau này `z_item`/`z_chieu_cao_dh`/`z_chieu_rong_dh` ở `sales_order`), nhưng thuộc tính tương ứng trong mã nguồn bỏ tiền tố này (`mauSac`, `item`, `chieuCaoDh`, `chieuRongDh`). Lý do: quy tắc đặt tên thuộc tính của Java (JavaBeans) coi một chữ cái thường đứng trước chữ hoa (`zMauSac`) là trường hợp đặc biệt và suy ra tên thuộc tính thành `ZMauSac`, khiến tên trường trong mã nguồn, tên thuộc tính khi ánh xạ dữ liệu và tên trường trong JSON của API lệch nhau. Bỏ tiền tố ở tầng mã nguồn giúp cả ba thống nhất; ánh xạ ngược về đúng cột nguồn được khai báo tường minh trên từng trường.
 
 ### `slat_material`
 | Cột | Kiểu | Ràng buộc |
