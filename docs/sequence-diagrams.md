@@ -106,7 +106,7 @@ Kết thúc luồng, hệ thống trả về đồng thời hai loại kết qu�
 
 Bước `DS->>DB: lấy SalesOrder ... + BomItem tương ứng` ở trên sinh ra `CuttingDemand` cho từng cặp (`SalesOrder`, `BomItem` của `doorProductId` tương ứng) theo công thức đã xác nhận với PLANNER (nguồn gốc từ view nội bộ `v_door_slats_norm` → `v_mps_kc04_slats_demand` mà doanh nghiệp đang dùng). Gọi `doorAreaM2 = zChieuCaoDh × zChieuRongDh`, `slatGroup = bomItem.slatMaterial.slatGroup` (tra qua quan hệ `BomItem → SlatMaterial`, không phải cột riêng trên `BomItem`):
 
-**Bước 1 — Chiều rộng sản xuất** (dùng chung cho các nhóm không phải Nan chính):
+**Bước 1 — Chiều rộng sản xuất** (dùng cho Nan chính):
 ```
 productionWidthM = zChieuRongDh - widthOffsetM
     (fallback nếu widthOffsetM NULL: zChieuRongDh × 0.976)
@@ -116,21 +116,25 @@ productionWidthM = zChieuRongDh - widthOffsetM
 
 | `slatGroup` | `cutDimM` |
 |---|---|
-| MAIN_SLAT (Nan chính) | `zChieuRongDh` (đúng bằng chiều rộng cửa, KHÔNG trừ offset — nan có đột lỗ, phải chừa đầu) |
-| BOTTOM_BAR, SUB_SLAT (Thanh đáy, Nan phụ) | `productionWidthM` |
+| MAIN_SLAT (Nan chính) | `productionWidthM` (= `zChieuRongDh - widthOffsetM`) |
+| BOTTOM_BAR, SUB_SLAT (Thanh đáy, Nan phụ) | `zChieuRongDh` (đúng bằng chiều rộng cửa, không trừ offset nào) |
 | RAIL (Ray) | `zChieuCaoDh - heightOffsetM` |
 | OTHER (Khác) | không xác định theo nhóm — luôn rơi vào fallback toàn phần ở Bước 4 |
+
+> **Đã xác nhận lại trực tiếp với doanh nghiệp**: chỉ **Nan chính** mới áp dụng offset chiều rộng, chỉ **Ray** mới áp dụng offset chiều cao — Thanh đáy/Nan phụ không áp dụng offset nào (khác với phiên bản thiết kế trước, vốn suy luận ngược lại thuần túy từ số liệu thống kê lúc chưa có xác nhận từ phía công ty).
 
 **Bước 3 — `requiredPieces`** (số lượng thanh cần), khác nhau theo `slatGroup`:
 
 | `slatGroup` | `requiredPieces` |
 |---|---|
-| MAIN_SLAT | Ưu tiên `ROUND(slatCountSlope × zChieuCaoDh + slatCountIntercept)` — chỉ dùng khi `slatCountR2 >= 0.5`; nếu không (NULL hoặc < 0.5): fallback `ROUND(doorAreaM2 × dinhMucMPerM2 / zChieuRongDh)` |
+| MAIN_SLAT | `ROUND(slatCountSlope × zChieuCaoDh + slatCountIntercept)` — hệ số `slatCountSlope`/`slatCountIntercept` do đội kỹ thuật cung cấp trực tiếp, dùng thẳng không qua ngưỡng tin cậy nào |
 | BOTTOM_BAR, SUB_SLAT | luôn = 1 |
 | RAIL | luôn = 2 |
 | OTHER | không xác định theo nhóm |
 
-**Bước 4 — Fallback toàn phần**: khi `slatGroup = OTHER` hoặc thiếu dữ liệu để tính `cutDimM`/`requiredPieces` ở trên, hệ thống **không tự suy ra được độ dài đoạn cần cắt** — chỉ có tổng độ dài ước tính `= dinhMucTbMPerBoCua` (mét/bộ cửa). Vì thuật toán cắt 1D cần biết độ dài từng đoạn cụ thể (không chỉ tổng mét), các `BomItem` rơi vào trường hợp này **không sinh được `CuttingDemand` tự động** — cần ghi log cảnh báo và loại khỏi phạm vi thuật toán ở giai đoạn khóa luận này, chờ ADMIN bổ sung công thức riêng nếu phát sinh thực tế (tới nay dữ liệu thật cho thấy đây là thiểu số).
+> **Đã xác nhận lại trực tiếp với doanh nghiệp (hướng đi chính thức)**: định mức BOM (offset, hệ số `slatCountSlope`/`slatCountIntercept`) do đội kỹ thuật cung cấp trực tiếp thành thông số cố định, **không phải suy luận bằng hồi quy thống kê từ dữ liệu lịch sử** như bản thiết kế trước (từng có thêm bước kiểm tra độ tin cậy `slatCountR2 >= 0.5` và một công thức fallback riêng cho Nan chính dựa trên `dinhMucMPerM2`) — 2 cơ chế đó đã bị loại bỏ hoàn toàn, không còn `slatCountR2`/`dinhMucMPerM2` trong schema (xem `docs/domain-model.md` mục `bom_item`).
+
+**Bước 4 — Fallback toàn phần**: khi `slatGroup = OTHER`, hoặc khi một `BomItem` cụ thể **chưa được đội kỹ thuật cung cấp công thức cắt riêng** (thiếu offset/hệ số cần thiết để tính `cutDimM`/`requiredPieces` ở trên), hệ thống **không tự suy ra được độ dài đoạn cần cắt** — chỉ có tổng độ dài ước tính `= dinhMucTbMPerBoCua` (mét/bộ cửa). Vì thuật toán cắt 1D cần biết độ dài từng đoạn cụ thể (không chỉ tổng mét), các `BomItem` rơi vào trường hợp này **không sinh được `CuttingDemand` tự động** — cần ghi log cảnh báo và loại khỏi phạm vi thuật toán ở giai đoạn khóa luận này, chờ ADMIN bổ sung công thức riêng (do kỹ thuật cung cấp) nếu phát sinh thực tế (tới nay dữ liệu thật cho thấy đây là thiểu số).
 
 `CuttingDemand.cutLength = cutDimM` (quy đổi mm), `CuttingDemand.quantity = requiredPieces` (không nhân thêm với "số lượng đặt hàng" vì mỗi `SalesOrder` đã luôn là đúng 1 bộ cửa — xem điểm 1, mục 3.3.1).
 

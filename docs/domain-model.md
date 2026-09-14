@@ -13,8 +13,8 @@ Mục này xác định danh sách entity nghiệp vụ và quan hệ giữa ch�
 | `Customer` | Khách hàng đặt đơn (nguồn: `don_hang.csv`) | `customer`, `customerName` |
 | `DoorProduct` | Mẫu cửa + màu cụ thể (nguồn: `bom_dinh_muc.csv`) | `material`, `doorMaterialName`, `zMauSac` |
 | `SlatMaterial` | Loại thanh nan (nguồn: `bom_dinh_muc.csv` + `ton_kho_thanh_nan.csv`, xem lưu ý đặt tên ở dưới) | `slatMaterial`, `slatMaterialName`, `slatGroup` (Nan chính/Nan phụ/Thanh đáy/Ray/Khác) |
-| `BomItem` | Định mức: 1 `DoorProduct` cần bao nhiêu đoạn của 1 `SlatMaterial` (nguồn: `bom_dinh_muc.csv`, đã xác nhận công thức chính xác — xem 3.3.2) | `widthOffsetM`, `heightOffsetM`, `slatCountSlope`, `slatCountIntercept`, `slatCountR2`, `dinhMucMPerM2`, `dinhMucTbMPerBoCua`, `boCuaCount` |
-| `InventoryBatch` | Một lô tồn kho: 1 `SlatMaterial` ở 1 độ dài chuẩn, còn bao nhiêu thanh (nguồn: `ton_kho_thanh_nan.csv`) | `doDaiThanhMm`, `soThanh`, `stockStatus` |
+| `BomItem` | Định mức: 1 `DoorProduct` cần bao nhiêu đoạn của 1 `SlatMaterial` — thông số do đội kỹ thuật cung cấp trực tiếp (xem 3.3.2) | `widthOffsetM`, `heightOffsetM`, `slatCountSlope`, `slatCountIntercept`, `dinhMucTbMPerBoCua` |
+| `InventoryBatch` | Một lô tồn kho: 1 `SlatMaterial` ở 1 độ dài chuẩn, còn bao nhiêu thanh (nguồn: `ton_kho_thanh_nan.csv`) | `doDaiThanhMm`, `soThanh` |
 | `SalesOrder` | 1 bộ cửa cụ thể trong 1 lô sản xuất — đơn vị ưu tiên cắt (nguồn: `don_hang.csv`) | `ycsx`, `zItem` (khóa nghiệp vụ), `zChieuCaoDh`, `zChieuRongDh`, `reqdDeliveryDate` |
 | `CuttingPlan` | Header 1 lần chạy thuật toán | `runAt`, `status`, `totalWasteM`, `scopeCutoffDate`, `scopeOrderCount` |
 | `CuttingPlanDetail` | 1 hoặc nhiều phôi tồn kho vật lý **giống nhau** (cùng độ dài, cùng pattern, cùng tập đơn hàng phân bổ) đã dùng trong 1 lần chạy | `patternCode`, `remainderMm`, `remainderType` (DISCARD/RESTOCK/WASTE), `stickCount` |
@@ -60,7 +60,7 @@ Năm điểm cần lưu ý, đều xuất phát từ việc đối chiếu với
 
 - **"Đợt cắt" (đợt rút vật tư)** ở báo cáo mức tổng quan — nhóm theo `DoorProduct` (mẫu cửa + màu), tối đa 7 bộ/đợt — **không phải một entity riêng**. Đây là kết quả tính toán tại thời điểm hiển thị/xuất báo cáo (group theo `DoorProduct` trên tập `CuttingPlanDetailItem`/`SalesOrder` của 1 `CuttingPlan`, sắp theo `reqd_delivery_date`), suy ra hoàn toàn từ dữ liệu đã có, nên không cần bảng lưu trữ riêng — tránh phải đồng bộ lại nếu logic nhóm đợt cắt thay đổi sau này.
 - `Role` giữ là bảng riêng (không phải enum trên `User`) để mở khả năng bổ sung vai trò mới sau khóa luận mà không cần đổi schema, dù ở phạm vi MVP chỉ có đúng 2 giá trị (ADMIN, PLANNER).
-- `BomItem` về bản chất là bảng nối N-N giữa `DoorProduct` và `SlatMaterial`, mang thêm các thuộc tính công thức (offset, hệ số hồi quy số lượng đoạn) — không cần bảng nối trung gian nào khác.
+- `BomItem` về bản chất là bảng nối N-N giữa `DoorProduct` và `SlatMaterial`, mang thêm các thuộc tính công thức kỹ thuật (offset, hệ số tính số lượng đoạn) — không cần bảng nối trung gian nào khác.
 - **`SlatMaterial` gom dữ liệu từ 2 file có tên cột khác nhau cho cùng 1 khái niệm**: `bom_dinh_muc.csv` gọi là `slat_material`/`slat_material_name`, nhưng `ton_kho_thanh_nan.csv` lại gọi chính khái niệm này là `material`/`material_description` (vì trong SAP, "material" là tên gọi chung cho mọi loại vật tư, không riêng gì thanh nan). Domain model chọn `slatMaterial`/`slatMaterialName` (theo `bom_dinh_muc.csv`) làm tên chuẩn; khi viết `ExcelImportService` cho tồn kho, cần map cột `material`/`material_description` của `ton_kho_thanh_nan.csv` vào đúng 2 trường này — **không được nhầm với `DoorProduct.material`** (cột tên giống nhau nhưng là 2 khái niệm khác nhau ở 2 file).
 
 # 3.3.2 Ánh xạ sang bảng MySQL (ERD chi tiết)
@@ -114,21 +114,17 @@ erDiagram
         bigint id PK
         bigint door_product_id FK "cùng slat_material_id"
         bigint slat_material_id FK "cùng door_product_id"
-        decimal width_offset_m "nullable"
-        decimal height_offset_m "nullable"
+        decimal width_offset_m "nullable, chỉ Nan chính"
+        decimal height_offset_m "nullable, chỉ Ray"
         decimal slat_count_slope "nullable, xem chú thích"
         decimal slat_count_intercept "nullable, xem chú thích"
-        decimal slat_count_r2 "nullable"
-        decimal dinh_muc_m_per_m2 "nullable"
         decimal dinh_muc_tb_m_per_bo_cua "nullable, xem chú thích"
-        int bo_cua_count "nullable, thông tin tham khảo"
     }
     inventory_batch {
         bigint id PK
         bigint slat_material_id FK "cùng do_dai_thanh_mm"
         int do_dai_thanh_mm UK "cùng slat_material_id"
         int so_thanh
-        enum stock_status "nhãn hạn dùng tồn kho, xem chú thích"
     }
     sales_order {
         bigint id PK
@@ -255,24 +251,19 @@ UNIQUE (`material`, `z_mau_sac`): xác nhận đúng với dữ liệu thật �
 | height_offset_m | DECIMAL(6,3) | NULL |
 | slat_count_slope | DECIMAL(10,6) | NULL |
 | slat_count_intercept | DECIMAL(10,4) | NULL |
-| slat_count_r2 | DECIMAL(5,4) | NULL |
-| dinh_muc_m_per_m2 | DECIMAL(10,4) | NULL |
 | dinh_muc_tb_m_per_bo_cua | DECIMAL(10,4) | NULL |
-| bo_cua_count | INT | NULL |
 | created_at / updated_at | DATETIME | NOT NULL |
 
 UNIQUE (`door_product_id`, `slat_material_id`): đã đối chiếu toàn bộ 1.860 dòng `dataset/processed/bom_dinh_muc.csv` theo đúng khóa (`material`, `z_mau_sac`, `slat_material`) — 0 trùng lặp, xác nhận ràng buộc này đúng với dữ liệu thật.
 
-**Công thức fallback đã được xác nhận đầy đủ** (theo giải thích của PLANNER về nguồn view `v_door_slats_norm` → `v_mps_kc04_slats_demand`) — chi tiết pseudocode đầy đủ ở mục "Công thức tính nhu cầu cắt" trong `docs/sequence-diagrams.md`. Tóm tắt vai trò từng cột:
-- `width_offset_m`, `height_offset_m`: dùng trực tiếp trong công thức (không phải chỉ tham khảo) — offset trừ vào chiều rộng/chiều cao cửa để ra độ dài cắt thực tế.
-- `slat_count_slope`, `slat_count_intercept`, `slat_count_r2`: dùng cho nan chính — hồi quy số lượng thanh theo chiều cao, chỉ tin khi `slat_count_r2 >= 0.5`.
-- `dinh_muc_m_per_m2`: fallback tính số lượng thanh cho nan chính khi hồi quy không đủ tin cậy (`slat_count_r2 < 0.5` hoặc NULL).
-- `dinh_muc_tb_m_per_bo_cua`: fallback toàn phần (tổng độ dài cần) khi không đủ dữ liệu để tính `cutDimM`/`requiredPieces` theo công thức riêng của từng nhóm.
-- `bo_cua_count`: **không dùng trong công thức tính cắt**, chỉ là số lệnh sản xuất lịch sử dùng để suy ra định mức này — giữ lại để ADMIN đánh giá độ tin cậy khi tra cứu định mức (đúng yêu cầu "kiểm tra tính hợp lệ trước khi áp dụng" ở Nhóm 2 yêu cầu chức năng).
+**Định mức BOM là thông số kỹ thuật do đội kỹ thuật cung cấp trực tiếp, không phải suy luận thống kê từ dữ liệu lịch sử** (đã xác nhận lại trực tiếp với doanh nghiệp — hướng đi chính thức). Bản thiết kế trước đó tham khảo view nội bộ `v_door_slats_norm` → `v_mps_kc04_slats_demand` (do PLANNER giải thích) để suy ra định mức bằng hồi quy tuyến tính trên dữ liệu lịch sử, kèm cơ chế fallback khi hồi quy không đủ tin cậy (`slat_count_r2 < 0.5`) — cách tiếp cận này chỉ mang tính tạm thời lúc thiết kế do chưa có xác nhận từ đội kỹ thuật, nay đã được thay thế. Vì thông số do kỹ thuật cung cấp luôn được dùng trực tiếp, không cần đánh giá độ tin cậy hay chọn giữa nhiều công thức thay thế, nên đã bỏ khỏi schema: `slat_count_r2` (độ tin cậy hồi quy — không còn ý nghĩa khi không còn hồi quy), `dinh_muc_m_per_m2` (phương án thay thế cho nan chính khi hồi quy không đủ tin cậy — không còn tình huống này), `bo_cua_count` (số lệnh sản xuất lịch sử dùng để đánh giá độ tin cậy định mức suy luận thống kê — không còn cần thiết khi định mức do kỹ thuật quy định trực tiếp). Tóm tắt vai trò các cột còn lại:
+- `width_offset_m` (chỉ áp dụng cho nhóm Nan chính), `height_offset_m` (chỉ áp dụng cho nhóm Ray): dùng trực tiếp trong công thức (không phải chỉ tham khảo) — offset trừ vào chiều rộng/chiều cao cửa để ra độ dài cắt thực tế; mỗi loại offset chỉ áp dụng cho đúng 1 nhóm vật tư tương ứng, xem công thức đầy đủ theo từng nhóm ở `docs/sequence-diagrams.md` mục "Công thức tính nhu cầu cắt".
+- `slat_count_slope`, `slat_count_intercept`: hệ số kỹ thuật cố định dùng cho Nan chính (số lượng thanh = `slat_count_slope × chiều cao cửa + slat_count_intercept`) — do đội kỹ thuật quy định trực tiếp, dùng thẳng không qua ngưỡng tin cậy nào.
+- `dinh_muc_tb_m_per_bo_cua`: dùng khi nhóm vật tư (điển hình nhóm Khác) hoặc một `BomItem` cụ thể **chưa được kỹ thuật cung cấp công thức cắt riêng** — chỉ có tổng độ dài ước tính (mét/bộ cửa), không tách được thành đoạn cắt cụ thể.
 
-**Các cột có trong dữ liệu thật (`v_door_slats_norm.xlsx`) nhưng chủ động không đưa vào schema** vì không dùng trong công thức tính nhu cầu cắt, không phải chỉ vì "chưa chắc" như bản trước:
-- `avg_door_height_m`, `avg_door_width_m`, `total_door_area_m2`, `total_issue_qty_m`: chỉ là số liệu thống kê/trung gian dùng để suy ra `dinh_muc_m_per_m2`/`dinh_muc_tb_m_per_bo_cua` ở phía nguồn, không cần lưu lại.
-- `width_offset_freq`, `height_offset_freq`, `slat_count_n_obs`, `is_pooled_across_colors`, `is_pooled_across_models`: cờ/chỉ số nội bộ phục vụ việc phía nguồn tự tính ra định mức đáng tin hay không — hệ thống của khóa luận chỉ tiêu thụ kết quả cuối (`bom_dinh_muc.csv`) nên không cần các cờ này.
+**Các cột có trong dữ liệu thật (`v_door_slats_norm.xlsx`) nhưng chủ động không đưa vào schema** vì không dùng trong công thức tính nhu cầu cắt:
+- `avg_door_height_m`, `avg_door_width_m`, `total_door_area_m2`, `total_issue_qty_m`: chỉ là số liệu thống kê/trung gian dùng để suy ra định mức ở phía nguồn (thuộc cách tiếp cận thống kê đã thay thế), không cần lưu lại.
+- `width_offset_freq`, `height_offset_freq`, `slat_count_n_obs`, `is_pooled_across_colors`, `is_pooled_across_models`: cờ/chỉ số nội bộ phục vụ việc phía nguồn tự tính ra định mức đáng tin hay không (thuộc cách tiếp cận thống kê đã thay thế) — hệ thống của khóa luận chỉ tiêu thụ kết quả cuối (`bom_dinh_muc.csv`) nên không cần các cờ này.
 - `slat_uom` (đơn vị tính): luôn là mét trong toàn bộ hệ thống, không cần lưu.
 - `plant` (nhà máy): khóa join ở nguồn nhưng hệ thống chỉ phục vụ đúng 1 nhà máy trong phạm vi khóa luận, nên bỏ qua — nếu sau này mở rộng đa nhà máy mới cần thêm cột này vào khóa UNIQUE.
 
@@ -283,18 +274,19 @@ UNIQUE (`door_product_id`, `slat_material_id`): đã đối chiếu toàn bộ 1
 | slat_material_id | BIGINT | NOT NULL, FK → `slat_material.id` |
 | do_dai_thanh_mm | INT | NOT NULL |
 | so_thanh | INT | NOT NULL, DEFAULT 0 |
-| stock_status | ENUM('OVER_6_MONTHS','BETWEEN_3_AND_6_MONTHS','UNDER_3_MONTHS') | NOT NULL |
 | created_at / updated_at | DATETIME | NOT NULL |
 
-`stock_status` không phải cờ AVAILABLE/DEPLETED mà là **nhãn hạn dùng tồn kho thật** (`dataset/processed/ton_kho_thanh_nan.csv` cột `stock_status`, 3 giá trị: "Hữu dụng trên 6 tháng"/"3-6 tháng"/"dưới 3 tháng"). Đối chiếu dữ liệu thật: `ton_m = so_thanh × độ dài` đúng chính xác ở toàn bộ 2.283 dòng — tồn kho luôn là số nguyên lần độ dài chuẩn, nên lưu trực tiếp số lượng thanh (`so_thanh`) làm nguồn số liệu chính xác tuyệt đối; tổng số mét (nếu cần hiển thị cho PLANNER đúng theo yêu cầu chức năng Nhóm 1) tính lại từ `so_thanh × do_dai_thanh_mm / 1000`, không lưu trùng lặp.
+Đối chiếu dữ liệu thật: `ton_m = so_thanh × độ dài` đúng chính xác ở toàn bộ 2.283 dòng — tồn kho luôn là số nguyên lần độ dài chuẩn, nên lưu trực tiếp số lượng thanh (`so_thanh`) làm nguồn số liệu chính xác tuyệt đối; tổng số mét (nếu cần hiển thị cho PLANNER đúng theo yêu cầu chức năng Nhóm 1) tính lại từ `so_thanh × do_dai_thanh_mm / 1000`, không lưu trùng lặp.
 
-UNIQUE (`slat_material_id`, `do_dai_thanh_mm`): xác nhận đúng với dữ liệu thật (0 trùng lặp trên (`material`, `do_dai_thanh_mm`) trong toàn bộ 2.283 dòng) — mỗi tổ hợp loại thanh + độ dài chỉ có 1 dòng, không tách theo `stock_status`.
+**Đã bỏ trường `stock_status`** (khác với các phiên bản thiết kế trước — từng lưu nhãn hạn dùng tồn kho lấy từ cột `stock_status` của `ton_kho_thanh_nan.csv`, 3 giá trị "Hữu dụng trên 6 tháng"/"3-6 tháng"/"dưới 3 tháng"): xác nhận trực tiếp với doanh nghiệp, thanh nan được sản xuất từ nhôm, **không quản lý hạn sử dụng**. Nhãn "Hữu dụng..." ở dữ liệu nguồn thực chất phản ánh thời điểm giao dịch gần nhất của lô (đã bao lâu kể từ lần sử dụng gần nhất), không phải thông tin nghiệp vụ cần theo dõi cho quy trình cắt — cộng thêm việc trường này đã được xác nhận trước đó là không ảnh hưởng đến thứ tự thuật toán chọn thanh để cắt (thuật toán luôn xử lý theo đúng `reqd_delivery_date`/`ycsx`/`z_item`, không ưu tiên theo hạn dùng), nên loại bỏ hẳn khỏi schema thay vì giữ lại một trường không phục vụ mục đích nghiệp vụ nào.
 
-**Sửa lại cho đúng: có 2 luồng ghi khác bản chất vào `so_thanh`, không nên gộp chung là "upsert cộng/trừ" như bản trước (tự mâu thuẫn — upsert đúng nghĩa là ghi đè, không phải cộng dồn).**
+UNIQUE (`slat_material_id`, `do_dai_thanh_mm`): xác nhận đúng với dữ liệu thật (0 trùng lặp trên (`material`, `do_dai_thanh_mm`) trong toàn bộ 2.283 dòng) — mỗi tổ hợp loại thanh + độ dài chỉ có 1 dòng.
+
+**Có 2 luồng ghi khác bản chất vào `so_thanh`, cần phân biệt rõ (không nên gộp chung là "upsert cộng/trừ" — upsert đúng nghĩa là ghi đè, không phải cộng dồn):**
 - **Nhập Excel / chỉnh sửa thủ công** (Nhóm 1 yêu cầu chức năng): `ton_kho_thanh_nan.csv` là một **snapshot** tồn kho tại một thời điểm (giống cách nguồn `v_mchb_batch_stock` được truy vấn), nên đây là **upsert ghi đè đúng nghĩa** — `SET so_thanh = giá trị mới` cho đúng (`slat_material_id`, `do_dai_thanh_mm`), giống hệt cách `sales_order` upsert theo (`ycsx`, `z_item`) ở Nhóm 1. Cần lưu ý thêm: nếu 1 tổ hợp (loại thanh, độ dài) từng có trong lần nhập trước nhưng **biến mất** khỏi snapshot mới (tồn kho về 0, không còn xuất hiện trong file), `ExcelImportService` cần chủ động đưa `so_thanh` dòng đó về 0 — không chỉ upsert những dòng có mặt trong file, tránh để lại số liệu ảo.
-- **Thuật toán tự cập nhật khi chạy** (Mức 4, mục "Bổ sung — trừ tồn kho sau khi cắt" ở `docs/sequence-diagrams.md`): đây mới thực sự là **cộng/trừ** (`UPDATE ... SET so_thanh = so_thanh - X` khi tiêu thụ, `UPSERT ... so_thanh = so_thanh + X` khi nhập lại kho phần dư > 3m) — khác bản chất với 2 luồng ghi đè ở trên. Vì `stock_status` là NOT NULL, khi UPSERT tạo **dòng mới** (độ dài phần dư chưa từng có trong kho), mặc định gán `stock_status = 'UNDER_3_MONTHS'` (thanh vừa nhập, mới nhất) — hợp lý vì đây đúng là lô mới vừa phát sinh; nếu UPSERT chỉ cộng thêm vào **dòng đã có sẵn** (trùng đúng độ dài phần dư với một lô đang tồn), giữ nguyên `stock_status` hiện tại của dòng đó, không ghi đè.
+- **Thuật toán tự cập nhật khi chạy** (Mức 4, mục "Bổ sung — trừ tồn kho sau khi cắt" ở `docs/sequence-diagrams.md`): đây mới thực sự là **cộng/trừ** (`UPDATE ... SET so_thanh = so_thanh - X` khi tiêu thụ, `UPSERT ... so_thanh = so_thanh + X` khi nhập lại kho phần dư > 3m) — khác bản chất với luồng ghi đè ở trên. UPSERT tạo **dòng mới** (độ dài phần dư chưa từng có trong kho) chỉ cần khởi tạo `so_thanh` bằng đúng số lượng vừa nhập lại; nếu UPSERT cộng thêm vào **dòng đã có sẵn** (trùng đúng độ dài phần dư với một lô đang tồn), cộng dồn `so_thanh` bình thường.
 
-**Đã xác nhận: `stock_status` không ảnh hưởng đến thứ tự thuật toán chọn thanh để cắt.** Thuật toán vẫn luôn xử lý theo đúng thứ tự ưu tiên đã chốt (`reqd_delivery_date`, `ycsx`, `z_item`), không ưu tiên chọn thanh theo hạn dùng. `stock_status` chỉ mang tính tham khảo tồn kho; lô nào ở trạng thái hết hạn coi như không còn trong kho (không được `InventoryPool.load()` tải vào), nhưng dữ liệu thật hiện chỉ có 3 giá trị hạn dùng còn hiệu lực ("Hữu dụng trên 6 tháng"/"3-6 tháng"/"dưới 3 tháng"), chưa có giá trị "hết hạn" nào — nên `InventoryPool.load()` hiện tại chỉ cần `INDEX (slat_material_id)` (đã có sẵn từ UNIQUE phía trên), không cần thêm `stock_status` vào chỉ mục.
+`InventoryPool.load()` chỉ cần `INDEX (slat_material_id)` (đã có sẵn từ UNIQUE phía trên) để nạp toàn bộ lô còn tồn theo từng loại thanh.
 
 ## Bảng nghiệp vụ đơn hàng
 
