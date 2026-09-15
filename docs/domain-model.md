@@ -130,8 +130,8 @@ erDiagram
         bigint id PK
         varchar ycsx UK "cùng z_item"
         int z_item UK "cùng ycsx"
-        bigint sales_document UK "cùng sales_order_item"
-        int sales_order_item UK "cùng sales_document"
+        bigint sales_document UK "cùng sales_order_item, nullable"
+        int sales_order_item UK "cùng sales_document, nullable"
         bigint customer_id FK
         bigint door_product_id FK
         decimal z_chieu_cao_dh
@@ -300,8 +300,8 @@ UNIQUE (`slat_material_id`, `do_dai_thanh_mm`): xác nhận đúng với dữ li
 | id | BIGINT | PK |
 | ycsx | VARCHAR(20) | NOT NULL |
 | z_item | INT | NOT NULL |
-| sales_document | BIGINT | NOT NULL |
-| sales_order_item | INT | NOT NULL |
+| sales_document | BIGINT | NULL |
+| sales_order_item | INT | NULL |
 | customer_id | BIGINT | NOT NULL, FK → `customer.id` |
 | door_product_id | BIGINT | NOT NULL, FK → `door_product.id` |
 | z_chieu_cao_dh | DECIMAL(6,3) | NOT NULL |
@@ -311,7 +311,7 @@ UNIQUE (`slat_material_id`, `do_dai_thanh_mm`): xác nhận đúng với dữ li
 
 UNIQUE (`ycsx`, `z_item`): khóa nghiệp vụ đúng theo grain của `don_hang.csv` — 1 dòng = 1 bộ cửa cụ thể trong 1 lô sản xuất, xác nhận không có `z_item` nào lặp lại trong cùng `ycsx` trên 190 dòng dữ liệu thật.
 
-**UNIQUE (`sales_document`, `sales_order_item`) — khóa nghiệp vụ thứ hai, chỉ phục vụ tra cứu/đối chiếu SAP, không thay đổi thứ tự ưu tiên cắt.** Đối chiếu 190 dòng dữ liệu thật: cặp này cũng phân biệt tuyệt đối (190/190, không trùng), cùng grain với `(ycsx, z_item)` — 1 dòng dữ liệu có cả hai cặp khóa hợp lệ song song, vì `sales_document`/`sales_order_item` là mã đơn hàng khách thật trong SAP còn `ycsx`/`z_item` là mã lô sản xuất nội bộ gộp nhiều đơn khách khác nhau lại để cắt chung (xem điểm 1 ở trên). Thêm cột này để PLANNER tra ngược đúng đơn khách trên SAP khi cần đối chiếu, không phải vì thuật toán cần — thứ tự ưu tiên xử lý của thuật toán sinh phương án cắt vẫn giữ nguyên `(reqd_delivery_date, ycsx, z_item)` như `docs/requirements-functional.md` đã chốt, vì đơn vị "chưa xử lý/đã xử lý" của thuật toán gắn với `SalesOrder` (1 bộ cửa) chứ không phải khái niệm đơn hàng SAP.
+**UNIQUE (`sales_document`, `sales_order_item`) — khóa nghiệp vụ thứ hai, chỉ phục vụ tra cứu/đối chiếu SAP, không thay đổi thứ tự ưu tiên cắt.** Đối chiếu 190 dòng dữ liệu thật: cặp này cũng phân biệt tuyệt đối (190/190, không trùng), cùng grain với `(ycsx, z_item)` — 1 dòng dữ liệu có cả hai cặp khóa hợp lệ song song, vì `sales_document`/`sales_order_item` là mã đơn hàng khách thật trong SAP còn `ycsx`/`z_item` là mã lô sản xuất nội bộ gộp nhiều đơn khách khác nhau lại để cắt chung (xem điểm 1 ở trên). Thêm cột này để PLANNER tra ngược đúng đơn khách trên SAP khi cần đối chiếu, không phải vì thuật toán cần — thứ tự ưu tiên xử lý của thuật toán sinh phương án cắt vẫn giữ nguyên `(reqd_delivery_date, ycsx, z_item)` như `docs/requirements-functional.md` đã chốt, vì đơn vị "chưa xử lý/đã xử lý" của thuật toán gắn với `SalesOrder` (1 bộ cửa) chứ không phải khái niệm đơn hàng SAP. Cặp cột này để **NULL** được: PLANNER/ADMIN cũng có thể tạo đơn thủ công trực tiếp trên hệ thống (không qua import từ SAP), khi đó không có mã đơn khách SAP để điền — UNIQUE vẫn đúng vì MySQL coi mỗi hàng NULL là phân biệt trong ràng buộc tổ hợp.
 
 `INDEX (reqd_delivery_date)`: cột được lọc (`<= t+3`) và sắp xếp ưu tiên ở mọi lần sinh phương án cắt — cần chỉ mục riêng để truy vấn phạm vi đợt xử lý không phải quét toàn bảng khi số đơn hàng lịch sử tăng dần theo thời gian.
 
