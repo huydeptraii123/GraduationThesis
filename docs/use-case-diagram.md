@@ -14,7 +14,7 @@ Hệ thống bao quát trọn vòng đời một lần sinh phương án cắt: 
 
 Một số phần chủ động để ngoài phạm vi khóa luận, đã xác định rõ trong quá trình thiết kế:
 
-- **Lập kế hoạch sản xuất bù vật tư thiếu**: khi một đơn hàng bị đánh dấu thiếu vật tư (shortage), hệ thống chỉ ghi nhận đầy đủ thông tin thiếu hụt (loại thanh nan, số lượng/độ dài còn thiếu) làm căn cứ, không tự động lập kế hoạch sản xuất hay đề xuất thời điểm nhập thêm — việc này định hướng cho một hệ thống lập kế hoạch sản xuất vật tư ở giai đoạn phát triển sau.
+- **Lập kế hoạch sản xuất bù vật tư thiếu**: khi một đơn hàng bị đánh dấu thiếu vật tư (shortage), hệ thống chỉ ghi nhận đầy đủ thông tin thiếu hụt (loại thanh nan, số lượng/độ dài còn thiếu) và xuất được thành báo cáo Excel làm căn cứ, không tự động lập kế hoạch sản xuất hay đề xuất thời điểm nhập thêm — việc này định hướng cho một hệ thống lập kế hoạch sản xuất vật tư ở giai đoạn phát triển sau.
 - **Đa nhà máy**: hệ thống chỉ phục vụ đúng 1 nhà máy trong phạm vi khóa luận; nếu mở rộng đa nhà máy sau này cần bổ sung lại khóa nhà máy vào các ràng buộc dữ liệu liên quan.
 - **Nhu cầu cắt cho nhóm vật tư `OTHER`/thiếu dữ liệu định mức**: với các định mức không xác định được công thức tính độ dài đoạn cắt cụ thể theo nhóm vật tư (chỉ có tổng định mức mét/bộ cửa), hệ thống không tự sinh được nhu cầu cắt — chỉ ghi log cảnh báo, chờ ADMIN bổ sung công thức riêng nếu phát sinh thực tế.
 - **Hướng cuốn cửa** (trong/ngoài): dữ liệu thô có cột này nhưng chưa xác định được ảnh hưởng tới định mức BOM hay thuật toán cắt, nên chủ động để ngoài schema hiện tại.
@@ -53,7 +53,7 @@ Sơ đồ dưới đây thể hiện các ca sử dụng của hai tác nhân PL
 | Nhập định mức BOM từ Excel | ADMIN | Nhập hàng loạt định mức BOM từ Excel, do khối lượng tổ hợp mẫu cửa × màu lớn trong thực tế. |
 | Tra cứu định mức BOM | ADMIN | Tìm nhanh định mức hiện có theo mẫu cửa hoặc theo nhóm thanh nan để kiểm tra tính hợp lệ trước khi áp dụng. |
 | Sinh phương án cắt | PLANNER | Kích hoạt thuật toán sinh phương án cắt tối ưu; bao gồm (include) sinh nhu cầu cắt từ BOM và chạy thuật toán 4 mức ưu tiên trên tồn kho hiện có. |
-| Xem / xuất kết quả cắt | PLANNER | Xem lịch sử các lần chạy, xem chi tiết một phương án ở 3 mức (tổng quan, theo đơn hàng, theo phôi xuất kho), xuất kết quả ra Excel. |
+| Xem / xuất kết quả cắt | PLANNER | Xem lịch sử các lần chạy, xem chi tiết một phương án ở 3 mức (tổng quan, theo đơn hàng, theo phôi xuất kho), xuất kết quả ra Excel, và xuất báo cáo thiếu vật tư của lần chạy. |
 | Quản lý tài khoản người dùng | ADMIN | Tạo, chỉnh sửa hoặc khóa tài khoản PLANNER, gán vai trò tương ứng cho từng tài khoản. |
 
 Khác với một số hệ thống mà cùng 1 ca sử dụng dùng chung có thể mang sắc thái hành vi khác nhau theo từng tác nhân, ở hệ thống này 4 ca sử dụng dùng chung trên đơn hàng (xem/tìm/lọc, thêm mới, chỉnh sửa, xóa) hoàn toàn giống nhau giữa PLANNER và ADMIN — không có ràng buộc hay hành vi riêng theo actor, đúng theo thiết kế đã chốt ở mục 3.1.1.

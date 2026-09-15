@@ -140,7 +140,7 @@ productionWidthM = zChieuRongDh - widthOffsetM
 
 ## 3. Luồng xem / xuất kết quả phương án cắt
 
-Sau khi đã có ít nhất một lần chạy ở luồng 2, PLANNER dùng luồng này để tra cứu lại lịch sử các lần chạy, xem chi tiết một phương án cụ thể, và xuất kết quả ra Excel để chỉ đạo sản xuất thực tế. Xuất Excel là bước tùy chọn — PLANNER có thể chỉ xem sơ đồ cắt trên giao diện mà không cần xuất file mỗi lần xem.
+Sau khi đã có ít nhất một lần chạy ở luồng 2, PLANNER dùng luồng này để tra cứu lại lịch sử các lần chạy, xem chi tiết một phương án cụ thể, và xuất ra Excel để chỉ đạo sản xuất thực tế. Có hai thao tác xuất file, đều tùy chọn: kết quả phương án cắt (đưa xuống xưởng cắt) và báo cáo thiếu vật tư (làm căn cứ sản xuất bù thanh nan). Chúng dùng hai endpoint riêng vì hai file phục vụ hai công việc khác nhau và cần hai tập dữ liệu khác nhau — báo cáo thiếu vật tư chỉ cần `ShortageRecord` kèm ngày giao của đơn, không dùng tới chi tiết cách cắt từng phôi.
 
 ```mermaid
 sequenceDiagram
@@ -178,6 +178,18 @@ sequenceDiagram
         C-->>FE: 200 + file
         FE-->>U: Tải file Excel kết quả cắt
     end
+
+    opt PLANNER mở màn hình đơn thiếu vật tư và bấm "Xuất báo cáo"
+        FE->>C: GET /api/v1/cutting-plans/{id}/shortage-report
+        C->>EXP: exportShortageReport(id)
+        EXP->>REPO: findShortagesByPlanId(id)
+        REPO->>DB: SELECT ... JOIN ShortageRecord, SalesOrder, SlatMaterial
+        DB-->>REPO: rows
+        REPO-->>EXP: ShortageRecord[] (kèm ngày giao của đơn, loại thanh nan)
+        EXP-->>C: file Excel 2 sheet (gộp theo loại thanh nan + chi tiết theo đơn)
+        C-->>FE: 200 + file
+        FE-->>U: Tải file báo cáo thiếu vật tư
+    end
 ```
 
-Luồng này khép lại vòng đời một lần sinh phương án cắt đã mở ra ở luồng 2: PLANNER không chỉ chạy thuật toán mà còn cần tra cứu lại, kiểm tra trực quan trên giao diện, và đưa kết quả xuống xưởng sản xuất qua file Excel. `findByIdWithDetails` luôn nạp lại đúng `CuttingPlanDetail`/`CuttingPlanDetailItem`/`ShortageRecord` đã lưu tại thời điểm chạy, nên xem lại một phương án cũ luôn cho kết quả nhất quán, không bị ảnh hưởng bởi các thay đổi tồn kho phát sinh sau đó.
+Luồng này khép lại vòng đời một lần sinh phương án cắt đã mở ra ở luồng 2: PLANNER không chỉ chạy thuật toán mà còn cần tra cứu lại, kiểm tra trực quan trên giao diện, và đưa kết quả xuống xưởng sản xuất qua file Excel. `findByIdWithDetails` luôn nạp lại đúng `CuttingPlanDetail`/`CuttingPlanDetailItem`/`ShortageRecord` đã lưu tại thời điểm chạy, nên xem lại một phương án cũ luôn cho kết quả nhất quán, không bị ảnh hưởng bởi các thay đổi tồn kho phát sinh sau đó; `findShortagesByPlanId` phục vụ báo cáo thiếu vật tư cũng đọc từ đúng tập `ShortageRecord` đã lưu đó, nên hai file xuất ra tại hai thời điểm khác nhau vẫn luôn khớp nhau.

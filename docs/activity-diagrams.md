@@ -133,7 +133,7 @@ flowchart TD
 
 ## 4. Luồng xem/xuất kết quả phương án cắt
 
-Sơ đồ dưới đây bổ sung góc nhìn ra quyết định cho luồng đã có ở `docs/sequence-diagrams.md` mục "3. Luồng xem / xuất kết quả phương án cắt" (thể hiện thành phần nào gọi thành phần nào, khá tuyến tính: xem danh sách → xem chi tiết → xuất Excel). Phần bổ sung giá trị nhất ở đây là cách hệ thống **tính và sắp xếp "đợt cắt"** để hiển thị ở mức tổng quan — quy tắc nghiệp vụ có nhiều rẽ nhánh nhất của luồng này, đã chốt ở `docs/requirements-functional.md` Nhóm 3 nhưng chưa từng thể hiện dưới dạng flowchart quyết định.
+Sơ đồ dưới đây bổ sung góc nhìn ra quyết định cho luồng đã có ở `docs/sequence-diagrams.md` mục "3. Luồng xem / xuất kết quả phương án cắt" (thể hiện thành phần nào gọi thành phần nào, khá tuyến tính: xem danh sách → xem chi tiết → hai thao tác xuất Excel tùy chọn). Phần bổ sung giá trị nhất ở đây là cách hệ thống **tính và sắp xếp "đợt cắt"** để hiển thị ở mức tổng quan — quy tắc nghiệp vụ có nhiều rẽ nhánh nhất của luồng này, đã chốt ở `docs/requirements-functional.md` Nhóm 3 nhưng chưa từng thể hiện dưới dạng flowchart quyết định.
 
 ```mermaid
 flowchart TD
@@ -162,9 +162,17 @@ flowchart TD
     O --> M
     M -- "Lọc theo lệnh sản xuất / bộ cửa" --> P["Lọc lại dữ liệu đang hiển thị theo điều kiện nhập"]
     P --> M
-    M -- "Xuất Excel" --> Q["Sinh file Excel theo cấu trúc mức chi tiết phôi xuất kho"]
+    M -- "Xuất Excel kết quả cắt" --> Q["Sinh file Excel theo cấu trúc mức chi tiết phôi xuất kho"]
     Q --> R["PLANNER tải file Excel về máy"]
     R --> M
+    M -- "Mở màn hình đơn thiếu vật tư" --> S["Màn hình phụ: danh sách các đơn bị thiếu vật tư<br/>của lần chạy này"]
+    S --> T{"Thao tác trên màn hình phụ"}
+    T -- "Lọc lại danh sách" --> T1["Lọc theo loại thanh nan còn thiếu /<br/>ngày giao yêu cầu / lệnh sản xuất - bộ cửa"]
+    T1 --> T
+    T -- "Xuất báo cáo Excel" --> U["Sinh file Excel 2 sheet:<br/>gộp theo loại thanh nan (tổng số đoạn, tổng độ dài thiếu)<br/>và chi tiết theo từng đơn bị thiếu<br/>(ycsx/z_item, loại thanh nan, số lượng/độ dài thiếu,<br/>ngày giao yêu cầu)"]
+    U --> U1["PLANNER tải file báo cáo về máy,<br/>vẫn ở lại màn hình phụ"]
+    U1 --> T
+    T -- "Quay lại phương án cắt" --> M
     M -- "Kết thúc xem" --> Z
 ```
 
