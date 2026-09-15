@@ -7,14 +7,20 @@ import com.slatcut.cutting.AbstractIntegrationTest;
 import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.config.ResourceNotFoundException;
 import com.slatcut.cutting.domain.BomItem;
+import com.slatcut.cutting.domain.Customer;
 import com.slatcut.cutting.domain.DoorProduct;
+import com.slatcut.cutting.domain.SalesOrder;
 import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
 import com.slatcut.cutting.dto.DoorProductRequest;
 import com.slatcut.cutting.dto.DoorProductResponse;
 import com.slatcut.cutting.repository.BomItemRepository;
+import com.slatcut.cutting.repository.CustomerRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
+import com.slatcut.cutting.repository.SalesOrderRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -31,6 +37,12 @@ class DoorProductServiceTest extends AbstractIntegrationTest {
 
     @Autowired
     private BomItemRepository bomItemRepository;
+
+    @Autowired
+    private SalesOrderRepository salesOrderRepository;
+
+    @Autowired
+    private CustomerRepository customerRepository;
 
     private DoorProduct persistProduct(long material, String name, String mauSac) {
         DoorProduct entity = new DoorProduct();
@@ -154,6 +166,32 @@ class DoorProductServiceTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> service.delete(existing.getId()))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("định mức BOM");
+
+        assertThat(doorProductRepository.findById(existing.getId())).isPresent();
+    }
+
+    @Test
+    void delete_throwsConflictWhenSalesOrderReferencesProduct() {
+        DoorProduct existing = persistProduct(81000013L, "Cửa có đơn hàng", "#01");
+        Customer customer = new Customer();
+        customer.setCustomer(91000099L);
+        customer.setCustomerName("Khách hàng cho đơn tham chiếu");
+        customerRepository.save(customer);
+        SalesOrder salesOrder = new SalesOrder();
+        salesOrder.setYcsx("HY99999");
+        salesOrder.setItem(1);
+        salesOrder.setSalesDocument(1000999999L);
+        salesOrder.setSalesOrderItem(1);
+        salesOrder.setCustomer(customer);
+        salesOrder.setDoorProduct(existing);
+        salesOrder.setChieuCaoDh(new BigDecimal("2.500"));
+        salesOrder.setChieuRongDh(new BigDecimal("3.500"));
+        salesOrder.setReqdDeliveryDate(LocalDate.of(2026, 9, 28));
+        salesOrderRepository.save(salesOrder);
+
+        assertThatThrownBy(() -> service.delete(existing.getId()))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("đơn hàng");
 
         assertThat(doorProductRepository.findById(existing.getId())).isPresent();
     }
