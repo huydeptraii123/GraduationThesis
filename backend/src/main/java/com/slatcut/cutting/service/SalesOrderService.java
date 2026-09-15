@@ -90,6 +90,12 @@ public class SalesOrderService {
     }
 
     private void checkNoDuplicateSalesDocumentItem(SalesOrderRequest request, Long excludeId) {
+        if (request.getSalesDocument() == null || request.getSalesOrderItem() == null) {
+            // Đơn tạo thủ công không có 2 giá trị SAP này — không có gì để kiểm tra trùng. Spring Data
+            // JPA sẽ tự chuyển tham số null thành "IS NULL" trong query derivation nếu gọi thẳng xuống,
+            // khiến 2 đơn thủ công khác nhau bị báo trùng nhầm dù MySQL cho phép nhiều NULL trong UNIQUE.
+            return;
+        }
         salesOrderRepository
                 .findBySalesDocumentAndSalesOrderItem(request.getSalesDocument(), request.getSalesOrderItem())
                 .filter(existing -> !existing.getId().equals(excludeId))

@@ -21,10 +21,9 @@ public class SalesOrderRequest {
     @NotNull
     private Integer item;
 
-    @NotNull
+    /** Chỉ có giá trị khi đơn được tạo qua import Excel từ SAP; đơn tạo thủ công qua UI để trống. */
     private Long salesDocument;
 
-    @NotNull
     private Integer salesOrderItem;
 
     @NotNull
