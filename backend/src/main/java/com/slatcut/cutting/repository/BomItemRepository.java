@@ -1,6 +1,7 @@
 package com.slatcut.cutting.repository;
 
 import com.slatcut.cutting.domain.BomItem;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -13,6 +14,9 @@ public interface BomItemRepository extends JpaRepository<BomItem, Long> {
     List<BomItem> findAll();
 
     Optional<BomItem> findByDoorProduct_IdAndSlatMaterial_Id(Long doorProductId, Long slatMaterialId);
+
+    @EntityGraph(attributePaths = {"slatMaterial"})
+    List<BomItem> findByDoorProduct_IdIn(Collection<Long> doorProductIds);
 
     boolean existsByDoorProduct_Id(Long doorProductId);
 
