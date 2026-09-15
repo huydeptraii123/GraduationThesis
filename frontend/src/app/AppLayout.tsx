@@ -1,13 +1,14 @@
-import { CalculatorOutlined, DatabaseOutlined, HomeOutlined } from '@ant-design/icons'
+import { CalculatorOutlined, DatabaseOutlined, FileTextOutlined, HomeOutlined } from '@ant-design/icons'
 import { Button, Layout, Menu, Space, Typography } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/AuthContext'
 
 const { Header, Content, Sider } = Layout
 
-/** Các màn nghiệp vụ còn lại (đơn hàng, phương án cắt) sẽ thêm vào đây ở các task sau. */
+/** Màn nghiệp vụ còn lại (phương án cắt) sẽ thêm vào đây ở các task sau. */
 const MENU_ITEMS = [
   { key: '/', icon: <HomeOutlined />, label: 'Trang chủ' },
+  { key: '/sales-orders', icon: <FileTextOutlined />, label: 'Đơn hàng' },
   { key: '/inventory', icon: <DatabaseOutlined />, label: 'Tồn kho thanh nan' },
   { key: '/bom', icon: <CalculatorOutlined />, label: 'Định mức BOM' },
 ]
