@@ -1,0 +1,260 @@
+import { PlusOutlined, SearchOutlined, UploadOutlined, WarningOutlined } from '@ant-design/icons'
+import { App, Button, DatePicker, Input, Select, Space, Table, Tag } from 'antd'
+import dayjs, { type Dayjs } from 'dayjs'
+import { useMemo, useState } from 'react'
+import { extractErrorMessage } from '../../api/apiError'
+import type { DoorProductResponse } from '../bom/types'
+import { ImportSalesOrdersModal } from './ImportSalesOrdersModal'
+import { SalesOrderFormDrawer } from './SalesOrderFormDrawer'
+import { deleteSalesOrder } from './salesOrdersApi'
+import type { CustomerResponse, SalesOrderResponse } from './types'
+
+const { RangePicker } = DatePicker
+
+interface Props {
+  salesOrders: SalesOrderResponse[]
+  customers: CustomerResponse[]
+  doorProducts: DoorProductResponse[]
+  canEdit: boolean
+  canImport: boolean
+  loading: boolean
+  onChanged: () => void
+}
+
+type DeliveryUrgency = 'overdue' | 'soon' | 'normal'
+
+/** Quá hạn: trước hôm nay. T+3: trong vòng 3 ngày tới (tính cả hôm nay). Còn lại: bình thường. */
+function getDeliveryUrgency(date: string): DeliveryUrgency {
+  const today = dayjs().startOf('day')
+  const delivery = dayjs(date).startOf('day')
+  const daysLeft = delivery.diff(today, 'day')
+  if (daysLeft < 0) return 'overdue'
+  if (daysLeft <= 3) return 'soon'
+  return 'normal'
+}
+
+function DeliveryBadge({ date }: { date: string }) {
+  const urgency = getDeliveryUrgency(date)
+  const formatted = dayjs(date).format('DD/MM/YYYY')
+  if (urgency === 'overdue') {
+    return (
+      <Tag icon={<WarningOutlined />} color="error">
+        {formatted} (Quá hạn)
+      </Tag>
+    )
+  }
+  if (urgency === 'soon') {
+    return (
+      <Tag icon={<WarningOutlined />} color="warning">
+        {formatted} (T+3)
+      </Tag>
+    )
+  }
+  return <span>{formatted}</span>
+}
+
+export function SalesOrderTable({
+  salesOrders,
+  customers,
+  doorProducts,
+  canEdit,
+  canImport,
+  loading,
+  onChanged,
+}: Props) {
+  const { message, modal } = App.useApp()
+  const [keyword, setKeyword] = useState('')
+  const [customerFilter, setCustomerFilter] = useState<number | null>(null)
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null)
+  const [formOpen, setFormOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [editing, setEditing] = useState<SalesOrderResponse | null>(null)
+
+  const customerOptions = useMemo(
+    () => customers.map((c) => ({ value: c.id, label: c.customerName })),
+    [customers],
+  )
+
+  const filtered = useMemo(() => {
+    const needle = keyword.trim().toLowerCase()
+    return salesOrders.filter((order) => {
+      if (customerFilter && order.customerId !== customerFilter) {
+        return false
+      }
+      if (dateRange) {
+        const [from, to] = dateRange
+        const delivery = dayjs(order.reqdDeliveryDate)
+        if (delivery.isBefore(from, 'day') || delivery.isAfter(to, 'day')) {
+          return false
+        }
+      }
+      if (!needle) {
+        return true
+      }
+      return order.ycsx.toLowerCase().includes(needle) || order.customerName.toLowerCase().includes(needle)
+    })
+  }, [salesOrders, keyword, customerFilter, dateRange])
+
+  const sorted = useMemo(
+    () =>
+      [...filtered].sort((a, b) => a.reqdDeliveryDate.localeCompare(b.reqdDeliveryDate)),
+    [filtered],
+  )
+
+  function resetFilters() {
+    setKeyword('')
+    setCustomerFilter(null)
+    setDateRange(null)
+  }
+
+  function confirmDelete(order: SalesOrderResponse) {
+    modal.confirm({
+      title: 'Xóa đơn hàng này?',
+      content: `${order.ycsx} · Bộ cửa #${order.item} — ${order.customerName}`,
+      okText: 'Xóa',
+      okButtonProps: { danger: true },
+      cancelText: 'Hủy',
+      onOk: async () => {
+        try {
+          await deleteSalesOrder(order.id)
+          message.success('Đã xóa đơn hàng.')
+          onChanged()
+        } catch (error) {
+          message.error(extractErrorMessage(error, 'Không xóa được đơn hàng.'))
+          // Ném lại để AntD giữ hộp thoại mở — đóng lại sẽ khiến người dùng tưởng đã xóa xong.
+          throw error
+        }
+      },
+    })
+  }
+
+  return (
+    <>
+      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }} wrap>
+        <Space wrap>
+          <Input
+            allowClear
+            placeholder="Tìm theo lệnh sản xuất, khách hàng"
+            prefix={<SearchOutlined />}
+            style={{ width: 280 }}
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+          />
+          <RangePicker
+            value={dateRange}
+            onChange={(value) => setDateRange(value && value[0] && value[1] ? [value[0], value[1]] : null)}
+          />
+          <Select
+            allowClear
+            placeholder="Khách hàng: Tất cả"
+            style={{ width: 200 }}
+            options={customerOptions}
+            value={customerFilter}
+            onChange={(value) => setCustomerFilter(value ?? null)}
+          />
+          {(keyword || customerFilter || dateRange) && <Button onClick={resetFilters}>Xóa lọc</Button>}
+        </Space>
+        <Space wrap>
+          {canImport && (
+            <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
+              Nhập từ Excel
+            </Button>
+          )}
+          {canEdit && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditing(null)
+                setFormOpen(true)
+              }}
+            >
+              Thêm đơn hàng
+            </Button>
+          )}
+        </Space>
+      </Space>
+
+      {canEdit && customers.length === 0 && (
+        <div style={{ marginBottom: 16, color: '#8c8c8c' }}>
+          Chưa có khách hàng nào — khách hàng được tạo tự động khi nhập Excel đơn hàng, chưa thể tạo đơn thủ công.
+        </div>
+      )}
+
+      <Table
+        rowKey="id"
+        loading={loading}
+        dataSource={sorted}
+        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `${total} đơn hàng` }}
+        columns={[
+          {
+            title: 'Lệnh SX / Bộ cửa',
+            render: (_, order) => (
+              <div>
+                <div style={{ fontWeight: 600 }}>{order.ycsx}</div>
+                <div style={{ color: '#8c8c8c', fontSize: 12 }}>Bộ cửa #{order.item}</div>
+              </div>
+            ),
+          },
+          { title: 'Khách hàng', dataIndex: 'customerName' },
+          {
+            title: 'Mẫu cửa & Màu',
+            render: (_, order) => (
+              <div>
+                <div>{order.doorProductName}</div>
+                <Tag>{order.doorProductMauSac}</Tag>
+              </div>
+            ),
+          },
+          {
+            title: 'Kích thước (H×W)',
+            render: (_, order) => (
+              <span>
+                {order.chieuCaoDh.toFixed(3)} × {order.chieuRongDh.toFixed(3)} m
+              </span>
+            ),
+          },
+          {
+            title: 'Ngày giao yêu cầu',
+            render: (_, order) => <DeliveryBadge date={order.reqdDeliveryDate} />,
+          },
+          ...(canEdit
+            ? [
+                {
+                  title: 'Hành động',
+                  width: 140,
+                  render: (_: unknown, order: SalesOrderResponse) => (
+                    <Space>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setEditing(order)
+                          setFormOpen(true)
+                        }}
+                      >
+                        Sửa
+                      </Button>
+                      <Button size="small" danger onClick={() => confirmDelete(order)}>
+                        Xóa
+                      </Button>
+                    </Space>
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
+
+      <SalesOrderFormDrawer
+        open={formOpen}
+        salesOrder={editing}
+        customers={customers}
+        doorProducts={doorProducts}
+        onClose={() => setFormOpen(false)}
+        onSaved={onChanged}
+      />
+
+      <ImportSalesOrdersModal open={importOpen} onClose={() => setImportOpen(false)} onImported={onChanged} />
+    </>
+  )
+}

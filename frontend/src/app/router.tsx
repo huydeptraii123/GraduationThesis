@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom'
 import { LoginPage } from '../features/auth/LoginPage'
 import { BomPage } from '../features/bom/BomPage'
 import { InventoryPage } from '../features/inventory/InventoryPage'
+import { SalesOrderPage } from '../features/sales-orders/SalesOrderPage'
 import { AppLayout } from './AppLayout'
 import { HomePage } from './HomePage'
 import { RequireAuth } from './RequireAuth'
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
       { index: true, element: <HomePage /> },
       { path: 'inventory', element: <InventoryPage /> },
       { path: 'bom', element: <BomPage /> },
+      { path: 'sales-orders', element: <SalesOrderPage /> },
     ],
   },
 ])
