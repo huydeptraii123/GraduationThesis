@@ -8,6 +8,7 @@ import com.slatcut.cutting.dto.DoorProductResponse;
 import com.slatcut.cutting.mapper.DoorProductMapper;
 import com.slatcut.cutting.repository.BomItemRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
+import com.slatcut.cutting.repository.SalesOrderRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,14 +18,17 @@ public class DoorProductService {
 
     private final DoorProductRepository doorProductRepository;
     private final BomItemRepository bomItemRepository;
+    private final SalesOrderRepository salesOrderRepository;
     private final DoorProductMapper mapper;
 
     public DoorProductService(
             DoorProductRepository doorProductRepository,
             BomItemRepository bomItemRepository,
+            SalesOrderRepository salesOrderRepository,
             DoorProductMapper mapper) {
         this.doorProductRepository = doorProductRepository;
         this.bomItemRepository = bomItemRepository;
+        this.salesOrderRepository = salesOrderRepository;
         this.mapper = mapper;
     }
 
@@ -61,6 +65,9 @@ public class DoorProductService {
         DoorProduct entity = findEntityById(id);
         if (bomItemRepository.existsByDoorProduct_Id(id)) {
             throw new ConflictException("Không thể xóa: vẫn còn định mức BOM tham chiếu đến mẫu cửa này");
+        }
+        if (salesOrderRepository.existsByDoorProduct_Id(id)) {
+            throw new ConflictException("Không thể xóa: vẫn còn đơn hàng tham chiếu đến mẫu cửa này");
         }
         doorProductRepository.delete(entity);
     }
