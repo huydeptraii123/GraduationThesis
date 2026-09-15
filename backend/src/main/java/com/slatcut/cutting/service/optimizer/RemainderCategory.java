@@ -9,8 +9,9 @@ public enum RemainderCategory {
     /** > 3m — nhập lại kho, chờ ghép với đơn hàng phù hợp sau. */
     RESTOCK;
 
-    private static final int DISCARD_THRESHOLD_MM = 300;
-    private static final int RESTOCK_THRESHOLD_MM = 3000;
+    /** Dùng lại ở InventoryPool.findNearFit()/findCombination() — cùng ngưỡng "dư dự kiến < 30cm". */
+    public static final int DISCARD_THRESHOLD_MM = 300;
+    public static final int RESTOCK_THRESHOLD_MM = 3000;
 
     public static RemainderCategory classify(int remainderMm) {
         if (remainderMm < DISCARD_THRESHOLD_MM) {
