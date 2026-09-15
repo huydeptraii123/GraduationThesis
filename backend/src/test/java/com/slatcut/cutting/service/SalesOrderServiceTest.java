@@ -136,6 +136,28 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void create_allowsTwoManualOrdersWithoutSapFields() {
+        // Đơn tạo thủ công qua UI (không qua import Excel) không có sales_document/sales_order_item —
+        // 2 đơn khác nhau cùng để trống 2 field này không được coi là trùng (JPA tự chuyển null
+        // thành "IS NULL" trong query derivation, dễ báo trùng nhầm nếu service không tự chặn trước).
+        Customer customer = persistCustomer(91000020L, "Khách hàng thủ công");
+        DoorProduct doorProduct = persistDoorProduct(83000020L, "#02");
+
+        SalesOrderRequest first = request("HY90020", 1, 0, 0, customer.getId(), doorProduct.getId());
+        first.setSalesDocument(null);
+        first.setSalesOrderItem(null);
+        SalesOrderRequest second = request("HY90020", 2, 0, 0, customer.getId(), doorProduct.getId());
+        second.setSalesDocument(null);
+        second.setSalesOrderItem(null);
+
+        service.create(first);
+        SalesOrderResponse response = service.create(second);
+
+        assertThat(response.salesDocument()).isNull();
+        assertThat(response.salesOrderItem()).isNull();
+    }
+
+    @Test
     void create_throwsNotFoundNamingCustomerWhenItDoesNotExist() {
         DoorProduct doorProduct = persistDoorProduct(83000005L, "#02");
 
