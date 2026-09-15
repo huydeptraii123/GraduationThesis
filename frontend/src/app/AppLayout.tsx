@@ -1,14 +1,15 @@
-import { DatabaseOutlined, HomeOutlined } from '@ant-design/icons'
+import { CalculatorOutlined, DatabaseOutlined, HomeOutlined } from '@ant-design/icons'
 import { Button, Layout, Menu, Space, Typography } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/AuthContext'
 
 const { Header, Content, Sider } = Layout
 
-/** Các màn nghiệp vụ còn lại (BOM, đơn hàng, phương án cắt) sẽ thêm vào đây ở các task sau. */
+/** Các màn nghiệp vụ còn lại (đơn hàng, phương án cắt) sẽ thêm vào đây ở các task sau. */
 const MENU_ITEMS = [
   { key: '/', icon: <HomeOutlined />, label: 'Trang chủ' },
   { key: '/inventory', icon: <DatabaseOutlined />, label: 'Tồn kho thanh nan' },
+  { key: '/bom', icon: <CalculatorOutlined />, label: 'Định mức BOM' },
 ]
 
 /** Khớp chính xác hoặc là tiền tố có dấu `/` để `/inventory` không nhận nhầm `/inventory-report` sau này. */
