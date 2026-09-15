@@ -15,7 +15,7 @@ Mục này xác định danh sách entity nghiệp vụ và quan hệ giữa ch�
 | `SlatMaterial` | Loại thanh nan (nguồn: `bom_dinh_muc.csv` + `ton_kho_thanh_nan.csv`, xem lưu ý đặt tên ở dưới) | `slatMaterial`, `slatMaterialName`, `slatGroup` (Nan chính/Nan phụ/Thanh đáy/Ray/Khác) |
 | `BomItem` | Định mức: 1 `DoorProduct` cần bao nhiêu đoạn của 1 `SlatMaterial` — thông số do đội kỹ thuật cung cấp trực tiếp (xem 3.3.2) | `widthOffsetM`, `heightOffsetM`, `slatCountSlope`, `slatCountIntercept`, `dinhMucTbMPerBoCua` |
 | `InventoryBatch` | Một lô tồn kho: 1 `SlatMaterial` ở 1 độ dài chuẩn, còn bao nhiêu thanh (nguồn: `ton_kho_thanh_nan.csv`) | `doDaiThanhMm`, `soThanh` |
-| `SalesOrder` | 1 bộ cửa cụ thể trong 1 lô sản xuất — đơn vị ưu tiên cắt (nguồn: `don_hang.csv`) | `ycsx`, `zItem` (khóa nghiệp vụ), `zChieuCaoDh`, `zChieuRongDh`, `reqdDeliveryDate` |
+| `SalesOrder` | 1 bộ cửa cụ thể trong 1 lô sản xuất — đơn vị ưu tiên cắt (nguồn: `don_hang.csv`) | `ycsx`, `zItem` (khóa nghiệp vụ), `salesDocument`, `salesOrderItem` (khóa nghiệp vụ thứ hai, dùng để tra cứu/đối chiếu SAP), `zChieuCaoDh`, `zChieuRongDh`, `reqdDeliveryDate` |
 | `CuttingPlan` | Header 1 lần chạy thuật toán | `runAt`, `status`, `totalWasteM`, `scopeCutoffDate`, `scopeOrderCount` |
 | `CuttingPlanDetail` | 1 hoặc nhiều phôi tồn kho vật lý **giống nhau** (cùng độ dài, cùng pattern, cùng tập đơn hàng phân bổ) đã dùng trong 1 lần chạy | `patternCode`, `remainderMm`, `remainderType` (DISCARD/RESTOCK/WASTE), `stickCount` |
 | `CuttingPlanDetailItem` | Bảng nối: 1 phôi (`CuttingPlanDetail`) phục vụ 1 `SalesOrder` (1 bộ cửa), có thể nhiều dòng/phôi | `cutLengthMm`, `cutQuantity`, `isOriginalOrder` |
@@ -130,6 +130,8 @@ erDiagram
         bigint id PK
         varchar ycsx UK "cùng z_item"
         int z_item UK "cùng ycsx"
+        bigint sales_document UK "cùng sales_order_item"
+        int sales_order_item UK "cùng sales_document"
         bigint customer_id FK
         bigint door_product_id FK
         decimal z_chieu_cao_dh
@@ -298,6 +300,8 @@ UNIQUE (`slat_material_id`, `do_dai_thanh_mm`): xác nhận đúng với dữ li
 | id | BIGINT | PK |
 | ycsx | VARCHAR(20) | NOT NULL |
 | z_item | INT | NOT NULL |
+| sales_document | BIGINT | NOT NULL |
+| sales_order_item | INT | NOT NULL |
 | customer_id | BIGINT | NOT NULL, FK → `customer.id` |
 | door_product_id | BIGINT | NOT NULL, FK → `door_product.id` |
 | z_chieu_cao_dh | DECIMAL(6,3) | NOT NULL |
@@ -306,6 +310,8 @@ UNIQUE (`slat_material_id`, `do_dai_thanh_mm`): xác nhận đúng với dữ li
 | created_at / updated_at | DATETIME | NOT NULL |
 
 UNIQUE (`ycsx`, `z_item`): khóa nghiệp vụ đúng theo grain của `don_hang.csv` — 1 dòng = 1 bộ cửa cụ thể trong 1 lô sản xuất, xác nhận không có `z_item` nào lặp lại trong cùng `ycsx` trên 190 dòng dữ liệu thật.
+
+**UNIQUE (`sales_document`, `sales_order_item`) — khóa nghiệp vụ thứ hai, chỉ phục vụ tra cứu/đối chiếu SAP, không thay đổi thứ tự ưu tiên cắt.** Đối chiếu 190 dòng dữ liệu thật: cặp này cũng phân biệt tuyệt đối (190/190, không trùng), cùng grain với `(ycsx, z_item)` — 1 dòng dữ liệu có cả hai cặp khóa hợp lệ song song, vì `sales_document`/`sales_order_item` là mã đơn hàng khách thật trong SAP còn `ycsx`/`z_item` là mã lô sản xuất nội bộ gộp nhiều đơn khách khác nhau lại để cắt chung (xem điểm 1 ở trên). Thêm cột này để PLANNER tra ngược đúng đơn khách trên SAP khi cần đối chiếu, không phải vì thuật toán cần — thứ tự ưu tiên xử lý của thuật toán sinh phương án cắt vẫn giữ nguyên `(reqd_delivery_date, ycsx, z_item)` như `docs/requirements-functional.md` đã chốt, vì đơn vị "chưa xử lý/đã xử lý" của thuật toán gắn với `SalesOrder` (1 bộ cửa) chứ không phải khái niệm đơn hàng SAP.
 
 `INDEX (reqd_delivery_date)`: cột được lọc (`<= t+3`) và sắp xếp ưu tiên ở mọi lần sinh phương án cắt — cần chỉ mục riêng để truy vấn phạm vi đợt xử lý không phải quét toàn bảng khi số đơn hàng lịch sử tăng dần theo thời gian.
 
