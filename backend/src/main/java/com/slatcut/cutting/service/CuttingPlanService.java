@@ -1,5 +1,6 @@
 package com.slatcut.cutting.service;
 
+import com.slatcut.cutting.config.ResourceNotFoundException;
 import com.slatcut.cutting.domain.CuttingPlan;
 import com.slatcut.cutting.domain.CuttingPlanDetail;
 import com.slatcut.cutting.domain.CuttingPlanDetailItem;
@@ -7,6 +8,12 @@ import com.slatcut.cutting.domain.CuttingPlanStatus;
 import com.slatcut.cutting.domain.RemainderType;
 import com.slatcut.cutting.domain.SalesOrder;
 import com.slatcut.cutting.domain.ShortageRecord;
+import com.slatcut.cutting.dto.CuttingPlanDetailItemResponse;
+import com.slatcut.cutting.dto.CuttingPlanDetailResponse;
+import com.slatcut.cutting.dto.CuttingPlanResponse;
+import com.slatcut.cutting.dto.CuttingPlanSummaryResponse;
+import com.slatcut.cutting.dto.ShortageRecordResponse;
+import com.slatcut.cutting.mapper.CuttingPlanMapper;
 import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailRepository;
 import com.slatcut.cutting.repository.CuttingPlanRepository;
@@ -53,6 +60,7 @@ public class CuttingPlanService {
     private final CuttingPlanDetailRepository cuttingPlanDetailRepository;
     private final CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository;
     private final ShortageRecordRepository shortageRecordRepository;
+    private final CuttingPlanMapper mapper;
 
     public CuttingPlanService(
             SalesOrderRepository salesOrderRepository,
@@ -62,7 +70,8 @@ public class CuttingPlanService {
             CuttingPlanRepository cuttingPlanRepository,
             CuttingPlanDetailRepository cuttingPlanDetailRepository,
             CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository,
-            ShortageRecordRepository shortageRecordRepository) {
+            ShortageRecordRepository shortageRecordRepository,
+            CuttingPlanMapper mapper) {
         this.salesOrderRepository = salesOrderRepository;
         this.inventoryBatchRepository = inventoryBatchRepository;
         this.cuttingDemandService = cuttingDemandService;
@@ -71,6 +80,7 @@ public class CuttingPlanService {
         this.cuttingPlanDetailRepository = cuttingPlanDetailRepository;
         this.cuttingPlanDetailItemRepository = cuttingPlanDetailItemRepository;
         this.shortageRecordRepository = shortageRecordRepository;
+        this.mapper = mapper;
     }
 
     @Transactional
@@ -96,6 +106,37 @@ public class CuttingPlanService {
         persistCuts(plan, result.cuts(), orderIndex);
         persistShortages(plan, result.shortages(), orderIndex);
         return plan;
+    }
+
+    @Transactional(readOnly = true)
+    public List<CuttingPlanSummaryResponse> getSummaries() {
+        return cuttingPlanRepository.findAllByOrderByRunAtDesc().stream()
+                .map(mapper::toSummaryResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public CuttingPlanResponse getById(Long id) {
+        CuttingPlan plan = cuttingPlanRepository
+                .findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phương án cắt với id=" + id));
+
+        List<CuttingPlanDetail> details = cuttingPlanDetailRepository.findByCuttingPlan_Id(id);
+        List<Long> detailIds = details.stream().map(CuttingPlanDetail::getId).toList();
+        Map<Long, List<CuttingPlanDetailItemResponse>> itemsByDetailId =
+                cuttingPlanDetailItemRepository.findByCuttingPlanDetail_IdIn(detailIds).stream()
+                        .collect(Collectors.groupingBy(
+                                item -> item.getCuttingPlanDetail().getId(),
+                                Collectors.mapping(mapper::toItemResponse, Collectors.toList())));
+        List<CuttingPlanDetailResponse> detailResponses = details.stream()
+                .map(detail -> mapper.toDetailResponse(detail, itemsByDetailId.getOrDefault(detail.getId(), List.of())))
+                .toList();
+
+        List<ShortageRecordResponse> shortageResponses = shortageRecordRepository.findByCuttingPlan_Id(id).stream()
+                .map(mapper::toShortageResponse)
+                .toList();
+
+        return mapper.toResponse(plan, detailResponses, shortageResponses);
     }
 
     /** Đúng công thức "tỷ lệ phế" ở docs/requirements-functional.md dòng 11: tổng "bỏ" + "lãng phí", KHÔNG tính RESTOCK. */
