@@ -8,9 +8,11 @@ import com.slatcut.cutting.domain.SalesOrder;
 import com.slatcut.cutting.dto.SalesOrderRequest;
 import com.slatcut.cutting.dto.SalesOrderResponse;
 import com.slatcut.cutting.mapper.SalesOrderMapper;
+import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
 import com.slatcut.cutting.repository.CustomerRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
+import com.slatcut.cutting.repository.ShortageRecordRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,16 +23,22 @@ public class SalesOrderService {
     private final SalesOrderRepository salesOrderRepository;
     private final CustomerRepository customerRepository;
     private final DoorProductRepository doorProductRepository;
+    private final CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository;
+    private final ShortageRecordRepository shortageRecordRepository;
     private final SalesOrderMapper mapper;
 
     public SalesOrderService(
             SalesOrderRepository salesOrderRepository,
             CustomerRepository customerRepository,
             DoorProductRepository doorProductRepository,
+            CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository,
+            ShortageRecordRepository shortageRecordRepository,
             SalesOrderMapper mapper) {
         this.salesOrderRepository = salesOrderRepository;
         this.customerRepository = customerRepository;
         this.doorProductRepository = doorProductRepository;
+        this.cuttingPlanDetailItemRepository = cuttingPlanDetailItemRepository;
+        this.shortageRecordRepository = shortageRecordRepository;
         this.mapper = mapper;
     }
 
@@ -74,9 +82,14 @@ public class SalesOrderService {
 
     @Transactional
     public void delete(Long id) {
-        // TODO(tuần 9): thêm guard existsBySalesOrder_Id khi CuttingPlanDetailItem/ShortageRecord
-        // đã có, chặn xóa đơn đã có kết quả cắt/thiếu vật tư tham chiếu (yêu cầu Nhóm 1).
-        salesOrderRepository.delete(findEntityById(id));
+        SalesOrder entity = findEntityById(id);
+        if (cuttingPlanDetailItemRepository.existsBySalesOrder_Id(id)) {
+            throw new ConflictException("Không thể xóa: đơn hàng đã có kết quả trong ít nhất 1 lần chạy phương án cắt");
+        }
+        if (shortageRecordRepository.existsBySalesOrder_Id(id)) {
+            throw new ConflictException("Không thể xóa: đơn hàng đã bị đánh dấu thiếu vật tư trong ít nhất 1 lần chạy phương án cắt");
+        }
+        salesOrderRepository.delete(entity);
     }
 
     private void checkNoDuplicateYcsxItem(SalesOrderRequest request, Long excludeId) {
