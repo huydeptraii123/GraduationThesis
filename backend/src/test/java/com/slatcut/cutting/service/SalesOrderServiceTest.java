@@ -7,15 +7,29 @@ import com.slatcut.cutting.AbstractIntegrationTest;
 import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.config.ResourceNotFoundException;
 import com.slatcut.cutting.domain.Customer;
+import com.slatcut.cutting.domain.CuttingPlan;
+import com.slatcut.cutting.domain.CuttingPlanDetail;
+import com.slatcut.cutting.domain.CuttingPlanDetailItem;
+import com.slatcut.cutting.domain.CuttingPlanStatus;
 import com.slatcut.cutting.domain.DoorProduct;
+import com.slatcut.cutting.domain.RemainderType;
 import com.slatcut.cutting.domain.SalesOrder;
+import com.slatcut.cutting.domain.ShortageRecord;
+import com.slatcut.cutting.domain.SlatGroup;
+import com.slatcut.cutting.domain.SlatMaterial;
 import com.slatcut.cutting.dto.SalesOrderRequest;
 import com.slatcut.cutting.dto.SalesOrderResponse;
 import com.slatcut.cutting.repository.CustomerRepository;
+import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
+import com.slatcut.cutting.repository.CuttingPlanDetailRepository;
+import com.slatcut.cutting.repository.CuttingPlanRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
+import com.slatcut.cutting.repository.ShortageRecordRepository;
+import com.slatcut.cutting.repository.SlatMaterialRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -32,6 +46,21 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
 
     @Autowired
     private DoorProductRepository doorProductRepository;
+
+    @Autowired
+    private SlatMaterialRepository slatMaterialRepository;
+
+    @Autowired
+    private CuttingPlanRepository cuttingPlanRepository;
+
+    @Autowired
+    private CuttingPlanDetailRepository cuttingPlanDetailRepository;
+
+    @Autowired
+    private CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository;
+
+    @Autowired
+    private ShortageRecordRepository shortageRecordRepository;
 
     private Customer persistCustomer(long code, String name) {
         Customer entity = new Customer();
@@ -273,7 +302,7 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void delete_removesOrderWithoutGuard() {
+    void delete_removesOrderWhenNoCuttingResultReferencesIt() {
         Customer customer = persistCustomer(91000015L, "Khách hàng M");
         DoorProduct doorProduct = persistDoorProduct(83000014L, "#02");
         SalesOrder existing = persistOrder("HY90015", 1, 1000900018L, 1, customer, doorProduct);
@@ -286,5 +315,80 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
     @Test
     void delete_throwsNotFoundForUnknownId() {
         assertThatThrownBy(() -> service.delete(999_999L)).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void delete_throwsConflictWhenCuttingPlanDetailItemReferencesOrder() {
+        Customer customer = persistCustomer(91000016L, "Khách hàng N");
+        DoorProduct doorProduct = persistDoorProduct(83000015L, "#02");
+        SalesOrder existing = persistOrder("HY90016", 1, 1000900019L, 1, customer, doorProduct);
+        CuttingPlan plan = persistCuttingPlan();
+        CuttingPlanDetail detail = persistCuttingPlanDetail(plan, persistSlatMaterial(70000015L));
+        persistCuttingPlanDetailItem(detail, existing);
+
+        assertThatThrownBy(() -> service.delete(existing.getId())).isInstanceOf(ConflictException.class);
+        assertThat(salesOrderRepository.findById(existing.getId())).isPresent();
+    }
+
+    @Test
+    void delete_throwsConflictWhenShortageRecordReferencesOrder() {
+        Customer customer = persistCustomer(91000017L, "Khách hàng O");
+        DoorProduct doorProduct = persistDoorProduct(83000016L, "#02");
+        SalesOrder existing = persistOrder("HY90017", 1, 1000900020L, 1, customer, doorProduct);
+        CuttingPlan plan = persistCuttingPlan();
+        persistShortageRecord(plan, existing, persistSlatMaterial(70000016L));
+
+        assertThatThrownBy(() -> service.delete(existing.getId())).isInstanceOf(ConflictException.class);
+        assertThat(salesOrderRepository.findById(existing.getId())).isPresent();
+    }
+
+    private SlatMaterial persistSlatMaterial(long code) {
+        SlatMaterial entity = new SlatMaterial();
+        entity.setSlatMaterial(code);
+        entity.setSlatMaterialName("Thanh nan " + code);
+        entity.setSlatGroup(SlatGroup.BOTTOM_BAR);
+        return slatMaterialRepository.save(entity);
+    }
+
+    private CuttingPlan persistCuttingPlan() {
+        CuttingPlan plan = new CuttingPlan();
+        plan.setRunAt(LocalDateTime.now());
+        plan.setStatus(CuttingPlanStatus.COMPLETED);
+        plan.setScopeCutoffDate(LocalDate.now().plusDays(3));
+        plan.setScopeOrderCount(1);
+        plan.setTotalWasteM(BigDecimal.ZERO);
+        return cuttingPlanRepository.save(plan);
+    }
+
+    private CuttingPlanDetail persistCuttingPlanDetail(CuttingPlan plan, SlatMaterial slatMaterial) {
+        CuttingPlanDetail detail = new CuttingPlanDetail();
+        detail.setCuttingPlan(plan);
+        detail.setSlatMaterial(slatMaterial);
+        detail.setSourceLengthMm(2000);
+        detail.setPatternCode("2000=2000x1+R0");
+        detail.setRemainderMm(0);
+        detail.setRemainderType(RemainderType.DISCARDED);
+        detail.setStickCount(1);
+        return cuttingPlanDetailRepository.save(detail);
+    }
+
+    private void persistCuttingPlanDetailItem(CuttingPlanDetail detail, SalesOrder salesOrder) {
+        CuttingPlanDetailItem item = new CuttingPlanDetailItem();
+        item.setCuttingPlanDetail(detail);
+        item.setSalesOrder(salesOrder);
+        item.setCutLengthMm(2000);
+        item.setCutQuantity(1);
+        item.setOriginalOrder(true);
+        cuttingPlanDetailItemRepository.save(item);
+    }
+
+    private void persistShortageRecord(CuttingPlan plan, SalesOrder salesOrder, SlatMaterial slatMaterial) {
+        ShortageRecord record = new ShortageRecord();
+        record.setCuttingPlan(plan);
+        record.setSalesOrder(salesOrder);
+        record.setSlatMaterial(slatMaterial);
+        record.setMissingQuantity(1);
+        record.setMissingLengthM(new BigDecimal("2.00"));
+        shortageRecordRepository.save(record);
     }
 }

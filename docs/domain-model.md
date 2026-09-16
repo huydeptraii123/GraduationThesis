@@ -17,7 +17,7 @@ Mục này xác định danh sách entity nghiệp vụ và quan hệ giữa ch�
 | `InventoryBatch` | Một lô tồn kho: 1 `SlatMaterial` ở 1 độ dài chuẩn, còn bao nhiêu thanh (nguồn: `ton_kho_thanh_nan.csv`) | `doDaiThanhMm`, `soThanh` |
 | `SalesOrder` | 1 bộ cửa cụ thể trong 1 lô sản xuất — đơn vị ưu tiên cắt (nguồn: `don_hang.csv`) | `ycsx`, `zItem` (khóa nghiệp vụ), `salesDocument`, `salesOrderItem` (khóa nghiệp vụ thứ hai, dùng để tra cứu/đối chiếu SAP), `zChieuCaoDh`, `zChieuRongDh`, `reqdDeliveryDate` |
 | `CuttingPlan` | Header 1 lần chạy thuật toán | `runAt`, `status`, `totalWasteM`, `scopeCutoffDate`, `scopeOrderCount` |
-| `CuttingPlanDetail` | 1 hoặc nhiều phôi tồn kho vật lý **giống nhau** (cùng độ dài, cùng pattern, cùng tập đơn hàng phân bổ) đã dùng trong 1 lần chạy | `patternCode`, `remainderMm`, `remainderType` (DISCARD/RESTOCK/WASTE), `stickCount` |
+| `CuttingPlanDetail` | 1 hoặc nhiều phôi tồn kho vật lý **giống nhau** (cùng độ dài, cùng pattern, cùng tập đơn hàng phân bổ) đã dùng trong 1 lần chạy | `patternCode`, `remainderMm`, `remainderType` (DISCARDED/RESTOCK/WASTE), `stickCount` |
 | `CuttingPlanDetailItem` | Bảng nối: 1 phôi (`CuttingPlanDetail`) phục vụ 1 `SalesOrder` (1 bộ cửa), có thể nhiều dòng/phôi | `cutLengthMm`, `cutQuantity`, `isOriginalOrder` |
 | `ShortageRecord` | Ghi nhận thiếu vật tư cho 1 `SlatMaterial` của 1 `SalesOrder` trong 1 lần chạy | `missingQuantity`, `missingLengthM` |
 
@@ -340,7 +340,7 @@ Không có `updated_at`: một `CuttingPlan` và toàn bộ bảng con được 
 | source_length_mm | INT | NOT NULL |
 | pattern_code | VARCHAR(100) | NOT NULL |
 | remainder_mm | INT | NOT NULL, DEFAULT 0 |
-| remainder_type | ENUM('DISCARD','RESTOCK','WASTE') | NOT NULL |
+| remainder_type | ENUM('DISCARDED','RESTOCK','WASTE') | NOT NULL |
 | stick_count | INT | NOT NULL, DEFAULT 1 |
 
 `INDEX (cutting_plan_id)`.
