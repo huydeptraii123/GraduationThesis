@@ -18,3 +18,13 @@ export function generateCuttingPlan(): Promise<CuttingPlanResponse> {
 export function getScopePreview(): Promise<CuttingPlanScopePreviewResponse> {
   return httpClient.get<CuttingPlanScopePreviewResponse>(`${CUTTING_PLANS_URL}/scope-preview`).then((res) => res.data)
 }
+
+export function exportCuttingPlan(id: number): Promise<Blob> {
+  return httpClient.get(`${CUTTING_PLANS_URL}/${id}/export`, { responseType: 'blob' }).then((res) => res.data)
+}
+
+export function exportShortageReport(id: number): Promise<Blob> {
+  return httpClient
+    .get(`${CUTTING_PLANS_URL}/${id}/shortage-report`, { responseType: 'blob' })
+    .then((res) => res.data)
+}

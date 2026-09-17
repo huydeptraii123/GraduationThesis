@@ -3,6 +3,7 @@ import { LoginPage } from '../features/auth/LoginPage'
 import { BomPage } from '../features/bom/BomPage'
 import { CuttingPlanDetailPage } from '../features/cutting-plans/CuttingPlanDetailPage'
 import { CuttingPlanListPage } from '../features/cutting-plans/CuttingPlanListPage'
+import { CuttingPlanShortagesPage } from '../features/cutting-plans/CuttingPlanShortagesPage'
 import { InventoryPage } from '../features/inventory/InventoryPage'
 import { SalesOrderPage } from '../features/sales-orders/SalesOrderPage'
 import { AppLayout } from './AppLayout'
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
       { path: 'sales-orders', element: <SalesOrderPage /> },
       { path: 'cutting-plans', element: <CuttingPlanListPage /> },
       { path: 'cutting-plans/:id', element: <CuttingPlanDetailPage /> },
+      { path: 'cutting-plans/:id/shortages', element: <CuttingPlanShortagesPage /> },
     ],
   },
 ])

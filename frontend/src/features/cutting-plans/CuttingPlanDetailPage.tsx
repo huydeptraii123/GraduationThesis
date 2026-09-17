@@ -1,15 +1,16 @@
-import { DownloadOutlined } from '@ant-design/icons'
-import { Alert, Space, Spin, Tabs, Tag, Tooltip, Typography } from 'antd'
+import { DownloadOutlined, WarningOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Space, Spin, Tabs, Tag, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { extractErrorMessage } from '../../api/apiError'
+import { useNavigate, useParams } from 'react-router-dom'
+import { extractBlobErrorMessage, extractErrorMessage } from '../../api/apiError'
+import { downloadFile } from '../../api/downloadFile'
 import { CuttingPlanByOrderTab } from './CuttingPlanByOrderTab'
 import { CuttingPlanByStickTab } from './CuttingPlanByStickTab'
 import { CuttingPlanOverviewTab } from './CuttingPlanOverviewTab'
 import { createOrderColorAssigner } from './orderColorPalette'
 import { buildCuttingBatches, buildDedupedOrderRows } from './cuttingBatches'
-import { getCuttingPlan } from './cuttingPlansApi'
+import { exportCuttingPlan, getCuttingPlan } from './cuttingPlansApi'
 import type { CuttingPlanResponse, CuttingPlanStatus } from './types'
 
 const STATUS_LABEL: Record<CuttingPlanStatus, { text: string; color: string }> = {
@@ -20,10 +21,13 @@ const STATUS_LABEL: Record<CuttingPlanStatus, { text: string; color: string }> =
 export function CuttingPlanDetailPage() {
   const { id } = useParams<{ id: string }>()
   const planId = Number(id)
+  const navigate = useNavigate()
+  const { message } = App.useApp()
 
   const [plan, setPlan] = useState<CuttingPlanResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -51,6 +55,21 @@ export function CuttingPlanDetailPage() {
 
   const orderRows = useMemo(() => (plan ? buildDedupedOrderRows(plan) : []), [plan])
   const batches = useMemo(() => buildCuttingBatches(orderRows), [orderRows])
+
+  async function handleExport() {
+    if (!plan) {
+      return
+    }
+    setExporting(true)
+    try {
+      const blob = await exportCuttingPlan(plan.id)
+      downloadFile(blob, `phuong-an-cat-${plan.id}.xlsx`)
+    } catch (error) {
+      message.error(await extractBlobErrorMessage(error, 'Không xuất được file Excel.'))
+    } finally {
+      setExporting(false)
+    }
+  }
 
   if (loading && !plan) {
     return <Spin style={{ marginTop: 48 }} />
@@ -80,13 +99,19 @@ export function CuttingPlanDetailPage() {
             {plan.totalStockUsedM > 0 ? ((plan.totalWasteM / plan.totalStockUsedM) * 100).toFixed(1) : '0.0'}%
           </Typography.Text>
         </div>
-        <Tooltip title="Sẽ có ở báo cáo thiếu vật tư (task riêng, chưa làm ở đây)">
-          <span>
-            <Typography.Link disabled>
-              <DownloadOutlined /> Xuất Excel
-            </Typography.Link>
-          </span>
-        </Tooltip>
+        <Space>
+          {plan.shortages.length > 0 && (
+            <Button
+              icon={<WarningOutlined />}
+              onClick={() => navigate(`/cutting-plans/${plan.id}/shortages`)}
+            >
+              Đơn thiếu vật tư ({plan.shortages.length})
+            </Button>
+          )}
+          <Button icon={<DownloadOutlined />} loading={exporting} onClick={() => void handleExport()}>
+            Xuất Excel
+          </Button>
+        </Space>
       </Space>
 
       {loadError && <Alert type="error" showIcon style={{ margin: '16px 0' }} title={loadError} />}
