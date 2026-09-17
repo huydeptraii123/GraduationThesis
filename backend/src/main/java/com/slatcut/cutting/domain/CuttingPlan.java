@@ -38,6 +38,9 @@ public class CuttingPlan {
     @Column(name = "total_waste_m")
     private BigDecimal totalWasteM;
 
+    @Column(name = "total_stock_used_m")
+    private BigDecimal totalStockUsedM;
+
     @Column(name = "scope_cutoff_date")
     private LocalDate scopeCutoffDate;
 

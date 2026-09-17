@@ -9,6 +9,6 @@ public interface ShortageRecordRepository extends JpaRepository<ShortageRecord, 
 
     boolean existsBySalesOrder_Id(Long salesOrderId);
 
-    @EntityGraph(attributePaths = {"salesOrder", "slatMaterial"})
+    @EntityGraph(attributePaths = {"salesOrder.customer", "salesOrder.doorProduct", "slatMaterial"})
     List<ShortageRecord> findByCuttingPlan_Id(Long cuttingPlanId);
 }

@@ -10,6 +10,7 @@ public record CuttingPlanSummaryResponse(
         LocalDateTime runAt,
         CuttingPlanStatus status,
         BigDecimal totalWasteM,
+        BigDecimal totalStockUsedM,
         LocalDate scopeCutoffDate,
         Integer scopeOrderCount) {
 }

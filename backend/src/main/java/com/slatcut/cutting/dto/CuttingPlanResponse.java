@@ -11,6 +11,7 @@ public record CuttingPlanResponse(
         LocalDateTime runAt,
         CuttingPlanStatus status,
         BigDecimal totalWasteM,
+        BigDecimal totalStockUsedM,
         LocalDate scopeCutoffDate,
         Integer scopeOrderCount,
         List<CuttingPlanDetailResponse> details,

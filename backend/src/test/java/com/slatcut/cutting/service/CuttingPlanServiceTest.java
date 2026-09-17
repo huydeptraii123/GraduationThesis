@@ -17,10 +17,12 @@ import com.slatcut.cutting.domain.SalesOrder;
 import com.slatcut.cutting.domain.ShortageRecord;
 import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
+import com.slatcut.cutting.dto.CuttingPlanScopePreviewResponse;
 import com.slatcut.cutting.repository.BomItemRepository;
 import com.slatcut.cutting.repository.CustomerRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailRepository;
+import com.slatcut.cutting.repository.CuttingPlanRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
@@ -54,6 +56,9 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
 
     @Autowired
     private InventoryBatchRepository inventoryBatchRepository;
+
+    @Autowired
+    private CuttingPlanRepository cuttingPlanRepository;
 
     @Autowired
     private CuttingPlanDetailRepository cuttingPlanDetailRepository;
@@ -162,6 +167,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         assertThat(plan.getStatus()).isEqualTo(CuttingPlanStatus.COMPLETED);
         assertThat(plan.getScopeOrderCount()).isEqualTo(1);
         assertThat(plan.getTotalWasteM()).isEqualByComparingTo("0.00");
+        assertThat(plan.getTotalStockUsedM()).isEqualByComparingTo("2.00");
 
         List<CuttingPlanDetail> details = cuttingPlanDetailRepository.findAll();
         assertThat(details).hasSize(1);
@@ -313,5 +319,24 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         assertThat(items.get(0).getSalesOrder().getId()).isEqualTo(order.getId());
         assertThat(items.get(0).getCutQuantity()).isEqualTo(2);
         assertThat(items.get(0).isOriginalOrder()).isTrue();
+    }
+
+    @Test
+    void getScopePreview_countsEligibleOrdersWithoutPersistingAnything() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now().plusDays(10));
+
+        CuttingPlanScopePreviewResponse preview = service.getScopePreview();
+
+        assertThat(preview.eligibleOrderCount()).isEqualTo(1);
+        assertThat(preview.scopeCutoffDate()).isEqualTo(LocalDate.now().plusDays(3));
+        assertThat(cuttingPlanRepository.findAll()).isEmpty();
+        assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
+        assertThat(shortageRecordRepository.findAll()).isEmpty();
     }
 }
