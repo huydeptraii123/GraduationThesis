@@ -2,6 +2,7 @@ package com.slatcut.cutting.controller;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -206,6 +207,48 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/v1/cutting-plans/scope-preview")
                         .header("Authorization", "Bearer " + adminToken()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void export_asPlanner_returnsXlsxFile() throws Exception {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
+        CuttingPlan plan = service.generate();
+
+        mockMvc.perform(get("/api/v1/cutting-plans/{id}/export", plan.getId())
+                        .header("Authorization", "Bearer " + plannerToken()))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andExpect(header().string(
+                        "Content-Disposition", "attachment; filename=\"phuong-an-cat-" + plan.getId() + ".xlsx\""));
+    }
+
+    @Test
+    void export_withoutToken_isForbidden() throws Exception {
+        mockMvc.perform(get("/api/v1/cutting-plans/{id}/export", 1L)).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shortageReport_asPlanner_returnsXlsxFile() throws Exception {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistSalesOrder(doorProduct, customer, new BigDecimal("5.000"));
+        CuttingPlan plan = service.generate();
+
+        mockMvc.perform(get("/api/v1/cutting-plans/{id}/shortage-report", plan.getId())
+                        .header("Authorization", "Bearer " + plannerToken()))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"bao-cao-thieu-vat-tu-" + plan.getId() + ".xlsx\""));
     }
 
     @Test

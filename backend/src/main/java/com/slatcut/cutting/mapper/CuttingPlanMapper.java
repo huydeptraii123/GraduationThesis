@@ -36,6 +36,7 @@ public interface CuttingPlanMapper {
 
     @Mapping(source = "slatMaterial.id", target = "slatMaterialId")
     @Mapping(source = "slatMaterial.slatMaterialName", target = "slatMaterialName")
+    @Mapping(source = "slatMaterial.slatMaterial", target = "slatMaterialCode")
     @Mapping(source = "salesOrder.id", target = "salesOrderId")
     @Mapping(source = "salesOrder.ycsx", target = "ycsx")
     @Mapping(source = "salesOrder.item", target = "item")
@@ -50,6 +51,7 @@ public interface CuttingPlanMapper {
     @Mapping(source = "detail.id", target = "id")
     @Mapping(source = "detail.slatMaterial.id", target = "slatMaterialId")
     @Mapping(source = "detail.slatMaterial.slatMaterialName", target = "slatMaterialName")
+    @Mapping(source = "detail.slatMaterial.slatMaterial", target = "slatMaterialCode")
     @Mapping(source = "detail.sourceLengthMm", target = "sourceLengthMm")
     @Mapping(source = "detail.patternCode", target = "patternCode")
     @Mapping(source = "detail.remainderMm", target = "remainderMm")

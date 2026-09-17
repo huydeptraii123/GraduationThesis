@@ -5,7 +5,11 @@ import com.slatcut.cutting.dto.CuttingPlanResponse;
 import com.slatcut.cutting.dto.CuttingPlanScopePreviewResponse;
 import com.slatcut.cutting.dto.CuttingPlanSummaryResponse;
 import com.slatcut.cutting.service.CuttingPlanService;
+import com.slatcut.cutting.service.ExcelExportService;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,10 +21,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/cutting-plans")
 public class CuttingPlanController {
 
-    private final CuttingPlanService service;
+    private static final MediaType XLSX_MEDIA_TYPE =
+            MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
-    public CuttingPlanController(CuttingPlanService service) {
+    private final CuttingPlanService service;
+    private final ExcelExportService excelExportService;
+
+    public CuttingPlanController(CuttingPlanService service, ExcelExportService excelExportService) {
         this.service = service;
+        this.excelExportService = excelExportService;
     }
 
     @PostMapping("/generate")
@@ -44,5 +53,22 @@ public class CuttingPlanController {
     @GetMapping("/{id}")
     public CuttingPlanResponse getById(@PathVariable Long id) {
         return service.getById(id);
+    }
+
+    @GetMapping("/{id}/export")
+    public ResponseEntity<byte[]> export(@PathVariable Long id) {
+        return excelResponse(excelExportService.exportCuttingPlan(id), "phuong-an-cat-" + id + ".xlsx");
+    }
+
+    @GetMapping("/{id}/shortage-report")
+    public ResponseEntity<byte[]> shortageReport(@PathVariable Long id) {
+        return excelResponse(excelExportService.exportShortageReport(id), "bao-cao-thieu-vat-tu-" + id + ".xlsx");
+    }
+
+    private ResponseEntity<byte[]> excelResponse(byte[] file, String filename) {
+        return ResponseEntity.ok()
+                .contentType(XLSX_MEDIA_TYPE)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .body(file);
     }
 }
