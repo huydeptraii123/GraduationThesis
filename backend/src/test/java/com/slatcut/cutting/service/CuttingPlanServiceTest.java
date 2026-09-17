@@ -319,6 +319,15 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         assertThat(items.get(0).getSalesOrder().getId()).isEqualTo(order.getId());
         assertThat(items.get(0).getCutQuantity()).isEqualTo(2);
         assertThat(items.get(0).isOriginalOrder()).isTrue();
+
+        // Cùng lúc khóa luôn ngữ nghĩa trừ tồn kho: 2 phôi bị gộp thành 1 dòng detail (stickCount=2)
+        // vẫn phải trừ đủ 2 thanh. Đây là kịch bản duy nhất phân biệt được "đếm theo CutRecord"
+        // (đúng) với "đếm theo số dòng detail" (sai) — thiếu assert này thì đổi nhầm vẫn xanh test.
+        assertThat(inventoryBatchRepository
+                        .findBySlatMaterial_IdAndDoDaiThanhMm(rail.getId(), 2000)
+                        .orElseThrow()
+                        .getSoThanh())
+                .isZero();
     }
 
     @Test
@@ -338,5 +347,108 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         assertThat(cuttingPlanRepository.findAll()).isEmpty();
         assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
         assertThat(shortageRecordRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void generate_decrementsConsumedInventory() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 3);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        service.generate();
+
+        InventoryBatch batch = inventoryBatchRepository
+                .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 2000)
+                .orElseThrow();
+        assertThat(batch.getSoThanh()).isEqualTo(2);
+    }
+
+    @Test
+    void generate_restocksRemainderOverThreeMetersAsNewInventoryRow() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        // 1 phôi 6m cắt 1 đoạn 2m: Mức 2 không áp dụng (chỉ 1 đoạn chờ, bội số 3 > số đoạn có),
+        // Mức 1/3 không khớp → Mức 4 best-fit, dư 4m > 3m nên phải nhập lại kho thành lô mới.
+        persistInventoryBatch(slatMaterial, 6000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        service.generate();
+
+        assertThat(inventoryBatchRepository
+                        .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 6000)
+                        .orElseThrow()
+                        .getSoThanh())
+                .isZero();
+        assertThat(inventoryBatchRepository
+                        .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 4000)
+                        .orElseThrow()
+                        .getSoThanh())
+                .isEqualTo(1);
+    }
+
+    /**
+     * Phần dư >3m được nhập lại kho giữa lượt chạy rồi bị chính lượt đó cắt tiếp: thanh 8m cắt 2m
+     * (dư 6m, nhập lại) → 6m lại được dùng cho đơn thứ 2, cắt 2m (dư 4m, nhập lại). Về mặt vật lý
+     * chỉ đúng 1 thanh 8m rời kho và 1 thanh 4m nằm lại, còn 6m chỉ là trạng thái trung gian —
+     * delta của nó phải triệt tiêu, KHÔNG được để lại dòng tồn kho 6m nào.
+     */
+    @Test
+    void generate_remainderRestockedThenReusedInSameRunNetsOut() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 8000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        service.generate();
+
+        assertThat(inventoryBatchRepository
+                        .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 8000)
+                        .orElseThrow()
+                        .getSoThanh())
+                .isZero();
+        assertThat(inventoryBatchRepository.findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 6000))
+                .as("6m chỉ là phần dư trung gian, không được tạo thành lô tồn kho")
+                .isEmpty();
+        assertThat(inventoryBatchRepository
+                        .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 4000)
+                        .orElseThrow()
+                        .getSoThanh())
+                .isEqualTo(1);
+    }
+
+    /**
+     * Kịch bản thật của dataset ~190 đơn với cap 70 đơn/lần chạy: tồn kho lần 1 đã tiêu thụ KHÔNG
+     * được cấp lại cho lần chạy sau. Nếu bỏ phần ghi lại tồn kho, đơn thứ 2 sẽ nhận được phương án
+     * cắt từ đúng thanh mà đơn thứ 1 đã dùng thay vì bị đánh dấu thiếu vật tư.
+     */
+    @Test
+    void generate_secondRunDoesNotReuseInventoryConsumedByFirstRun() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        service.generate();
+        assertThat(cuttingPlanDetailRepository.findAll()).hasSize(1);
+
+        SalesOrder secondOrder = persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        service.generate();
+
+        assertThat(cuttingPlanDetailRepository.findAll()).hasSize(1);
+        List<ShortageRecord> shortages = shortageRecordRepository.findAll();
+        assertThat(shortages).hasSize(1);
+        assertThat(shortages.get(0).getSalesOrder().getId()).isEqualTo(secondOrder.getId());
     }
 }

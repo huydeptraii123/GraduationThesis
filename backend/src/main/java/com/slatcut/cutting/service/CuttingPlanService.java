@@ -5,9 +5,11 @@ import com.slatcut.cutting.domain.CuttingPlan;
 import com.slatcut.cutting.domain.CuttingPlanDetail;
 import com.slatcut.cutting.domain.CuttingPlanDetailItem;
 import com.slatcut.cutting.domain.CuttingPlanStatus;
+import com.slatcut.cutting.domain.InventoryBatch;
 import com.slatcut.cutting.domain.RemainderType;
 import com.slatcut.cutting.domain.SalesOrder;
 import com.slatcut.cutting.domain.ShortageRecord;
+import com.slatcut.cutting.domain.SlatMaterial;
 import com.slatcut.cutting.dto.CuttingPlanDetailItemResponse;
 import com.slatcut.cutting.dto.CuttingPlanDetailResponse;
 import com.slatcut.cutting.dto.CuttingPlanResponse;
@@ -106,7 +108,53 @@ public class CuttingPlanService {
 
         persistCuts(plan, result.cuts(), orderIndex);
         persistShortages(plan, result.shortages(), orderIndex);
+        applyInventoryChanges(result.cuts());
         return plan;
+    }
+
+    /**
+     * Ghi lại tồn kho sau khi cắt, trong đúng transaction đang chạy (docs/domain-model.md dòng 291,
+     * docs/sequence-diagrams.md mục "trừ tồn kho sau khi cắt"): mỗi CutRecord tiêu thụ 1 phôi ở
+     * (slatMaterial, stockLengthMm), phần dư RESTOCK nhập lại 1 thanh ở (slatMaterial, remainderMm).
+     *
+     * <p>Delta suy ra thẳng từ danh sách CutRecord thay vì so sánh trạng thái InventoryPool: phần dư
+     * &gt;3m được {@code pool.restock()} giữa chừng rồi bị cắt tiếp ngay trong cùng lượt chạy sẽ xuất
+     * hiện 1 lần +1 (lúc nhập lại) và 1 lần -1 (lúc dùng làm phôi nguồn) — cộng dồn ra 0, đúng thực
+     * tế vật lý là thanh đó chưa từng rời xưởng.
+     */
+    private void applyInventoryChanges(List<CutRecord> cuts) {
+        Map<StockKey, Integer> deltas = new LinkedHashMap<>();
+        Map<Long, SlatMaterial> materialsById = new LinkedHashMap<>();
+        for (CutRecord cut : cuts) {
+            SlatMaterial slatMaterial = cut.slatMaterial();
+            materialsById.putIfAbsent(slatMaterial.getId(), slatMaterial);
+            deltas.merge(new StockKey(slatMaterial.getId(), cut.stockLengthMm()), -1, Integer::sum);
+            if (cut.remainderCategory() == RemainderCategory.RESTOCK) {
+                deltas.merge(new StockKey(slatMaterial.getId(), cut.remainderMm()), 1, Integer::sum);
+            }
+        }
+
+        for (Map.Entry<StockKey, Integer> entry : deltas.entrySet()) {
+            int delta = entry.getValue();
+            if (delta == 0) {
+                continue;
+            }
+            StockKey key = entry.getKey();
+            InventoryBatch batch = inventoryBatchRepository
+                    .findBySlatMaterial_IdAndDoDaiThanhMm(key.slatMaterialId(), key.lengthMm())
+                    .orElseGet(() -> newBatchFor(materialsById.get(key.slatMaterialId()), key.lengthMm()));
+            batch.setSoThanh(batch.getSoThanh() + delta);
+            inventoryBatchRepository.save(batch);
+        }
+    }
+
+    /** Độ dài phần dư nhập lại kho có thể chưa từng tồn tại thành lô riêng — tạo dòng mới với 0 thanh rồi mới cộng delta. */
+    private static InventoryBatch newBatchFor(SlatMaterial slatMaterial, int lengthMm) {
+        InventoryBatch batch = new InventoryBatch();
+        batch.setSlatMaterial(slatMaterial);
+        batch.setDoDaiThanhMm(lengthMm);
+        batch.setSoThanh(0);
+        return batch;
     }
 
     /** Không lưu gì — chỉ đếm trước theo đúng quy tắc phạm vi của {@link #generate()}, phục vụ modal xác nhận ở FE. */
@@ -309,6 +357,9 @@ public class CuttingPlanService {
     private record ItemKey(String ycsx, Integer item, int cutLengthMm) {}
 
     private record ShortageKey(String ycsx, Integer item, Long slatMaterialId) {}
+
+    /** 1 dòng inventory_batch — gom delta theo khóa này để mỗi dòng chỉ đọc/ghi đúng 1 lần mỗi lần chạy. */
+    private record StockKey(Long slatMaterialId, int lengthMm) {}
 
     /** 1 CuttingPlanDetail đang gộp + các CuttingPlanDetailItem đã tạo cho nó, tra theo ItemKey để cộng dồn cutQuantity khi có stick giống hệt gộp thêm. */
     private record DetailGroup(CuttingPlanDetail detail, Map<ItemKey, CuttingPlanDetailItem> items) {}
