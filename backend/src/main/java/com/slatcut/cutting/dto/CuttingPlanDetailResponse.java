@@ -7,6 +7,7 @@ public record CuttingPlanDetailResponse(
         Long id,
         Long slatMaterialId,
         String slatMaterialName,
+        Long slatMaterialCode,
         Integer sourceLengthMm,
         String patternCode,
         Integer remainderMm,

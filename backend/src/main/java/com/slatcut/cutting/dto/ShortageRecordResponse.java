@@ -7,6 +7,7 @@ public record ShortageRecordResponse(
         Long id,
         Long slatMaterialId,
         String slatMaterialName,
+        Long slatMaterialCode,
         Long salesOrderId,
         String ycsx,
         Integer item,
