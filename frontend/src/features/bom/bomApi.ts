@@ -1,5 +1,5 @@
 import { httpClient } from '../../api/httpClient'
-import type { BomItemRequest, BomItemResponse, DoorProductRequest, DoorProductResponse } from './types'
+import type { BomImportResult, BomItemRequest, BomItemResponse, DoorProductRequest, DoorProductResponse } from './types'
 
 const DOOR_PRODUCTS_URL = '/api/v1/door-products'
 const BOM_ITEMS_URL = '/api/v1/bom-items'
@@ -34,4 +34,10 @@ export function updateBomItem(id: number, payload: BomItemRequest): Promise<BomI
 
 export function deleteBomItem(id: number): Promise<void> {
   return httpClient.delete(`${BOM_ITEMS_URL}/${id}`).then(() => undefined)
+}
+
+export function importBomExcel(file: File): Promise<BomImportResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return httpClient.post<BomImportResult>(`${BOM_ITEMS_URL}/import`, formData).then((res) => res.data)
 }
