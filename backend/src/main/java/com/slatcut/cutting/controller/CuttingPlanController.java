@@ -2,6 +2,7 @@ package com.slatcut.cutting.controller;
 
 import com.slatcut.cutting.domain.CuttingPlan;
 import com.slatcut.cutting.dto.CuttingPlanResponse;
+import com.slatcut.cutting.dto.CuttingPlanScopePreviewResponse;
 import com.slatcut.cutting.dto.CuttingPlanSummaryResponse;
 import com.slatcut.cutting.service.CuttingPlanService;
 import java.util.List;
@@ -27,6 +28,12 @@ public class CuttingPlanController {
     public CuttingPlanResponse generate() {
         CuttingPlan plan = service.generate();
         return service.getById(plan.getId());
+    }
+
+    @GetMapping("/scope-preview")
+    @PreAuthorize("hasRole('PLANNER')")
+    public CuttingPlanScopePreviewResponse getScopePreview() {
+        return service.getScopePreview();
     }
 
     @GetMapping

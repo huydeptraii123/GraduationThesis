@@ -11,6 +11,7 @@ import com.slatcut.cutting.domain.ShortageRecord;
 import com.slatcut.cutting.dto.CuttingPlanDetailItemResponse;
 import com.slatcut.cutting.dto.CuttingPlanDetailResponse;
 import com.slatcut.cutting.dto.CuttingPlanResponse;
+import com.slatcut.cutting.dto.CuttingPlanScopePreviewResponse;
 import com.slatcut.cutting.dto.CuttingPlanSummaryResponse;
 import com.slatcut.cutting.dto.ShortageRecordResponse;
 import com.slatcut.cutting.mapper.CuttingPlanMapper;
@@ -85,9 +86,8 @@ public class CuttingPlanService {
 
     @Transactional
     public CuttingPlan generate() {
-        LocalDate cutoffDate = LocalDate.now().plusDays(SCOPE_CUTOFF_DAYS);
-        List<SalesOrder> scopeOrders =
-                salesOrderRepository.findUnprocessedInScope(cutoffDate, PageRequest.of(0, SCOPE_MAX_ORDERS));
+        LocalDate cutoffDate = scopeCutoffDate();
+        List<SalesOrder> scopeOrders = findScopeOrders(cutoffDate);
         Map<OrderKey, SalesOrder> orderIndex = scopeOrders.stream()
                 .collect(Collectors.toMap(so -> new OrderKey(so.getYcsx(), so.getItem()), so -> so));
 
@@ -101,11 +101,28 @@ public class CuttingPlanService {
         plan.setScopeCutoffDate(cutoffDate);
         plan.setScopeOrderCount(scopeOrders.size());
         plan.setTotalWasteM(totalWasteM(result.cuts()));
+        plan.setTotalStockUsedM(totalStockUsedM(result.cuts()));
         cuttingPlanRepository.save(plan);
 
         persistCuts(plan, result.cuts(), orderIndex);
         persistShortages(plan, result.shortages(), orderIndex);
         return plan;
+    }
+
+    /** Không lưu gì — chỉ đếm trước theo đúng quy tắc phạm vi của {@link #generate()}, phục vụ modal xác nhận ở FE. */
+    @Transactional(readOnly = true)
+    public CuttingPlanScopePreviewResponse getScopePreview() {
+        LocalDate cutoffDate = scopeCutoffDate();
+        int eligibleOrderCount = findScopeOrders(cutoffDate).size();
+        return new CuttingPlanScopePreviewResponse(eligibleOrderCount, cutoffDate);
+    }
+
+    private LocalDate scopeCutoffDate() {
+        return LocalDate.now().plusDays(SCOPE_CUTOFF_DAYS);
+    }
+
+    private List<SalesOrder> findScopeOrders(LocalDate cutoffDate) {
+        return salesOrderRepository.findUnprocessedInScope(cutoffDate, PageRequest.of(0, SCOPE_MAX_ORDERS));
     }
 
     @Transactional(readOnly = true)
@@ -146,6 +163,12 @@ public class CuttingPlanService {
                         || cut.remainderCategory() == RemainderCategory.WASTE)
                 .mapToInt(CutRecord::remainderMm)
                 .sum();
+        return toMeters(totalMm);
+    }
+
+    /** Tổng độ dài thanh tồn kho đã dùng trong lần chạy — mẫu số của "tỷ lệ phế" hiển thị ở FE. */
+    private BigDecimal totalStockUsedM(List<CutRecord> cuts) {
+        int totalMm = cuts.stream().mapToInt(CutRecord::stockLengthMm).sum();
         return toMeters(totalMm);
     }
 

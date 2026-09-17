@@ -26,6 +26,12 @@ public interface CuttingPlanMapper {
     @Mapping(source = "salesOrder.id", target = "salesOrderId")
     @Mapping(source = "salesOrder.ycsx", target = "ycsx")
     @Mapping(source = "salesOrder.item", target = "item")
+    @Mapping(source = "salesOrder.customer.customerName", target = "customerName")
+    @Mapping(source = "salesOrder.doorProduct.id", target = "doorProductId")
+    @Mapping(source = "salesOrder.doorProduct.doorMaterialName", target = "doorProductName")
+    @Mapping(source = "salesOrder.reqdDeliveryDate", target = "reqdDeliveryDate")
+    @Mapping(source = "salesOrder.chieuCaoDh", target = "chieuCaoDh")
+    @Mapping(source = "salesOrder.chieuRongDh", target = "chieuRongDh")
     CuttingPlanDetailItemResponse toItemResponse(CuttingPlanDetailItem entity);
 
     @Mapping(source = "slatMaterial.id", target = "slatMaterialId")
@@ -33,6 +39,12 @@ public interface CuttingPlanMapper {
     @Mapping(source = "salesOrder.id", target = "salesOrderId")
     @Mapping(source = "salesOrder.ycsx", target = "ycsx")
     @Mapping(source = "salesOrder.item", target = "item")
+    @Mapping(source = "salesOrder.customer.customerName", target = "customerName")
+    @Mapping(source = "salesOrder.doorProduct.id", target = "doorProductId")
+    @Mapping(source = "salesOrder.doorProduct.doorMaterialName", target = "doorProductName")
+    @Mapping(source = "salesOrder.reqdDeliveryDate", target = "reqdDeliveryDate")
+    @Mapping(source = "salesOrder.chieuCaoDh", target = "chieuCaoDh")
+    @Mapping(source = "salesOrder.chieuRongDh", target = "chieuRongDh")
     ShortageRecordResponse toShortageResponse(ShortageRecord entity);
 
     @Mapping(source = "detail.id", target = "id")
@@ -49,6 +61,7 @@ public interface CuttingPlanMapper {
     @Mapping(source = "plan.runAt", target = "runAt")
     @Mapping(source = "plan.status", target = "status")
     @Mapping(source = "plan.totalWasteM", target = "totalWasteM")
+    @Mapping(source = "plan.totalStockUsedM", target = "totalStockUsedM")
     @Mapping(source = "plan.scopeCutoffDate", target = "scopeCutoffDate")
     @Mapping(source = "plan.scopeOrderCount", target = "scopeOrderCount")
     CuttingPlanResponse toResponse(

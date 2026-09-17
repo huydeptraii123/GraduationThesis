@@ -148,9 +148,12 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.details.length()").value(1))
                 .andExpect(jsonPath("$.details[0].sourceLengthMm").value(2000))
                 .andExpect(jsonPath("$.details[0].items[0].salesOrderId").value(sufficientOrder.getId()))
+                .andExpect(jsonPath("$.details[0].items[0].customerName").value(customer.getCustomerName()))
+                .andExpect(jsonPath("$.details[0].items[0].doorProductName").value(sufficientProduct.getDoorMaterialName()))
                 .andExpect(jsonPath("$.shortages.length()").value(1))
                 .andExpect(jsonPath("$.shortages[0].salesOrderId").value(shortageOrder.getId()))
-                .andExpect(jsonPath("$.shortages[0].missingLengthM").value(5.00));
+                .andExpect(jsonPath("$.shortages[0].missingLengthM").value(5.00))
+                .andExpect(jsonPath("$.shortages[0].doorProductName").value(shortageProduct.getDoorMaterialName()));
     }
 
     @Test
@@ -180,8 +183,29 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(plan.getId()))
                 .andExpect(jsonPath("$.scopeOrderCount").value(1))
+                .andExpect(jsonPath("$.totalStockUsedM").value(2.00))
                 .andExpect(jsonPath("$.details.length()").value(1))
                 .andExpect(jsonPath("$.details[0].items.length()").value(1));
+    }
+
+    @Test
+    void getScopePreview_asPlanner_returnsEligibleCountAndCutoffDate() throws Exception {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
+
+        mockMvc.perform(get("/api/v1/cutting-plans/scope-preview")
+                        .header("Authorization", "Bearer " + plannerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.eligibleOrderCount").value(1))
+                .andExpect(jsonPath("$.scopeCutoffDate").value(LocalDate.now().plusDays(3).toString()));
+    }
+
+    @Test
+    void getScopePreview_asAdmin_isForbidden() throws Exception {
+        mockMvc.perform(get("/api/v1/cutting-plans/scope-preview")
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -209,6 +233,7 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
         plan.setScopeCutoffDate(LocalDate.now().plusDays(3));
         plan.setScopeOrderCount(0);
         plan.setTotalWasteM(BigDecimal.ZERO);
+        plan.setTotalStockUsedM(BigDecimal.ZERO);
         return cuttingPlanRepository.save(plan);
     }
 }

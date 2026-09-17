@@ -9,6 +9,6 @@ public interface CuttingPlanDetailItemRepository extends JpaRepository<CuttingPl
 
     boolean existsBySalesOrder_Id(Long salesOrderId);
 
-    @EntityGraph(attributePaths = "salesOrder")
+    @EntityGraph(attributePaths = {"salesOrder.customer", "salesOrder.doorProduct"})
     List<CuttingPlanDetailItem> findByCuttingPlanDetail_IdIn(List<Long> cuttingPlanDetailIds);
 }
