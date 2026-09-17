@@ -39,3 +39,7 @@ export interface BomItemRequest {
   slatCountIntercept: number | null
   dinhMucTbMPerBoCua: number | null
 }
+
+export interface BomImportResult {
+  totalRowsImported: number
+}

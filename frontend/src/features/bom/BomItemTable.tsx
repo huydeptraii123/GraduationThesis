@@ -1,10 +1,11 @@
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
-import { App, Button, Input, Select, Space, Table, Tag, Tooltip } from 'antd'
+import { App, Button, Input, Select, Space, Table, Tag } from 'antd'
 import { useMemo, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
 import { SLAT_GROUP_COLOR, SLAT_GROUP_LABEL, SLAT_GROUP_OPTIONS, buildSlatGroupLookup } from '../inventory/constants'
 import type { SlatGroup, SlatMaterialResponse } from '../inventory/types'
 import { BomItemFormModal } from './BomItemFormModal'
+import { ImportBomModal } from './ImportBomModal'
 import { deleteBomItem } from './bomApi'
 import type { BomItemResponse, DoorProductResponse } from './types'
 
@@ -23,6 +24,7 @@ export function BomItemTable({ bomItems, doorProducts, slatMaterials, canEdit, l
   const [groupFilter, setGroupFilter] = useState<SlatGroup | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<BomItemResponse | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
 
   const groupBySlatMaterialId = useMemo(() => buildSlatGroupLookup(slatMaterials), [slatMaterials])
 
@@ -85,9 +87,7 @@ export function BomItemTable({ bomItems, doorProducts, slatMaterials, canEdit, l
         </Space>
         {canEdit && (
           <Space wrap>
-            <Tooltip title="Nhập định mức BOM hàng loạt từ Excel — chưa được xếp vào tuần nào trong roadmap.">
-              <Button disabled>Nhập từ Excel</Button>
-            </Tooltip>
+            <Button onClick={() => setImportOpen(true)}>Nhập từ Excel</Button>
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -179,6 +179,8 @@ export function BomItemTable({ bomItems, doorProducts, slatMaterials, canEdit, l
         onSaved={onChanged}
         onDoorProductCreated={onChanged}
       />
+
+      <ImportBomModal open={importOpen} onClose={() => setImportOpen(false)} onImported={onChanged} />
     </>
   )
 }
