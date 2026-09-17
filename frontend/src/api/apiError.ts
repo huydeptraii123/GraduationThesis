@@ -74,3 +74,18 @@ export function extractErrorMessage(error: unknown, fallback: string): string {
 
   return STATUS_FALLBACK[response.status] ?? fallback
 }
+
+/**
+ * Dùng riêng cho các lời gọi `responseType: 'blob'` (tải file) — khi lỗi, body cũng về dưới dạng
+ * Blob (kể cả 404/409 vốn là chuỗi text thuần ở mọi màn khác), nên extractErrorMessage() không đọc
+ * được thẳng. Đọc Blob thành text trước, còn lại rơi về extractErrorMessage() như bình thường.
+ */
+export async function extractBlobErrorMessage(error: unknown, fallback: string): Promise<string> {
+  if (error instanceof AxiosError && error.response?.data instanceof Blob) {
+    const text = (await error.response.data.text()).trim()
+    if (text && !text.startsWith('<')) {
+      return text
+    }
+  }
+  return extractErrorMessage(error, fallback)
+}
