@@ -357,6 +357,7 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
         plan.setScopeCutoffDate(LocalDate.now().plusDays(3));
         plan.setScopeOrderCount(1);
         plan.setTotalWasteM(BigDecimal.ZERO);
+        plan.setTotalStockUsedM(BigDecimal.ZERO);
         return cuttingPlanRepository.save(plan);
     }
 

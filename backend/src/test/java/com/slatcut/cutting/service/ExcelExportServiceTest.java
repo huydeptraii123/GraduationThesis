@@ -152,7 +152,9 @@ class ExcelExportServiceTest extends AbstractIntegrationTest {
             Sheet sheet = workbook.getSheet("Kết quả cắt");
             assertThat(sheet).isNotNull();
             Row header = sheet.getRow(0);
-            assertThat(header.getLastCellNum()).isEqualTo(14);
+            // getLastCellNum() trả short — AssertJ tự động box thành Short, so isEqualTo(14) autobox
+            // thành Integer thì luôn fail dù giá trị khớp (Short.equals(Integer) luôn false).
+            assertThat((int) header.getLastCellNum()).isEqualTo(14);
             assertThat(cellText(header, 0)).isEqualTo("Đợt cắt");
 
             Row dataRow = sheet.getRow(1);
