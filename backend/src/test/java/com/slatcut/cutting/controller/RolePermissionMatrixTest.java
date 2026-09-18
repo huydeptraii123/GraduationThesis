@@ -81,6 +81,23 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
             """
             {"material":80000001,"doorMaterialName":"Cửa cuốn kiểm thử","mauSac":"#01"}
             """;
+    private static final String CREATE_USER_JSON =
+            """
+            {"username":"tai_khoan_kiem_thu","password":"matkhau123","roleCode":"PLANNER"}
+            """;
+    private static final String UPDATE_USER_JSON =
+            """
+            {"roleCode":"PLANNER","enabled":true}
+            """;
+    private static final String RESET_PASSWORD_JSON =
+            """
+            {"newPassword":"matkhau123"}
+            """;
+    /** Mật khẩu hiện tại cố ý sai: nhánh "được phép" dừng ở 409 thay vì đổi mật khẩu thật. */
+    private static final String CHANGE_PASSWORD_JSON =
+            """
+            {"currentPassword":"khong-phai-mat-khau","newPassword":"matkhau123"}
+            """;
     private static final String SALES_ORDER_JSON =
             """
             {"ycsx":"HY9000","item":1,"customerId":999999999,"doorProductId":999999999,
@@ -142,6 +159,18 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
                 // Chạy thuật toán: tác vụ vận hành hằng ngày, chỉ PLANNER.
                 new Endpoint("POST /cutting-plans/generate", Set.of(PLANNER), () -> post("/api/v1/cutting-plans/generate")),
                 new Endpoint("GET /cutting-plans/scope-preview", Set.of(PLANNER), () -> get("/api/v1/cutting-plans/scope-preview")),
+
+                // Tài khoản người dùng: ADMIN độc quyền, kể cả GET — khác mọi module còn lại (xem
+                // Javadoc của UserController). Vòng đời là tạo/sửa/khóa nên không có DELETE.
+                new Endpoint("POST /users", Set.of(ADMIN), () -> json(post("/api/v1/users"), CREATE_USER_JSON)),
+                new Endpoint("PUT /users/{id}", Set.of(ADMIN), () -> json(put("/api/v1/users/{id}", MISSING_ID), UPDATE_USER_JSON)),
+                new Endpoint("POST /users/{id}/reset-password", Set.of(ADMIN), () -> json(post("/api/v1/users/{id}/reset-password", MISSING_ID), RESET_PASSWORD_JSON)),
+                new Endpoint("GET /users", Set.of(ADMIN), () -> get("/api/v1/users")),
+                new Endpoint("GET /users/{id}", Set.of(ADMIN), () -> get("/api/v1/users/{id}", MISSING_ID)),
+
+                // Đổi mật khẩu cá nhân: mở cho cả hai vai trò vì ai cũng chỉ đổi được của chính mình
+                // (tên đăng nhập lấy từ JWT, không phải từ thân request).
+                new Endpoint("POST /auth/change-password", Set.of(ADMIN, PLANNER), () -> json(post("/auth/change-password"), CHANGE_PASSWORD_JSON)),
 
                 // Đọc: mở cho mọi vai trò đã đăng nhập.
                 new Endpoint("GET /slat-materials", Set.of(ADMIN, PLANNER), () -> get("/api/v1/slat-materials")),
