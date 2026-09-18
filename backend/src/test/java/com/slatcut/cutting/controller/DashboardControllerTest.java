@@ -160,6 +160,8 @@ class DashboardControllerTest extends AbstractIntegrationTest {
     void getDashboard_pendingOrderCount_isNotCappedByPerRunOrderLimit() throws Exception {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();
+        // Mẫu cửa phải có định mức, nếu không đơn bị loại khỏi phạm vi (xem findUnprocessedInScope).
+        persistBomItem(doorProduct, persistSlatMaterial(SlatGroup.BOTTOM_BAR));
         for (int i = 0; i < 71; i++) {
             persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
         }

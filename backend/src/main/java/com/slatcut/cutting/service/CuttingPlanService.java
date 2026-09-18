@@ -121,6 +121,10 @@ public class CuttingPlanService {
      * &gt;3m được {@code pool.restock()} giữa chừng rồi bị cắt tiếp ngay trong cùng lượt chạy sẽ xuất
      * hiện 1 lần +1 (lúc nhập lại) và 1 lần -1 (lúc dùng làm phôi nguồn) — cộng dồn ra 0, đúng thực
      * tế vật lý là thanh đó chưa từng rời xưởng.
+     *
+     * <p>Mỗi delta ghi xuống bằng 1 câu {@code UPDATE ... SET so_thanh = so_thanh + :delta} nguyên
+     * tử, KHÔNG phải đọc entity ra rồi set lại — xem phạm vi bảo vệ (và phần KHÔNG bảo vệ) ở
+     * {@link InventoryBatchRepository#applyDelta}.
      */
     private void applyInventoryChanges(List<CutRecord> cuts) {
         Map<StockKey, Integer> deltas = new LinkedHashMap<>();
@@ -140,20 +144,23 @@ public class CuttingPlanService {
                 continue;
             }
             StockKey key = entry.getKey();
-            InventoryBatch batch = inventoryBatchRepository
-                    .findBySlatMaterial_IdAndDoDaiThanhMm(key.slatMaterialId(), key.lengthMm())
-                    .orElseGet(() -> newBatchFor(materialsById.get(key.slatMaterialId()), key.lengthMm()));
-            batch.setSoThanh(batch.getSoThanh() + delta);
-            inventoryBatchRepository.save(batch);
+            if (inventoryBatchRepository.applyDelta(key.slatMaterialId(), key.lengthMm(), delta) > 0) {
+                continue;
+            }
+            if (delta < 0) {
+                throw new IllegalStateException("Không tìm thấy lô tồn kho để trừ: slatMaterialId=" + key.slatMaterialId()
+                        + ", doDaiThanhMm=" + key.lengthMm());
+            }
+            inventoryBatchRepository.save(newBatchFor(materialsById.get(key.slatMaterialId()), key.lengthMm(), delta));
         }
     }
 
-    /** Độ dài phần dư nhập lại kho có thể chưa từng tồn tại thành lô riêng — tạo dòng mới với 0 thanh rồi mới cộng delta. */
-    private static InventoryBatch newBatchFor(SlatMaterial slatMaterial, int lengthMm) {
+    /** Độ dài phần dư nhập lại kho có thể chưa từng tồn tại thành lô riêng — khi đó tạo dòng mới với đúng số thanh nhập vào. */
+    private static InventoryBatch newBatchFor(SlatMaterial slatMaterial, int lengthMm, int soThanh) {
         InventoryBatch batch = new InventoryBatch();
         batch.setSlatMaterial(slatMaterial);
         batch.setDoDaiThanhMm(lengthMm);
-        batch.setSoThanh(0);
+        batch.setSoThanh(soThanh);
         return batch;
     }
 
@@ -173,6 +180,21 @@ public class CuttingPlanService {
     @Transactional(readOnly = true)
     public long countPendingInScope() {
         return salesOrderRepository.countUnprocessedInScope(scopeCutoffDate());
+    }
+
+    /**
+     * Số đơn trong hạn giao bị thuật toán bỏ qua vì mẫu cửa không có dòng định mức nào dùng được.
+     * Không phải "tồn đọng chờ tới lượt" mà là "đang bị chặn, cần ADMIN cấu hình" — nên đếm và hiển
+     * thị tách khỏi {@link #countPendingInScope()}.
+     *
+     * <p>Suy ra bằng hiệu của hai phép đếm thay vì một truy vấn phủ định riêng: hai vế luôn cộng
+     * lại đúng bằng tổng đơn chưa xử lý trong hạn giao, không thể lệch nhau.
+     */
+    @Transactional(readOnly = true)
+    public long countPendingMissingBom() {
+        LocalDate cutoffDate = scopeCutoffDate();
+        return salesOrderRepository.countUnprocessedInScopeIgnoringBom(cutoffDate)
+                - salesOrderRepository.countUnprocessedInScope(cutoffDate);
     }
 
     /** Ngày giao xa nhất còn nằm trong phạm vi xử lý — công khai để màn hình khác hiển thị mà không tự tính lại. */

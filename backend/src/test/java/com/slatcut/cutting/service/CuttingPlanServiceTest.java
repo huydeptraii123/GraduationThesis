@@ -102,6 +102,14 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         return bomItemRepository.save(entity);
     }
 
+    private SlatMaterial persistSlatMaterial(SlatGroup slatGroup) {
+        SlatMaterial entity = new SlatMaterial();
+        entity.setSlatMaterial(70_000_000L + ++counter);
+        entity.setSlatMaterialName("Thanh nan " + counter);
+        entity.setSlatGroup(slatGroup);
+        return slatMaterialRepository.save(entity);
+    }
+
     /** RAIL luôn sinh quantity=2 (CuttingDemandService) — dùng để tái hiện đúng bug đã phát hiện qua review (gộp stickCount làm mất cutQuantity). */
     private SlatMaterial persistRailSlatMaterial() {
         SlatMaterial entity = new SlatMaterial();
@@ -450,6 +458,120 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         List<ShortageRecord> shortages = shortageRecordRepository.findAll();
         assertThat(shortages).hasSize(1);
         assertThat(shortages.get(0).getSalesOrder().getId()).isEqualTo(secondOrder.getId());
+    }
+
+    /**
+     * Mẫu cửa chưa có dòng định mức nào sinh ra 0 nhu cầu cắt, nên đơn của nó không để lại
+     * CuttingPlanDetailItem lẫn ShortageRecord — trước đây điều đó khiến nó mãi mãi bị coi là "chưa
+     * xử lý" và chiếm chỗ trong hạn mức 70 đơn của MỌI lần chạy sau. Nay bị loại khỏi phạm vi ngay
+     * từ truy vấn, nhưng phải đếm được để còn cảnh báo, không phải biến mất im lặng.
+     */
+    @Test
+    void generate_excludesOrdersWhoseDoorProductHasNoBom() {
+        Customer customer = persistCustomer();
+
+        DoorProduct configured = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(configured, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        SalesOrder processableOrder =
+                persistSalesOrder("HY9" + (counter + 1), configured, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        DoorProduct withoutBom = persistDoorProduct();
+        persistSalesOrder("HY9" + (counter + 1), withoutBom, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        assertThat(service.countPendingMissingBom())
+                .as("đơn của mẫu cửa chưa có định mức phải đếm được riêng")
+                .isEqualTo(1);
+
+        CuttingPlan plan = service.generate();
+
+        assertThat(plan.getScopeOrderCount())
+                .as("chỉ đơn của mẫu cửa đã có định mức mới vào phạm vi xử lý")
+                .isEqualTo(1);
+        List<CuttingPlanDetailItem> items = cuttingPlanDetailItemRepository.findAll();
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).getSalesOrder().getId()).isEqualTo(processableOrder.getId());
+        assertThat(shortageRecordRepository.findAll()).isEmpty();
+
+        // Vẫn còn đó chờ ADMIN cấu hình định mức — không bị đánh dấu là đã xử lý.
+        assertThat(service.countPendingMissingBom()).isEqualTo(1);
+    }
+
+    /**
+     * Khoá điều kiện lọc phạm vi khớp với các quy tắc bỏ qua của CuttingDemandService.
+     *
+     * <p>Chỉ hỏi "mẫu cửa có dòng định mức nào không" là chưa đủ: CuttingDemandService còn bỏ qua
+     * TỪNG DÒNG một, nên mẫu cửa có định mức mà mọi dòng đều bị bỏ qua vẫn sinh 0 nhu cầu cắt và
+     * kẹt vòng lặp y hệt trường hợp không có dòng nào. Mỗi kịch bản dưới đây ứng với đúng 1 nhánh
+     * {@code return Optional.empty()} trong CuttingDemandService.buildDemand — thêm nhánh mới ở đó
+     * mà quên sửa truy vấn phạm vi thì test này là nơi phát hiện ra.
+     */
+    @Test
+    void generate_excludesOrdersWhoseEveryBomRowIsSkippedByDemandRules() {
+        Customer customer = persistCustomer();
+
+        // (1) MAIN_SLAT thiếu hệ số tính số nan — đúng 69/527 dòng trong dữ liệu thật của doanh nghiệp.
+        DoorProduct missingCoefficients = persistDoorProduct();
+        persistBomItem(missingCoefficients, persistSlatMaterial(SlatGroup.MAIN_SLAT));
+        persistSalesOrder(
+                "HY9" + (counter + 1), missingCoefficients, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        // (2) RAIL thiếu heightOffsetM.
+        DoorProduct missingHeightOffset = persistDoorProduct();
+        persistBomItem(missingHeightOffset, persistSlatMaterial(SlatGroup.RAIL));
+        persistSalesOrder(
+                "HY9" + (counter + 1), missingHeightOffset, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        // (3) Nhóm OTHER không có công thức cắt.
+        DoorProduct onlyOtherGroup = persistDoorProduct();
+        persistBomItem(onlyOtherGroup, persistSlatMaterial(SlatGroup.OTHER));
+        persistSalesOrder("HY9" + (counter + 1), onlyOtherGroup, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        assertThat(service.countPendingMissingBom())
+                .as("cả 3 đơn đều không sinh được nhu cầu cắt nên phải đếm là đang bị chặn")
+                .isEqualTo(3);
+
+        CuttingPlan plan = service.generate();
+
+        assertThat(plan.getScopeOrderCount())
+                .as("không đơn nào trong 3 kịch bản được đưa vào phạm vi xử lý")
+                .isZero();
+        assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
+        assertThat(shortageRecordRepository.findAll()).isEmpty();
+        assertThat(service.countPendingMissingBom()).isEqualTo(3);
+    }
+
+    /**
+     * Tồn kho nay trừ bằng {@code UPDATE ... SET so_thanh = so_thanh + delta} nguyên tử thay vì
+     * đọc-sửa-ghi. Query {@code @Modifying} không đi qua persistence context, nên nếu thiếu
+     * {@code clearAutomatically}/{@code flushAutomatically} thì lượt chạy thứ hai sẽ đọc lại số
+     * thanh cũ và trừ sai. Ba thanh, hai lượt mỗi lượt tiêu 1 thanh, phải còn đúng 1.
+     */
+    @Test
+    void generate_twoRuns_accumulateInventoryDeltasCorrectly() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 3);
+
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        service.generate();
+        assertThat(inventoryBatchRepository
+                        .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 2000)
+                        .orElseThrow()
+                        .getSoThanh())
+                .isEqualTo(2);
+
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        service.generate();
+        assertThat(inventoryBatchRepository
+                        .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 2000)
+                        .orElseThrow()
+                        .getSoThanh())
+                .as("lượt sau phải trừ tiếp trên kết quả của lượt trước, không đọc lại số cũ")
+                .isEqualTo(1);
     }
 
     /**

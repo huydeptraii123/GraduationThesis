@@ -193,6 +193,8 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
     void getScopePreview_asPlanner_returnsEligibleCountAndCutoffDate() throws Exception {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();
+        // Mẫu cửa phải có định mức, nếu không đơn bị loại khỏi phạm vi (xem findUnprocessedInScope).
+        persistBomItem(doorProduct, persistSlatMaterial());
         persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
 
         mockMvc.perform(get("/api/v1/cutting-plans/scope-preview")
