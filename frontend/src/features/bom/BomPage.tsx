@@ -2,6 +2,8 @@ import { Alert, Card, Space, Statistic, Tag, Typography } from 'antd'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
 import { useAuth } from '../auth/AuthContext'
+import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
+import { canEditBom } from '../auth/permissions'
 import { buildSlatGroupLookup } from '../inventory/constants'
 import { listMaterials } from '../inventory/inventoryApi'
 import type { SlatMaterialResponse } from '../inventory/types'
@@ -12,7 +14,7 @@ import type { BomItemResponse, DoorProductResponse } from './types'
 export function BomPage() {
   const { user } = useAuth()
   // Định mức BOM là dữ liệu nền tảng, chỉ ADMIN được ghi (khác 6.1 — tồn kho thuộc PLANNER).
-  const canEdit = user?.role === 'ADMIN'
+  const canEdit = canEditBom(user)
 
   const [bomItems, setBomItems] = useState<BomItemResponse[]>([])
   const [doorProducts, setDoorProducts] = useState<DoorProductResponse[]>([])
@@ -85,6 +87,8 @@ export function BomPage() {
       <Typography.Text type="secondary">
         Thiết lập tham số offset kích thước và thông số tính số lượng nan cho từng mẫu cửa.
       </Typography.Text>
+
+      {!canEdit && <RoleRestrictionNotice requiredRole="ADMIN" action="thêm/sửa/xóa định mức BOM" />}
 
       {loadError && <Alert type="error" showIcon style={{ marginTop: 16 }} title={loadError} />}
 

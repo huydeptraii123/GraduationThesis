@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { extractErrorMessage } from '../../api/apiError'
 import { useAuth } from '../auth/AuthContext'
+import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
+import { canGenerateCuttingPlan } from '../auth/permissions'
 import { GenerateCuttingPlanModal } from './GenerateCuttingPlanModal'
 import { listCuttingPlans } from './cuttingPlansApi'
 import type { CuttingPlanStatus, CuttingPlanSummaryResponse } from './types'
@@ -18,7 +20,7 @@ export function CuttingPlanListPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   // Chỉ PLANNER chạy thuật toán sinh phương án cắt, khớp @PreAuthorize của POST /generate.
-  const canGenerate = user?.role === 'PLANNER'
+  const canGenerate = canGenerateCuttingPlan(user)
 
   const [plans, setPlans] = useState<CuttingPlanSummaryResponse[]>([])
   const [loading, setLoading] = useState(true)
@@ -84,6 +86,8 @@ export function CuttingPlanListPage() {
           </Button>
         )}
       </Space>
+
+      {!canGenerate && <RoleRestrictionNotice requiredRole="PLANNER" action="sinh phương án cắt mới" />}
 
       {loadError && <Alert type="error" showIcon style={{ margin: '16px 0' }} title={loadError} />}
 
