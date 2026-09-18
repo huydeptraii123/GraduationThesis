@@ -165,6 +165,21 @@ public class CuttingPlanService {
         return new CuttingPlanScopePreviewResponse(eligibleOrderCount, cutoffDate);
     }
 
+    /**
+     * Số đơn đang tồn đọng trong hạn giao, KHÔNG cắt ở hạn mức {@value #SCOPE_MAX_ORDERS} đơn mỗi
+     * lần chạy — khác {@link #getScopePreview()} ở đúng điểm đó: modal xác nhận cần biết lần chạy
+     * này lấy được bao nhiêu đơn, còn KPI trang chủ cần biết còn bao nhiêu đơn phải xử lý.
+     */
+    @Transactional(readOnly = true)
+    public long countPendingInScope() {
+        return salesOrderRepository.countUnprocessedInScope(scopeCutoffDate());
+    }
+
+    /** Ngày giao xa nhất còn nằm trong phạm vi xử lý — công khai để màn hình khác hiển thị mà không tự tính lại. */
+    public LocalDate currentScopeCutoffDate() {
+        return scopeCutoffDate();
+    }
+
     private LocalDate scopeCutoffDate() {
         return LocalDate.now().plusDays(SCOPE_CUTOFF_DAYS);
     }
