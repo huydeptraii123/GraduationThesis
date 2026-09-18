@@ -38,7 +38,7 @@ Kết quả của luồng luôn thuộc đúng một trong hai trường hợp: 
 
 ## 2. Luồng sinh phương án cắt (luồng lõi)
 
-PLANNER kích hoạt luồng này sau khi dữ liệu đơn hàng, tồn kho và định mức BOM (Nhóm 1, Nhóm 2) đã sẵn sàng — từ luồng 1 (nhập Excel) hoặc từ thao tác quản lý thủ công — không cần tự chọn hay lọc trước đơn hàng nào cần xử lý — đây là luồng quan trọng nhất của khóa luận, thể hiện đúng 4 mức ưu tiên đã chốt: khớp gần đúng → cắt theo bội số (cùng đợt xử lý) → ghép nối nhiều đơn (cùng đợt xử lý) → best-fit/nhập kho/shortage.
+PLANNER kích hoạt luồng này sau khi dữ liệu đơn hàng, tồn kho và định mức BOM (Nhóm 1, Nhóm 2) đã sẵn sàng — từ luồng 1 (nhập Excel) hoặc từ thao tác quản lý thủ công — không cần tự chọn hay lọc trước đơn hàng nào cần xử lý — đây là luồng quan trọng nhất của khóa luận, thể hiện đúng 4 mức ưu tiên đã chốt: khớp gần đúng → cắt theo bội số (cùng đợt xử lý) → ghép nối nhiều đơn (cùng đợt xử lý) → cắt để phần dư nhập lại được kho (trên 3m), hết cách thì báo thiếu vật tư.
 
 ```mermaid
 sequenceDiagram
@@ -77,11 +77,11 @@ sequenceDiagram
             else Mức 3 — ghép nối nhiều đơn (cùng đợt xử lý với X, không cần cùng ngày giao)
                 CS->>POOL: findCombination(X, hàng đợi trong đợt xử lý hiện tại)
                 POOL-->>CS: tổ hợp khớp 1 thanh -> cắt, gán đúng đơn, dư "bỏ"
-            else Mức 4 — best-fit / nhập kho / lãng phí / shortage
-                CS->>POOL: bestFit(X)
-                alt còn thanh đủ dài
-                    POOL-->>CS: cắt, phân loại dư (>3m nhập kho | 30cm-3m lãng phí)
-                else không còn thanh đủ dài
+            else Mức 4 — cắt để phần dư nhập lại được kho, hoặc shortage
+                CS->>POOL: findRestockFit(X)
+                alt còn thanh để lại phần dư > 3m
+                    POOL-->>CS: cắt, phần dư > 3m nhập lại kho
+                else không có thanh nào thỏa mãn
                     POOL-->>CS: đánh dấu shortage cho X
                 end
             end

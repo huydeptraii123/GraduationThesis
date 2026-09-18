@@ -20,7 +20,7 @@ public class InventoryPool {
     public InventoryPool(List<InventoryBatch> batches) {
         for (InventoryBatch batch : batches) {
             // InventoryImportService zero-out các tổ hợp mất khỏi file thay vì xóa dòng (soThanh=0) —
-            // bỏ qua ngay từ đây để TreeMap.ceilingEntry() ở bestFit() không bao giờ khớp nhầm vào
+            // bỏ qua ngay từ đây để TreeMap.ceilingEntry() ở findRestockFit() không bao giờ khớp nhầm vào
             // 1 độ dài đã hết thanh chỉ vì nó ngắn hơn độ dài thật sự còn hàng kế tiếp.
             if (batch.getSoThanh() == null || batch.getSoThanh() <= 0) {
                 continue;
@@ -31,13 +31,25 @@ public class InventoryPool {
         }
     }
 
-    /** Tìm thanh tồn kho ngắn nhất còn đủ dài để cắt {@code cutLengthMm}, trừ 1 thanh nếu tìm thấy. */
-    public Optional<Integer> bestFit(SlatMaterial slatMaterial, int cutLengthMm) {
+    /**
+     * Mức 4 — cắt để phần dư nhập lại được kho: tìm thanh NGẮN NHẤT vừa đủ dài để cắt
+     * {@code cutLengthMm} <b>và</b> còn để lại phần dư <b>&gt; 3m</b>, trừ 1 thanh nếu tìm thấy.
+     *
+     * <p>Điều kiện "&gt; 3m" không phải tối ưu hóa mà là luật nghiệp vụ: phần dư rơi vào khoảng
+     * 30cm–3m không đủ ngắn để bỏ qua cũng không đủ dài để tái sử dụng, nên doanh nghiệp không chấp
+     * nhận tạo ra nó. Thanh tồn kho tuy đủ dài nhưng chỉ để lại phần dư trong khoảng đó thì KHÔNG
+     * được đụng tới — để dành cho một đoạn khác khớp hơn ở lần chạy sau.
+     *
+     * <p>Vì {@link RemainderCategory#RESTOCK} là {@code remainder > 3000} (lớn hơn NGẶT), ngưỡng tra
+     * cứu phải là {@code cutLengthMm + 3000 + 1}: thanh để lại đúng 3000mm vẫn bị phân loại
+     * {@code WASTE} nên không đủ điều kiện.
+     */
+    public Optional<Integer> findRestockFit(SlatMaterial slatMaterial, int cutLengthMm) {
         NavigableMap<Integer, Integer> stock = stockByMaterialId.get(slatMaterial.getId());
         if (stock == null) {
             return Optional.empty();
         }
-        Map.Entry<Integer, Integer> match = stock.ceilingEntry(cutLengthMm);
+        Map.Entry<Integer, Integer> match = stock.ceilingEntry(cutLengthMm + RemainderCategory.RESTOCK_THRESHOLD_MM + 1);
         if (match == null) {
             return Optional.empty();
         }
@@ -45,7 +57,7 @@ public class InventoryPool {
     }
 
     /**
-     * Mức 1 — khớp gần đúng: giống {@link #bestFit}, nhưng CHỈ tiêu thụ + trả về khi phần dư dự kiến
+     * Mức 1 — khớp gần đúng: giống {@link #findRestockFit}, nhưng CHỈ tiêu thụ + trả về khi phần dư dự kiến
      * < 30cm — ngược lại trả rỗng và KHÔNG đụng vào state, để Mức 2/3/4 sau đó vẫn thấy nguyên tồn kho.
      */
     public Optional<Integer> findNearFit(SlatMaterial slatMaterial, int cutLengthMm) {

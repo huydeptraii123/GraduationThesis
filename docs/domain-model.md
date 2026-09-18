@@ -288,7 +288,7 @@ UNIQUE (`slat_material_id`, `do_dai_thanh_mm`): xác nhận đúng với dữ li
 
 **Có 2 luồng ghi khác bản chất vào `so_thanh`, cần phân biệt rõ (không nên gộp chung là "upsert cộng/trừ" — upsert đúng nghĩa là ghi đè, không phải cộng dồn):**
 - **Nhập Excel / chỉnh sửa thủ công** (Nhóm 1 yêu cầu chức năng): `ton_kho_thanh_nan.csv` là một **snapshot** tồn kho tại một thời điểm (giống cách nguồn `v_mchb_batch_stock` được truy vấn), nên đây là **upsert ghi đè đúng nghĩa** — `SET so_thanh = giá trị mới` cho đúng (`slat_material_id`, `do_dai_thanh_mm`), giống hệt cách `sales_order` upsert theo (`ycsx`, `z_item`) ở Nhóm 1. Cần lưu ý thêm: nếu 1 tổ hợp (loại thanh, độ dài) từng có trong lần nhập trước nhưng **biến mất** khỏi snapshot mới (tồn kho về 0, không còn xuất hiện trong file), `ExcelImportService` cần chủ động đưa `so_thanh` dòng đó về 0 — không chỉ upsert những dòng có mặt trong file, tránh để lại số liệu ảo.
-- **Thuật toán tự cập nhật khi chạy** (Mức 4, mục "Bổ sung — trừ tồn kho sau khi cắt" ở `docs/sequence-diagrams.md`): đây mới thực sự là **cộng/trừ** (`UPDATE ... SET so_thanh = so_thanh - X` khi tiêu thụ, `UPSERT ... so_thanh = so_thanh + X` khi nhập lại kho phần dư > 3m) — khác bản chất với luồng ghi đè ở trên. UPSERT tạo **dòng mới** (độ dài phần dư chưa từng có trong kho) chỉ cần khởi tạo `so_thanh` bằng đúng số lượng vừa nhập lại; nếu UPSERT cộng thêm vào **dòng đã có sẵn** (trùng đúng độ dài phần dư với một lô đang tồn), cộng dồn `so_thanh` bình thường.
+- **Thuật toán tự cập nhật khi chạy** (Mức 4, xem `docs/sequence-diagrams.md` mục "2. Luồng sinh phương án cắt"): đây mới thực sự là **cộng/trừ** (`UPDATE ... SET so_thanh = so_thanh - X` khi tiêu thụ, `UPSERT ... so_thanh = so_thanh + X` khi nhập lại kho phần dư > 3m) — khác bản chất với luồng ghi đè ở trên. UPSERT tạo **dòng mới** (độ dài phần dư chưa từng có trong kho) chỉ cần khởi tạo `so_thanh` bằng đúng số lượng vừa nhập lại; nếu UPSERT cộng thêm vào **dòng đã có sẵn** (trùng đúng độ dài phần dư với một lô đang tồn), cộng dồn `so_thanh` bình thường.
 
 `InventoryPool.load()` chỉ cần `INDEX (slat_material_id)` (đã có sẵn từ UNIQUE phía trên) để nạp toàn bộ lô còn tồn theo từng loại thanh.
 
@@ -344,6 +344,8 @@ Không có `updated_at`: một `CuttingPlan` và toàn bộ bảng con được 
 | stick_count | INT | NOT NULL, DEFAULT 1 |
 
 `INDEX (cutting_plan_id)`.
+
+**Giá trị `WASTE` của `remainder_type` chỉ còn ý nghĩa lịch sử.** Thuật toán hiện tại không sinh ra phần dư nằm trong khoảng 30cm–3m nữa: cả bốn mức cắt đều chỉ nhận thanh khi phần dư dưới 30cm hoặc trên 3m, hết cách thì báo thiếu vật tư (xem `docs/requirements-functional.md` Nhóm 3). Enum vẫn giữ đủ ba giá trị, và công thức tỷ lệ phế vẫn cộng cả ba, để các phương án cắt được lưu trước khi Mức 4 siết điều kiện vẫn đọc và đối chiếu được — bỏ giá trị này đi sẽ làm hỏng dữ liệu lịch sử.
 
 **`stick_count`: số phôi giống nhau (cùng độ dài nguồn, cùng pattern) được gộp vào 1 dòng.** Khớp với thực tế tồn kho vận hành theo số lượng thanh (`so_thanh` ở `inventory_batch`), không phải 1 dòng/1 thanh; báo cáo mức chi tiết nhất ở `requirements-functional.md` cũng có cột "số lượng phôi dùng ở độ dài đó" riêng với pattern. Chỉ gộp khi các phôi đó có **cùng pattern và cùng tập `CuttingPlanDetailItem` phân bổ** (ví dụ Mức 2 — cắt bội số: "15 thanh 6m cắt đôi" cùng phục vụ 1 đơn → 1 dòng, `stick_count = 15`); nếu các phôi cùng pattern nhưng phục vụ tập đơn khác nhau (ví dụ Mức 3 — ghép nối, mỗi thanh ghép các đơn khác nhau) thì mỗi phôi vẫn phải là 1 dòng riêng (`stick_count = 1`).
 

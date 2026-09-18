@@ -39,54 +39,67 @@ class InventoryPoolTest {
                 List.of(batch(material, 3000, 0), batch(material, 4000, null), batch(material, 5000, 2)));
 
         // remainingCount() dùng getOrDefault nên không phân biệt được "không có entry" với "entry
-        // tồn tại giá trị 0" — cả 2 đều trả 0. Phải chứng minh qua hành vi thật của bestFit(): nếu
-        // 2 batch soThanh=0/null bị merge nhầm vào map, ceilingEntry() sẽ khớp NGAY độ dài ngắn hơn
-        // (3000/4000, dù value=0) thay vì bỏ qua để tới đúng 5000 còn hàng thật.
-        assertThat(pool.bestFit(material, 100)).contains(5000);
+        // tồn tại giá trị 0" — cả 2 đều trả 0. Phải chứng minh qua hành vi thật của findRestockFit():
+        // nếu 2 batch soThanh=0/null bị merge nhầm vào map, ceilingEntry() sẽ khớp NGAY độ dài ngắn
+        // hơn (3000/4000, dù value=0) thay vì bỏ qua để tới đúng 5000 còn hàng thật.
+        assertThat(pool.findRestockFit(material, 100)).contains(5000);
     }
 
-    // --- bestFit ---
+    // --- findRestockFit (Mức 4) ---
 
     @Test
-    void bestFit_noStockForMaterial_returnsEmpty() {
+    void findRestockFit_noStockForMaterial_returnsEmpty() {
         InventoryPool pool = new InventoryPool(List.of());
 
-        assertThat(pool.bestFit(slatMaterial(1), 3000)).isEmpty();
+        assertThat(pool.findRestockFit(slatMaterial(1), 3000)).isEmpty();
     }
 
     @Test
-    void bestFit_choosesShortestSufficientLength() {
+    void findRestockFit_choosesShortestLengthThatStillLeavesMoreThanThreeMetres() {
         SlatMaterial material = slatMaterial(2);
+        // Cắt 3500mm: thanh 4000mm tuy ĐỦ DÀI nhưng chỉ để lại 500mm (lãng phí) nên bị bỏ qua;
+        // thanh 6000mm cũng chỉ để lại 2500mm; thanh ngắn nhất hợp lệ là 8000mm (dư 4500mm).
         InventoryPool pool = new InventoryPool(
                 List.of(batch(material, 6000, 1), batch(material, 4000, 1), batch(material, 8000, 1)));
 
-        Optional<Integer> match = pool.bestFit(material, 3500);
+        Optional<Integer> match = pool.findRestockFit(material, 3500);
 
-        assertThat(match).contains(4000);
+        assertThat(match).contains(8000);
+        assertThat(pool.remainingCount(2L, 4000)).isEqualTo(1);
+        assertThat(pool.remainingCount(2L, 6000)).isEqualTo(1);
     }
 
     @Test
-    void bestFit_consumingLastUnitRemovesEntryEntirely() {
-        SlatMaterial material = slatMaterial(3);
+    void findRestockFit_stockLongEnoughButLeavingWaste_returnsEmptyAndConsumesNothing() {
+        SlatMaterial material = slatMaterial(5);
         InventoryPool pool = new InventoryPool(List.of(batch(material, 4000, 1)));
 
-        pool.bestFit(material, 3500);
+        assertThat(pool.findRestockFit(material, 3500)).isEmpty();
+        assertThat(pool.remainingCount(5L, 4000)).isEqualTo(1);
+    }
+
+    @Test
+    void findRestockFit_consumingLastUnitRemovesEntryEntirely() {
+        SlatMaterial material = slatMaterial(3);
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 8000, 1)));
+
+        pool.findRestockFit(material, 3500);
 
         // remainingCount() không phân biệt được "entry đã xoá" với "entry còn giá trị 0" (cùng trả
         // 0). Chứng minh entry ĐÃ XOÁ thật qua hành vi: nếu chỉ đưa count về 0 mà không xoá key,
-        // ceilingEntry() vẫn khớp key đó (không kiểm tra value>0) và bestFit() sẽ cấp phát nhầm 1
-        // thanh không còn tồn tại — gọi lại bestFit() phải trả rỗng, không phải khớp nhầm 4000mm.
-        assertThat(pool.bestFit(material, 100)).isEmpty();
+        // ceilingEntry() vẫn khớp key đó (không kiểm tra value>0) và sẽ cấp phát nhầm 1 thanh không
+        // còn tồn tại — gọi lại phải trả rỗng, không phải khớp nhầm 8000mm.
+        assertThat(pool.findRestockFit(material, 100)).isEmpty();
     }
 
     @Test
-    void bestFit_consumingOneOfMultipleUnitsKeepsEntry() {
+    void findRestockFit_consumingOneOfMultipleUnitsKeepsEntry() {
         SlatMaterial material = slatMaterial(4);
-        InventoryPool pool = new InventoryPool(List.of(batch(material, 4000, 2)));
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 8000, 2)));
 
-        pool.bestFit(material, 3500);
+        pool.findRestockFit(material, 3500);
 
-        assertThat(pool.remainingCount(4L, 4000)).isEqualTo(1);
+        assertThat(pool.remainingCount(4L, 8000)).isEqualTo(1);
     }
 
     // --- findNearFit ---
@@ -213,7 +226,8 @@ class InventoryPoolTest {
         SlatMaterial materialB = slatMaterial(16);
         InventoryPool pool = new InventoryPool(List.of(batch(materialA, 5000, 1), batch(materialB, 5000, 1)));
 
-        pool.bestFit(materialA, 4000);
+        // Cắt 1000mm để dư 4000mm, đủ điều kiện nhập lại kho nên Mức 4 mới tiêu thụ thanh.
+        pool.findRestockFit(materialA, 1000);
 
         assertThat(pool.remainingCount(15L, 5000)).isZero();
         assertThat(pool.remainingCount(16L, 5000)).isEqualTo(1);

@@ -601,18 +601,19 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
     /**
      * Khoá chung một định nghĩa mẫu số cho cả tầng service lẫn migration tính lại dữ liệu cũ:
      * {@code Σ stickCount × (sourceLengthMm − remainderMm nếu RESTOCK)}. Kịch bản có đủ cả hai
-     * nhánh — 1 loại thanh dư 0.5m (lãng phí, tính vào mẫu số) và 1 loại thanh dư 4m (nhập lại kho,
-     * KHÔNG tính vào mẫu số) — nên nếu bỏ nhánh RESTOCK thì assertion sai ngay.
+     * nhánh — 1 loại thanh dư 0.2m (bỏ đi, tính trọn vào mẫu số) và 1 loại thanh dư 4m (nhập lại
+     * kho, KHÔNG tính vào mẫu số) — nên nếu bỏ nhánh RESTOCK thì assertion sai ngay.
      */
     @Test
     void generate_totalStockUsedM_matchesRecomputeFormulaOverDetailRows() {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();
-        SlatMaterial wasteMaterial = persistSlatMaterial();
+        SlatMaterial discardMaterial = persistSlatMaterial();
         SlatMaterial restockMaterial = persistSlatMaterial();
-        persistBomItem(doorProduct, wasteMaterial);
+        persistBomItem(doorProduct, discardMaterial);
         persistBomItem(doorProduct, restockMaterial);
-        persistInventoryBatch(wasteMaterial, 2500, 1);
+        // 2200 − 2000 = 200mm: dưới 30cm nên cắt được và bỏ đi, tiêu hao trọn thanh.
+        persistInventoryBatch(discardMaterial, 2200, 1);
         persistInventoryBatch(restockMaterial, 6000, 1);
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
@@ -623,10 +624,10 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
                         * (detail.getSourceLengthMm()
                                 - (detail.getRemainderType() == RemainderType.RESTOCK ? detail.getRemainderMm() : 0)))
                 .sum();
-        assertThat(recomputedMm).isEqualTo(4500);
+        assertThat(recomputedMm).isEqualTo(4200);
         assertThat(plan.getTotalStockUsedM())
-                .as("2.5m tiêu hao trọn + (6m − 4m nhập lại kho)")
-                .isEqualByComparingTo(new BigDecimal("4.50"));
-        assertThat(plan.getTotalWasteM()).isEqualByComparingTo(new BigDecimal("0.50"));
+                .as("2.2m tiêu hao trọn + (6m − 4m nhập lại kho)")
+                .isEqualByComparingTo(new BigDecimal("4.20"));
+        assertThat(plan.getTotalWasteM()).isEqualByComparingTo(new BigDecimal("0.20"));
     }
 }

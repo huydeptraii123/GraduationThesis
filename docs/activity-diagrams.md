@@ -116,18 +116,16 @@ flowchart TD
     M -- "Có" --> M1["Cắt thanh đó, gán từng đoạn<br/>về đúng đơn của nó;<br/>dư dưới 30cm → 'bỏ'; loại các đoạn đã gán"]
     M1 --> I
 
-    M -- "Không" --> N{"Mức 4: tìm thanh ngắn nhất<br/>đủ chứa X (best-fit, gồm cả<br/>phần dư trên 3m vừa nhập kho<br/>trong lần chạy này)?"}
-    N -- "Có thanh đủ dài" --> N1["Cắt thanh đó"]
-    N1 --> N2{"Phân loại phần dư"}
-    N2 -- "Trên 3m" --> N3["'Nhập lại kho' — thêm vào pool"]
-    N2 -- "Từ 30cm đến 3m" --> N4["'Lãng phí' — ghi nhận cảnh báo"]
-    N3 --> N5["Loại X khỏi hàng đợi"]
-    N4 --> N5
-    N5 --> I
+    M -- "Không" --> N{"Mức 4: tìm thanh ngắn nhất<br/>chứa được X và còn để lại<br/>phần dư TRÊN 3m (gồm cả phần dư<br/>vừa nhập kho trong lần chạy này)?"}
+    N -- "Có" --> N1["Cắt thanh đó;<br/>phần dư trên 3m → 'nhập lại kho',<br/>thêm vào pool dùng ngay trong lượt này"]
+    N1 --> N2["Loại X khỏi hàng đợi"]
+    N2 --> I
 
-    N -- "Không còn thanh đủ dài" --> O["Đánh dấu shortage cho X<br/>(slatMaterial + số lượng/độ dài thiếu);<br/>loại X khỏi hàng đợi<br/>(không chặn đoạn ưu tiên thấp hơn)"]
+    N -- "Không" --> O["Đánh dấu shortage cho X<br/>(slatMaterial + số lượng/độ dài thiếu);<br/>loại X khỏi hàng đợi<br/>(không chặn đoạn ưu tiên thấp hơn)"]
     O --> I
 ```
+
+Một hệ quả quan trọng của cách đặt điều kiện ở Mức 4: hệ thống **không bao giờ tự tạo ra phần dư nằm trong khoảng 30cm–3m**. Mức 1 và Mức 3 chỉ nhận thanh khi phần dư dự kiến dưới 30cm, Mức 2 luôn cho phần dư bằng 0, còn Mức 4 chỉ nhận thanh khi phần dư trên 3m — tức là mọi nhánh cắt đều dẫn tới một phần dư hoặc đủ nhỏ để bỏ đi, hoặc đủ dài để nhập lại kho. Khi không nhánh nào thỏa mãn, đoạn cắt được đánh dấu thiếu vật tư thay vì hạ chuẩn để cắt. Điều này có nghĩa một đoạn có thể bị báo thiếu **dù trong kho vẫn còn thanh đủ dài**: nếu thanh đó chỉ để lại phần dư trong khoảng không chấp nhận được, nó được giữ lại nguyên vẹn cho một đoạn khác khớp hơn ở lần chạy sau. Đây là lựa chọn nghiệp vụ có chủ đích — phần dư 30cm–3m không tái sử dụng ngay được mà cũng không đủ nhỏ để bỏ qua, nên doanh nghiệp coi việc bổ sung thanh nan đúng độ dài là cách xử lý đúng, thay vì phá một thanh đang dùng được cho nhu cầu khác.
 
 Điểm dễ hiểu nhầm nhất, cần nhấn lại: thứ tự **xử lý** trong hàng đợi luôn theo đúng ưu tiên `(reqd_delivery_date, ycsx, z_item)` — đoạn X ở bước "Lấy đoạn X ưu tiên cao nhất còn lại" luôn là đoạn đầu hàng đợi, không bao giờ bị bỏ qua để chờ ghép; khác với phạm vi **ghép nối** ở Mức 2 và Mức 3, chỉ áp dụng giữa các đoạn cùng nằm trong đợt xử lý hiện tại (đã giới hạn bởi bước "Xác định phạm vi đợt xử lý" ở đầu sơ đồ), không bao giờ ghép với đơn thuộc "nhóm 99" hay đợt xử lý sau. Ngoài ra, mỗi nhóm `slatMaterial` ở vòng lặp ngoài được xử lý độc lập với nhau — vì tồn kho (`InventoryBatch`) đã tách riêng theo `slatMaterial`, không có ràng buộc chéo giữa các nhóm.
 

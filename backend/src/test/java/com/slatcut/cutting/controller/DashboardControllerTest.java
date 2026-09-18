@@ -141,13 +141,19 @@ class DashboardControllerTest extends AbstractIntegrationTest {
     }
 
     /** 1 đơn 2m cắt từ phôi 2.5m, dư 0.5m thuộc khoảng 30cm-3m, tức "lãng phí" tính vào tỷ lệ phế. */
-    private CuttingPlan runWithHalfMeterWaste() {
+    /**
+     * Thanh 2500mm cắt đoạn 2250mm -> dư 250mm, dưới ngưỡng 30cm nên bị bỏ đi và tính vào phế liệu.
+     * Phải dùng phần dư loại BỎ ĐI chứ không phải loại lãng phí: thuật toán không còn sinh ra phần
+     * dư 30cm-3m nữa, nên kịch bản cũ (dư 500mm) giờ chỉ cho ra một đơn thiếu vật tư và không có
+     * dòng phế liệu nào để đo.
+     */
+    private CuttingPlan runWithQuarterMetreDiscardedRemainder() {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();
         SlatMaterial slatMaterial = persistSlatMaterial(SlatGroup.BOTTOM_BAR);
         persistBomItem(doorProduct, slatMaterial);
         persistInventoryBatch(slatMaterial, 2500, 1);
-        persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.250"));
         return cuttingPlanService.generate();
     }
 
@@ -198,8 +204,8 @@ class DashboardControllerTest extends AbstractIntegrationTest {
 
     @Test
     void getDashboard_afterTwoRuns_returnsTrendOldestFirstAndCumulativeTotals() throws Exception {
-        CuttingPlan first = runWithHalfMeterWaste();
-        CuttingPlan second = runWithHalfMeterWaste();
+        CuttingPlan first = runWithQuarterMetreDiscardedRemainder();
+        CuttingPlan second = runWithQuarterMetreDiscardedRemainder();
 
         // Lô của vật tư chưa có định mức nào dùng tới, không bị tiêu thụ, dùng để khoá KPI tồn kho.
         persistInventoryBatch(persistSlatMaterial(SlatGroup.MAIN_SLAT), 6000, 5);
@@ -210,12 +216,12 @@ class DashboardControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.wasteTrend[0].planId").value(first.getId()))
                 .andExpect(jsonPath("$.wasteTrend[1].planId").value(second.getId()))
                 .andExpect(jsonPath("$.wasteTrend[0].totalStockUsedM").value(2.50))
-                .andExpect(jsonPath("$.wasteTrend[0].totalWasteM").value(0.50))
-                .andExpect(jsonPath("$.wasteTrend[0].wasteRatioPercent").value(20.0))
+                .andExpect(jsonPath("$.wasteTrend[0].totalWasteM").value(0.25))
+                .andExpect(jsonPath("$.wasteTrend[0].wasteRatioPercent").value(10.0))
                 .andExpect(jsonPath("$.latestPlan.planId").value(second.getId()))
-                .andExpect(jsonPath("$.cumulativeWasteM").value(1.00))
+                .andExpect(jsonPath("$.cumulativeWasteM").value(0.50))
                 .andExpect(jsonPath("$.cumulativeStockUsedM").value(5.00))
-                .andExpect(jsonPath("$.cumulativeWasteRatioPercent").value(20.0))
+                .andExpect(jsonPath("$.cumulativeWasteRatioPercent").value(10.0))
                 // 2 lô đã bị cắt hết còn 0 thanh, chỉ lô chưa đụng tới mới được tính là "sẵn sàng".
                 .andExpect(jsonPath("$.readyBatchCount").value(1))
                 .andExpect(jsonPath("$.readyStickCount").value(5))
@@ -225,8 +231,8 @@ class DashboardControllerTest extends AbstractIntegrationTest {
     /**
      * {@code remainder_mm} là phần dư của MỖI phôi, mà 2 phôi giống hệt nhau bị gộp vào 1 dòng
      * detail ({@code stickCount=2}). Kịch bản RAIL dưới đây là case duy nhất phân biệt được "cộng
-     * theo số phôi" (đúng) với "cộng theo số dòng detail" (sai): bỏ trọng số stickCount sẽ ra 0.50m
-     * thay vì 1.00m. Đồng thời đối chiếu chéo với tổng phế cộng dồn, con số được tính từ CutRecord
+     * theo số phôi" (đúng) với "cộng theo số dòng detail" (sai): bỏ trọng số stickCount sẽ ra 0.20m
+     * thay vì 0.40m. Đồng thời đối chiếu chéo với tổng phế cộng dồn, con số được tính từ CutRecord
      * trước khi gộp dòng, tức bằng một đường đi hoàn toàn khác.
      */
     @Test
@@ -235,19 +241,21 @@ class DashboardControllerTest extends AbstractIntegrationTest {
         DoorProduct doorProduct = persistDoorProduct();
         SlatMaterial rail = persistSlatMaterial(SlatGroup.RAIL);
         persistRailBomItem(doorProduct, rail);
-        persistInventoryBatch(rail, 2500, 2);
+        // 2200mm cho đoạn 2000mm -> dư 200mm mỗi phôi, dưới ngưỡng 30cm nên được cắt và bỏ đi.
+        persistInventoryBatch(rail, 2200, 2);
         persistRailSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
 
         cuttingPlanService.generate();
 
         mockMvc.perform(get("/api/v1/dashboard").header("Authorization", "Bearer " + plannerToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.remainderBreakdown[?(@.remainderType == 'WASTE')].totalM").value(1.00))
+                .andExpect(jsonPath("$.remainderBreakdown[?(@.remainderType == 'DISCARDED')].totalM").value(0.40))
+                .andExpect(jsonPath("$.remainderBreakdown[?(@.remainderType == 'WASTE')].totalM").value(0.00))
                 .andExpect(jsonPath("$.remainderBreakdown[?(@.remainderType == 'RESTOCK')].totalM").value(0.00))
                 .andExpect(jsonPath("$.wasteByGroup.length()").value(1))
                 .andExpect(jsonPath("$.wasteByGroup[0].slatGroup").value("RAIL"))
-                .andExpect(jsonPath("$.wasteByGroup[0].totalM").value(1.00))
-                .andExpect(jsonPath("$.cumulativeWasteM").value(1.00))
-                .andExpect(jsonPath("$.cumulativeStockUsedM").value(5.00));
+                .andExpect(jsonPath("$.wasteByGroup[0].totalM").value(0.40))
+                .andExpect(jsonPath("$.cumulativeWasteM").value(0.40))
+                .andExpect(jsonPath("$.cumulativeStockUsedM").value(4.40));
     }
 }
