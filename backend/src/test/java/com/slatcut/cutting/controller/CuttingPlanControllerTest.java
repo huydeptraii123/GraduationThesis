@@ -164,8 +164,8 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void generate_withoutToken_isForbidden() throws Exception {
-        mockMvc.perform(post("/api/v1/cutting-plans/generate")).andExpect(status().isForbidden());
+    void generate_withoutToken_isUnauthorized() throws Exception {
+        mockMvc.perform(post("/api/v1/cutting-plans/generate")).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -231,8 +231,8 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void export_withoutToken_isForbidden() throws Exception {
-        mockMvc.perform(get("/api/v1/cutting-plans/{id}/export", 1L)).andExpect(status().isForbidden());
+    void export_withoutToken_isUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/cutting-plans/{id}/export", 1L)).andExpect(status().isUnauthorized());
     }
 
     @Test
