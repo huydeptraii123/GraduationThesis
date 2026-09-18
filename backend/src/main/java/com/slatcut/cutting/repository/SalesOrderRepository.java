@@ -37,4 +37,18 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
             ORDER BY so.reqdDeliveryDate ASC, so.ycsx ASC, so.item ASC
             """)
     List<SalesOrder> findUnprocessedInScope(@Param("cutoffDate") LocalDate cutoffDate, Pageable pageable);
+
+    /**
+     * Cùng điều kiện "chưa xử lý và trong hạn giao" với {@link #findUnprocessedInScope} nhưng KHÔNG
+     * giới hạn 70 đơn — dùng cho KPI tồn đọng ở trang chủ, nơi cần biết số đơn thật đang chờ chứ
+     * không phải số đơn lấy được trong 1 lần chạy. Sửa điều kiện ở 1 trong 2 query thì phải sửa cả
+     * hai.
+     */
+    @Query("""
+            SELECT COUNT(so) FROM SalesOrder so
+            WHERE so.reqdDeliveryDate <= :cutoffDate
+              AND NOT EXISTS (SELECT 1 FROM CuttingPlanDetailItem i WHERE i.salesOrder = so)
+              AND NOT EXISTS (SELECT 1 FROM ShortageRecord sr WHERE sr.salesOrder = so)
+            """)
+    long countUnprocessedInScope(@Param("cutoffDate") LocalDate cutoffDate);
 }
