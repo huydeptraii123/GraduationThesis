@@ -12,6 +12,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { extractErrorMessage } from '../api/apiError'
 import { useAuth } from '../features/auth/AuthContext'
+import { RoleRestrictionNotice } from '../components/RoleRestrictionNotice'
+import { canGenerateCuttingPlan } from '../features/auth/permissions'
 import { GenerateCuttingPlanModal } from '../features/cutting-plans/GenerateCuttingPlanModal'
 import type { CuttingPlanStatus } from '../features/cutting-plans/types'
 import { WasteStatsSection } from '../features/dashboard/WasteStatsSection'
@@ -51,7 +53,7 @@ export function HomePage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   // Chỉ PLANNER chạy được thuật toán, khớp @PreAuthorize của POST /cutting-plans/generate.
-  const canGenerate = user?.role === 'PLANNER'
+  const canGenerate = canGenerateCuttingPlan(user)
 
   const [data, setData] = useState<DashboardResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -110,7 +112,13 @@ export function HomePage() {
         </Space>
       </Card>
 
-      {loadError && <Alert type="error" showIcon style={{ marginTop: 16 }} message={loadError} />}
+      {!canGenerate && (
+        <div style={{ marginTop: 16 }}>
+          <RoleRestrictionNotice requiredRole="PLANNER" action="sinh phương án cắt mới" />
+        </div>
+      )}
+
+      {loadError && <Alert type="error" showIcon style={{ marginTop: 16 }} title={loadError} />}
 
       <Spin spinning={loading}>
         <Row gutter={16} style={{ marginTop: 16 }}>

@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as authApi from './authApi'
+import { parseRole, type Role } from './permissions'
 import { clearStoredAuth, getStoredAuth, setStoredAuth } from './authStorage'
 
 interface AuthUser {
   username: string
-  role: string
+  /** Backend trả về chuỗi; thu hẹp về union ngay tại biên để mọi nơi tra bảng quyền được kiểm kiểu. */
+  role: Role
 }
 
 interface AuthContextValue {
@@ -18,7 +20,17 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => {
     const stored = getStoredAuth()
-    return stored ? { username: stored.username, role: stored.role } : null
+    if (!stored) {
+      return null
+    }
+    // Phiên cũ trong localStorage có thể mang mã vai trò không còn tồn tại — coi như chưa đăng nhập
+    // thay vì dựng một người dùng có vai trò vô nghĩa.
+    const role = parseRole(stored.role)
+    if (!role) {
+      clearStoredAuth()
+      return null
+    }
+    return { username: stored.username, role }
   })
   const logoutTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -44,9 +56,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (username: string, password: string) => {
       const response = await authApi.login({ username, password })
+      const role = parseRole(response.role)
+      if (!role) {
+        throw new Error(`Tài khoản đang mang vai trò không được hỗ trợ (${response.role}).`)
+      }
       const expiresAt = Date.now() + response.expiresInMs
-      setStoredAuth({ token: response.token, username: response.username, role: response.role, expiresAt })
-      setUser({ username: response.username, role: response.role })
+      setStoredAuth({ token: response.token, username: response.username, role, expiresAt })
+      setUser({ username: response.username, role })
       scheduleAutoLogout(expiresAt)
     },
     [scheduleAutoLogout],

@@ -2,6 +2,8 @@ import { Alert, Card, Space, Statistic, Tabs, Typography } from 'antd'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
 import { useAuth } from '../auth/AuthContext'
+import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
+import { canEditInventoryBatch, canEditSlatMaterial } from '../auth/permissions'
 import { InventoryBatchTable } from './InventoryBatchTable'
 import { SlatMaterialTable } from './SlatMaterialTable'
 import { listBatches, listMaterials } from './inventoryApi'
@@ -9,8 +11,10 @@ import type { InventoryBatchResponse, SlatMaterialResponse } from './types'
 
 export function InventoryPage() {
   const { user } = useAuth()
-  // Nghiệp vụ tồn kho thuộc về PLANNER; ADMIN vẫn xem được nhưng không thấy các nút ghi.
-  const canEdit = user?.role === 'PLANNER'
+  // Hai tab, hai luật quyền khác nhau: lô tồn kho là vận hành (PLANNER), còn danh mục loại thanh
+  // nan là dữ liệu nền tảng nên ADMIN cũng sửa được.
+  const canEditBatches = canEditInventoryBatch(user)
+  const canEditMaterials = canEditSlatMaterial(user)
 
   const [batches, setBatches] = useState<InventoryBatchResponse[]>([])
   const [materials, setMaterials] = useState<SlatMaterialResponse[]>([])
@@ -100,13 +104,18 @@ export function InventoryPage() {
             key: 'batches',
             label: `Tồn kho theo lô (${batches.length})`,
             children: (
-              <InventoryBatchTable
-                batches={batches}
-                materials={materials}
-                canEdit={canEdit}
-                loading={loading}
-                onChanged={() => void reload()}
-              />
+              <>
+                {!canEditBatches && (
+                  <RoleRestrictionNotice requiredRole="PLANNER" action="thêm/sửa/xóa lô tồn kho" />
+                )}
+                <InventoryBatchTable
+                  batches={batches}
+                  materials={materials}
+                  canEdit={canEditBatches}
+                  loading={loading}
+                  onChanged={() => void reload()}
+                />
+              </>
             ),
           },
           {
@@ -115,7 +124,7 @@ export function InventoryPage() {
             children: (
               <SlatMaterialTable
                 materials={materials}
-                canEdit={canEdit}
+                canEdit={canEditMaterials}
                 loading={loading}
                 onChanged={() => void reload()}
               />

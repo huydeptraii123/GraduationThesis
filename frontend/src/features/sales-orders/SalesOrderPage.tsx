@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
 import type { DoorProductResponse } from '../bom/types'
 import { useAuth } from '../auth/AuthContext'
+import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
+import { canEditSalesOrder, canImportSalesOrder } from '../auth/permissions'
 import { SalesOrderTable } from './SalesOrderTable'
 import { listCustomers, listDoorProducts, listSalesOrders } from './salesOrdersApi'
 import type { CustomerResponse, SalesOrderResponse } from './types'
@@ -10,9 +12,9 @@ import type { CustomerResponse, SalesOrderResponse } from './types'
 export function SalesOrderPage() {
   const { user } = useAuth()
   // Nhóm 1 (requirements-functional.md): cả ADMIN lẫn PLANNER đều thao tác đơn hàng thủ công.
-  const canEdit = user?.role === 'ADMIN' || user?.role === 'PLANNER'
+  const canEdit = canEditSalesOrder(user)
   // Nhập Excel hàng loạt chỉ PLANNER, đúng SalesOrderImportController.
-  const canImport = user?.role === 'PLANNER'
+  const canImport = canImportSalesOrder(user)
 
   const [salesOrders, setSalesOrders] = useState<SalesOrderResponse[]>([])
   const [customers, setCustomers] = useState<CustomerResponse[]>([])
@@ -61,6 +63,8 @@ export function SalesOrderPage() {
         Đơn hàng
       </Typography.Title>
       <Typography.Text type="secondary">Danh sách đơn hàng khách, tạo thủ công hoặc nhập từ Excel SAP.</Typography.Text>
+
+      {!canImport && <RoleRestrictionNotice requiredRole="PLANNER" action="nhập đơn hàng hàng loạt từ Excel" />}
 
       {loadError && <Alert type="error" showIcon style={{ marginTop: 16 }} title={loadError} />}
 
