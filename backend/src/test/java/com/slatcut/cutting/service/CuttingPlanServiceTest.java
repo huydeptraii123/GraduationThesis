@@ -451,4 +451,60 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         assertThat(shortages).hasSize(1);
         assertThat(shortages.get(0).getSalesOrder().getId()).isEqualTo(secondOrder.getId());
     }
+
+    /**
+     * Mẫu số của "tỷ lệ phế" là tồn kho THỰC TIÊU HAO, không phải tổng độ dài mọi phôi đã qua máy
+     * cắt. Cùng kịch bản 8m → dư 6m nhập lại kho → 6m lại được cắt tiếp trong chính lượt đó: chỉ
+     * đúng 4m rời kho vĩnh viễn (8m ra, 4m nằm lại), nên mẫu số phải là 4.00m. Công thức cũ cộng
+     * thẳng 8000 + 6000 = 14.00m, đếm hai lần phần 6m trung gian và làm tỷ lệ phế thấp giả tạo.
+     */
+    @Test
+    void generate_totalStockUsedM_excludesRemainderRestockedToInventory() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 8000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        CuttingPlan plan = service.generate();
+
+        assertThat(plan.getTotalStockUsedM())
+                .as("8m ra kho, 4m nhập lại → chỉ 4m thực tiêu hao")
+                .isEqualByComparingTo(new BigDecimal("4.00"));
+        assertThat(plan.getTotalWasteM()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    /**
+     * Khoá chung một định nghĩa mẫu số cho cả tầng service lẫn migration tính lại dữ liệu cũ:
+     * {@code Σ stickCount × (sourceLengthMm − remainderMm nếu RESTOCK)}. Kịch bản có đủ cả hai
+     * nhánh — 1 loại thanh dư 0.5m (lãng phí, tính vào mẫu số) và 1 loại thanh dư 4m (nhập lại kho,
+     * KHÔNG tính vào mẫu số) — nên nếu bỏ nhánh RESTOCK thì assertion sai ngay.
+     */
+    @Test
+    void generate_totalStockUsedM_matchesRecomputeFormulaOverDetailRows() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial wasteMaterial = persistSlatMaterial();
+        SlatMaterial restockMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, wasteMaterial);
+        persistBomItem(doorProduct, restockMaterial);
+        persistInventoryBatch(wasteMaterial, 2500, 1);
+        persistInventoryBatch(restockMaterial, 6000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        CuttingPlan plan = service.generate();
+
+        int recomputedMm = cuttingPlanDetailRepository.findByCuttingPlan_Id(plan.getId()).stream()
+                .mapToInt(detail -> detail.getStickCount()
+                        * (detail.getSourceLengthMm()
+                                - (detail.getRemainderType() == RemainderType.RESTOCK ? detail.getRemainderMm() : 0)))
+                .sum();
+        assertThat(recomputedMm).isEqualTo(4500);
+        assertThat(plan.getTotalStockUsedM())
+                .as("2.5m tiêu hao trọn + (6m − 4m nhập lại kho)")
+                .isEqualByComparingTo(new BigDecimal("4.50"));
+        assertThat(plan.getTotalWasteM()).isEqualByComparingTo(new BigDecimal("0.50"));
+    }
 }
