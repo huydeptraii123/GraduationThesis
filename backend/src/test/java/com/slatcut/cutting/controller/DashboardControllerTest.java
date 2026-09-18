@@ -172,8 +172,8 @@ class DashboardControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void getDashboard_withoutToken_isForbidden() throws Exception {
-        mockMvc.perform(get("/api/v1/dashboard")).andExpect(status().isForbidden());
+    void getDashboard_withoutToken_isUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/dashboard")).andExpect(status().isUnauthorized());
     }
 
     @Test

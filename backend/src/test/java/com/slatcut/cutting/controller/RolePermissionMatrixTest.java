@@ -185,17 +185,17 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Không có token thì mọi endpoint đều bị chặn. Backend hiện trả 403 thay vì 401 (chưa có
-     * {@code AuthenticationEntryPoint} riêng trong {@code SecurityConfig}) — test khóa đúng hành vi
-     * đang chạy, việc đổi sang 401 nằm ngoài phạm vi task này.
+     * Không có token thì mọi endpoint đều trả 401 (chưa xác thực), KHÁC với 403 của trường hợp đã
+     * đăng nhập nhưng sai vai trò. Phân biệt được hai mã này là điều kiện để client tự xử lý phiên
+     * hết hạn — interceptor ở frontend bắt đúng 401 để đưa người dùng về màn đăng nhập.
      */
     @ParameterizedTest(name = "không token → {0}")
     @MethodSource("everyEndpoint")
-    void endpoint_withoutToken_isRejected(String label, Endpoint endpoint) throws Exception {
+    void endpoint_withoutToken_isUnauthorized(String label, Endpoint endpoint) throws Exception {
         mockMvc.perform(endpoint.request().get())
                 .andExpect(result -> assertThat(result.getResponse().getStatus())
-                        .as("%s phải bị chặn khi không có token", label)
-                        .isEqualTo(HttpStatus.FORBIDDEN.value()));
+                        .as("%s phải trả 401 khi không có token", label)
+                        .isEqualTo(HttpStatus.UNAUTHORIZED.value()));
     }
 
     /**

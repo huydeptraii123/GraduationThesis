@@ -1,5 +1,6 @@
 package com.slatcut.cutting.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -32,6 +33,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/login", "/error").permitAll()
                         .anyRequest().authenticated())
+                // Chưa xác thực (thiếu/hết/sai token) phải là 401, không phải 403: mặc định của
+                // Spring Security trả 403 cho cả hai nên client không phân biệt được "cần đăng nhập
+                // lại" với "đăng nhập rồi nhưng sai vai trò". Đã xác thực mà sai vai trò vẫn giữ 403
+                // qua accessDeniedHandler mặc định.
+                .exceptionHandling(exception -> exception.authenticationEntryPoint(
+                        (request, response, authException) ->
+                                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Cần đăng nhập")))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
