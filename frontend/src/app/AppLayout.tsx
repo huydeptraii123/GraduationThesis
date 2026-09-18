@@ -4,12 +4,20 @@ import {
   FileTextOutlined,
   HomeOutlined,
   ScissorOutlined,
+  TeamOutlined,
 } from '@ant-design/icons'
 import { Button, Layout, Menu, Space, Tag, Typography } from 'antd'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/AuthContext'
-import { ROLE_COLOR, ROLE_SHORT_LABEL, type Role } from '../features/auth/permissions'
+import { ChangePasswordModal } from '../features/auth/ChangePasswordModal'
+import {
+  ROLE_COLOR,
+  ROLE_SHORT_LABEL,
+  canManageUsers,
+  type Role,
+  type RoleHolder,
+} from '../features/auth/permissions'
 
 const { Header, Content, Sider } = Layout
 
@@ -25,6 +33,11 @@ const MENU_ITEMS: {
   editorRole?: Role
   /** Ghi đè chú thích khi màn hình có nhiều hơn 1 luật quyền, để nhãn rút gọn không nói sai. */
   editorHint?: string
+  /**
+   * Điều kiện hiện mục. Bỏ trống = hiện với mọi vai trò (mặc định, vì GET của các module nghiệp vụ
+   * đều mở). Nhận thẳng vị từ từ `permissions.ts` để luật quyền vẫn nằm đúng một chỗ.
+   */
+  visible?: (user: RoleHolder | null) => boolean
 }[] = [
   { key: '/', icon: <HomeOutlined />, label: 'Trang chủ' },
   { key: '/sales-orders', icon: <FileTextOutlined />, label: 'Đơn hàng' },
@@ -42,6 +55,16 @@ const MENU_ITEMS: {
     label: 'Phương án cắt',
     editorRole: 'PLANNER',
     editorHint: 'Chỉ PLANNER sinh được phương án cắt mới; cả hai vai trò đều xem và xuất Excel được.',
+  },
+  // Mục duy nhất bị ẩn hẳn theo vai trò, không chỉ khóa nút ghi: endpoint danh sách tài khoản là
+  // ADMIN-only nên PLANNER vào cũng chỉ nhận về một trang trống kèm lỗi quyền.
+  {
+    key: '/users',
+    icon: <TeamOutlined />,
+    label: 'Người dùng',
+    editorRole: 'ADMIN',
+    editorHint: 'Chỉ ADMIN xem và quản lý được tài khoản người dùng.',
+    visible: canManageUsers,
   },
 ]
 
@@ -72,6 +95,9 @@ export function AppLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false)
+
+  const visibleMenuItems = MENU_ITEMS.filter((item) => item.visible?.(user) ?? true)
 
   function handleLogout() {
     logout()
@@ -87,6 +113,7 @@ export function AppLayout() {
         <Space>
           <Typography.Text style={{ color: '#fff' }}>{user?.username}</Typography.Text>
           {user && <Tag color={ROLE_COLOR[user.role]}>{user.role}</Tag>}
+          <Button onClick={() => setChangePasswordOpen(true)}>Đổi mật khẩu</Button>
           <Button onClick={handleLogout}>Đăng xuất</Button>
         </Space>
       </Header>
@@ -95,8 +122,10 @@ export function AppLayout() {
           <Menu
             mode="inline"
             style={{ height: '100%', borderInlineEnd: 0 }}
-            selectedKeys={MENU_ITEMS.filter((item) => isActive(location.pathname, item.key)).map((item) => item.key)}
-            items={MENU_ITEMS.map((item) => ({ key: item.key, icon: item.icon, label: menuLabel(item) }))}
+            selectedKeys={visibleMenuItems
+              .filter((item) => isActive(location.pathname, item.key))
+              .map((item) => item.key)}
+            items={visibleMenuItems.map((item) => ({ key: item.key, icon: item.icon, label: menuLabel(item) }))}
             onClick={({ key }) => navigate(key)}
           />
         </Sider>
@@ -104,6 +133,8 @@ export function AppLayout() {
           <Outlet />
         </Content>
       </Layout>
+
+      <ChangePasswordModal open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} />
     </Layout>
   )
 }
