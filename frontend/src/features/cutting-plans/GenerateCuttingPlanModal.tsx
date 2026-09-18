@@ -79,7 +79,7 @@ export function GenerateCuttingPlanModal({ open, onClose, onGenerated }: Props) 
         t+3), tối đa 70 đơn/lần chạy. Đơn ngoài phạm vi sẽ được xử lý ở lần chạy sau.
       </Typography.Paragraph>
 
-      {previewError && <Alert type="error" showIcon message={previewError} style={{ marginBottom: 12 }} />}
+      {previewError && <Alert type="error" showIcon title={previewError} style={{ marginBottom: 12 }} />}
 
       <Spin spinning={previewLoading}>
         <div style={{ background: '#fafafa', padding: 12, borderRadius: 4, lineHeight: 2 }}>

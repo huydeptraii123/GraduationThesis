@@ -69,6 +69,7 @@ public class DashboardService {
 
         return new DashboardResponse(
                 cuttingPlanService.countPendingInScope(),
+                cuttingPlanService.countPendingMissingBom(),
                 cuttingPlanService.currentScopeCutoffDate(),
                 inventoryBatchRepository.countBySoThanhGreaterThan(0),
                 inventoryBatchRepository.sumAvailableSticks(),
