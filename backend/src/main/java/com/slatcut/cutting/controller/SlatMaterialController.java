@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,6 +17,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Danh mục loại thanh nan là dữ liệu nền tảng dùng chung, nên ghi mở cho cả ADMIN lẫn PLANNER —
+ * khác lô tồn kho (chỉ PLANNER). Lý do: nhóm vật tư (slatGroup) trên bảng này điều khiển trực tiếp
+ * việc sinh nhu cầu cắt, và khi một mã bị tạo nhầm với nhóm OTHER lúc nhập tồn kho, ADMIN — người
+ * sở hữu định mức BOM — phải tự sửa lại được mà không phải nhờ PLANNER.
+ */
 @RestController
 @RequestMapping("/api/v1/slat-materials")
 public class SlatMaterialController {
@@ -37,16 +44,19 @@ public class SlatMaterialController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN','PLANNER')")
     public ResponseEntity<SlatMaterialResponse> create(@Valid @RequestBody SlatMaterialRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(request));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','PLANNER')")
     public SlatMaterialResponse update(@PathVariable Long id, @Valid @RequestBody SlatMaterialRequest request) {
         return service.update(id, request);
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','PLANNER')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         service.delete(id);
         return ResponseEntity.noContent().build();

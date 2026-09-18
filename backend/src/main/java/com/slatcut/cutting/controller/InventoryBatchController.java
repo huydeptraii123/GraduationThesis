@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,6 +17,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Ghi tồn kho là tác vụ vận hành hằng ngày của PLANNER (docs/requirements-functional.md Nhóm 1);
+ * ADMIN chỉ có thêm quyền trên định mức BOM, tài khoản người dùng và thao tác thủ công trên đơn hàng.
+ */
 @RestController
 @RequestMapping("/api/v1/inventory-batches")
 public class InventoryBatchController {
@@ -37,16 +42,19 @@ public class InventoryBatchController {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('PLANNER')")
     public ResponseEntity<InventoryBatchResponse> create(@Valid @RequestBody InventoryBatchRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(request));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('PLANNER')")
     public InventoryBatchResponse update(@PathVariable Long id, @Valid @RequestBody InventoryBatchRequest request) {
         return service.update(id, request);
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('PLANNER')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         service.delete(id);
         return ResponseEntity.noContent().build();
