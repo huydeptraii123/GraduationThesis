@@ -82,3 +82,14 @@ export function canImportSalesOrder(user: RoleHolder | null | undefined): boolea
 export function canGenerateCuttingPlan(user: RoleHolder | null | undefined): boolean {
   return hasRole(user, 'PLANNER')
 }
+
+/**
+ * Quản lý tài khoản người dùng: `@PreAuthorize("hasRole('ADMIN')")` trên MỌI phương thức của
+ * `UserController`, kể cả GET.
+ *
+ * Đây là màn duy nhất mà cả quyền XEM cũng bị giới hạn — các module nghiệp vụ khác mở GET cho cả hai
+ * vai trò vì đó là dữ liệu cả hai cùng cần để làm việc, còn danh sách tài khoản thì không.
+ */
+export function canManageUsers(user: RoleHolder | null | undefined): boolean {
+  return hasRole(user, 'ADMIN')
+}
