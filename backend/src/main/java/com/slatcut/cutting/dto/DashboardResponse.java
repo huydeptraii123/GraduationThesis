@@ -10,6 +10,8 @@ import java.util.List;
  */
 public record DashboardResponse(
         long pendingOrderCount,
+        /** Đơn trong hạn giao bị bỏ qua vì mẫu cửa chưa có định mức — cần ADMIN cấu hình, không tự hết. */
+        long ordersMissingBomCount,
         LocalDate scopeCutoffDate,
         long readyBatchCount,
         long readyStickCount,

@@ -9,7 +9,7 @@ import {
 import { Alert, Button, Card, Col, Row, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { extractErrorMessage } from '../api/apiError'
 import { useAuth } from '../features/auth/AuthContext'
 import { RoleRestrictionNotice } from '../components/RoleRestrictionNotice'
@@ -111,6 +111,21 @@ export function HomePage() {
           )}
         </Space>
       </Card>
+
+      {data != null && data.ordersMissingBomCount > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginTop: 16 }}
+          title={`${data.ordersMissingBomCount} đơn đang bị bỏ qua vì mẫu cửa chưa có định mức BOM.`}
+          description={
+            <span>
+              Thuật toán không sinh được nhu cầu cắt cho những đơn này. Cần tài khoản Quản trị (ADMIN) khai báo định
+              mức cho mẫu cửa tương ứng tại <Link to="/bom">Định mức BOM</Link>.
+            </span>
+          }
+        />
+      )}
 
       {!canGenerate && (
         <div style={{ marginTop: 16 }}>

@@ -25,6 +25,8 @@ export interface SlatGroupWasteResponse {
 
 export interface DashboardResponse {
   pendingOrderCount: number
+  /** Đơn bị bỏ qua vì mẫu cửa chưa có định mức — cần ADMIN cấu hình. */
+  ordersMissingBomCount: number
   scopeCutoffDate: string
   readyBatchCount: number
   readyStickCount: number
