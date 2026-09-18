@@ -18,7 +18,10 @@ import org.springframework.stereotype.Service;
  * (reqdDeliveryDate, ycsx, item) — không bao giờ trì hoãn để chờ ghép. Với mỗi đoạn X, thử tuần tự
  * Mức 1 (khớp gần đúng) → Mức 2 (bội số) → Mức 3 (ghép đúng 2 đoạn — giới hạn không ghép nhiều hơn,
  * tìm tổ hợp tổng quát trên cả hàng đợi là bài toán NP-hard, không khả thi ở quy mô khóa luận) →
- * Mức 4 (best-fit, tái dùng ngay phần dư > 3m trong cùng lượt chạy).
+ * Mức 4 (thanh ngắn nhất còn để lại phần dư > 3m, nhập lại kho và tái dùng ngay trong cùng lượt
+ * chạy). Hết cả 4 mức thì báo thiếu vật tư — thuật toán KHÔNG BAO GIỜ tự tạo ra phần dư nằm trong
+ * khoảng 30cm–3m, vì đó là phần doanh nghiệp không chấp nhận (không đủ nhỏ để bỏ, không đủ dài để
+ * tái sử dụng).
  */
 @Service
 public class BestFitDecreasingStrategy implements CuttingStrategy {
@@ -80,16 +83,19 @@ public class BestFitDecreasingStrategy implements CuttingStrategy {
                 continue;
             }
 
-            Optional<Integer> bestFit = pool.bestFit(material, x.cutLengthMm());
-            if (bestFit.isPresent()) {
-                CutRecord cut = buildCutRecord(material, bestFit.get(), List.of(x));
-                if (cut.remainderCategory() == RemainderCategory.RESTOCK) {
-                    // Tái dùng ngay trong cùng lượt chạy — các đoạn xử lý sau (Mức 1-4) thấy được
-                    // phần dư này như tồn kho thật, không phải chờ tới lần chạy kế tiếp.
-                    pool.restock(material, cut.remainderMm());
-                }
+            Optional<Integer> restockFit = pool.findRestockFit(material, x.cutLengthMm());
+            if (restockFit.isPresent()) {
+                CutRecord cut = buildCutRecord(material, restockFit.get(), List.of(x));
+                // Tái dùng ngay trong cùng lượt chạy — các đoạn xử lý sau (Mức 1-4) thấy được phần
+                // dư này như tồn kho thật, không phải chờ tới lần chạy kế tiếp. Mức 4 chỉ nhận
+                // thanh để lại phần dư > 3m nên nhánh này luôn là RESTOCK, không cần kiểm lại.
+                pool.restock(material, cut.remainderMm());
                 cuts.add(cut);
             } else {
+                // Hết cả 4 mức thì báo thiếu vật tư, KHÔNG hạ chuẩn để cắt bừa. Kho vẫn có thể còn
+                // thanh đủ dài cho đoạn này, nhưng nếu nó chỉ để lại phần dư 30cm–3m thì cắt vào
+                // chính là tạo ra thứ doanh nghiệp muốn tránh — thà báo thiếu để bổ sung vật tư
+                // đúng độ dài còn hơn phá một thanh đang dùng được cho đoạn khác.
                 shortages.add(new ShortageEntry(material, x));
             }
         }

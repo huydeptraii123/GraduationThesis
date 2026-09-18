@@ -61,17 +61,19 @@ class BestFitDecreasingStrategyTest {
     }
 
     @Test
-    void computePlan_remainderInWasteRange_classifiedAsWaste() {
+    void computePlan_onlyStockLeavingWasteRemainder_recordsShortageAndLeavesStockUntouched() {
         SlatMaterial material = slatMaterial(2);
-        // 4000 - 3200 = 800mm, nằm trong 300-3000mm -> WASTE (Mức 1 từ chối vì dư >= 300mm).
+        // Thanh 4000mm ĐỦ DÀI để cắt 3200mm, nhưng dư 800mm rơi vào vùng 30cm-3m mà doanh nghiệp
+        // không chấp nhận -> không mức nào nhận, báo thiếu vật tư. Thanh phải còn nguyên trong kho
+        // để dành cho một đoạn khác khớp hơn.
         InventoryPool pool = new InventoryPool(List.of(batch(material, 4000, 1)));
 
         CuttingPlanResult result = strategy.computePlan(List.of(demand(material, 3200, 1)), pool);
 
-        assertThat(result.cuts()).hasSize(1);
-        CutRecord cut = result.cuts().get(0);
-        assertThat(cut.remainderMm()).isEqualTo(800);
-        assertThat(cut.remainderCategory()).isEqualTo(RemainderCategory.WASTE);
+        assertThat(result.cuts()).isEmpty();
+        assertThat(result.shortages()).hasSize(1);
+        assertThat(result.shortages().get(0).demand().cutLengthMm()).isEqualTo(3200);
+        assertThat(pool.remainingCount(2L, 4000)).isEqualTo(1);
     }
 
     @Test
@@ -103,9 +105,11 @@ class BestFitDecreasingStrategyTest {
     @Test
     void computePlan_processesQueueInPriorityOrder_earlierDeliveryDateProcessedFirst() {
         SlatMaterial material = slatMaterial(5);
-        // 2 thanh 6000mm; đơn A giao sớm hơn (20/09) phải được xử lý trước đơn B (25/09), bất kể
-        // thứ tự truyền vào danh sách demands hay độ dài đoạn cần cắt.
-        InventoryPool pool = new InventoryPool(List.of(batch(material, 6000, 2)));
+        // Đơn A giao sớm hơn (20/09) phải được xử lý trước đơn B (25/09), bất kể thứ tự truyền vào.
+        // Hai thanh KHÁC độ dài để kết quả phân biệt được thứ tự: ai chạy trước lấy thanh 10000mm
+        // (ngắn nhất còn để dư > 3m), người sau phải lấy thanh 12000mm. Dùng 2 thanh giống hệt nhau
+        // thì đảo thứ tự vẫn ra cùng một tập kết quả, test sẽ xanh mà không chứng minh được gì.
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 10000, 1), batch(material, 12000, 1)));
         CuttingDemand orderB = demand(material, 5000, 1, LocalDate.of(2026, 9, 25), "HY90002", 1);
         CuttingDemand orderA = demand(material, 3000, 1, LocalDate.of(2026, 9, 20), "HY90001", 1);
 
@@ -113,8 +117,11 @@ class BestFitDecreasingStrategyTest {
 
         assertThat(result.shortages()).isEmpty();
         assertThat(result.cuts()).hasSize(2);
-        assertThat(result.cuts()).extracting(CutRecord::remainderMm).containsExactlyInAnyOrder(1000, 3000);
-        assertThat(pool.remainingCount(5L, 6000)).isEqualTo(0);
+        CutRecord cutForA = result.cuts().stream()
+                .filter(c -> c.pieces().get(0).ycsx().equals("HY90001"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(cutForA.stockLengthMm()).isEqualTo(10000);
     }
 
     @Test
@@ -149,19 +156,22 @@ class BestFitDecreasingStrategyTest {
     }
 
     @Test
-    void computePlan_multipleOfSameLength_notEnoughPendingUnitsFallsThroughToBestFit() {
+    void computePlan_multipleOfSameLength_notEnoughPendingUnitsFallsThroughToLevel4() {
         SlatMaterial material = slatMaterial(8);
-        // Chỉ có 1 đoạn 1500mm (không có đoạn thứ 2 cùng độ dài đang chờ) dù thanh 3000mm đúng
-        // bội số 2 lần -> Mức 2 từ chối (thiếu đoạn để ghép), rơi xuống Mức 4 (dư 1500mm -> WASTE).
-        InventoryPool pool = new InventoryPool(List.of(batch(material, 3000, 1)));
+        // Chỉ có 1 đoạn 1500mm (không có đoạn thứ 2 cùng độ dài đang chờ) dù thanh 3000mm đúng bội
+        // số 2 lần -> Mức 2 từ chối vì thiếu đoạn để ghép. Mức 4 cũng KHÔNG lấy thanh 3000mm đó
+        // (dư 1500mm là lãng phí) mà đi tiếp tới thanh 5000mm, để lại dư 3500mm nhập kho được.
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 3000, 1), batch(material, 5000, 1)));
 
         CuttingPlanResult result = strategy.computePlan(List.of(demand(material, 1500, 1)), pool);
 
         assertThat(result.cuts()).hasSize(1);
         CutRecord cut = result.cuts().get(0);
         assertThat(cut.pieces()).hasSize(1);
-        assertThat(cut.remainderMm()).isEqualTo(1500);
-        assertThat(cut.remainderCategory()).isEqualTo(RemainderCategory.WASTE);
+        assertThat(cut.stockLengthMm()).isEqualTo(5000);
+        assertThat(cut.remainderMm()).isEqualTo(3500);
+        assertThat(cut.remainderCategory()).isEqualTo(RemainderCategory.RESTOCK);
+        assertThat(pool.remainingCount(8L, 3000)).isEqualTo(1);
     }
 
     @Test
@@ -184,18 +194,17 @@ class BestFitDecreasingStrategyTest {
     }
 
     @Test
-    void computePlan_noCombinationPartner_fallsThroughToBestFit() {
+    void computePlan_noCombinationPartnerAndStockWouldLeaveWaste_recordsShortage() {
         SlatMaterial material = slatMaterial(10);
-        // Chỉ 1 đoạn duy nhất, không có đối tác nào để ghép Mức 3 -> rơi xuống Mức 4.
+        // Chỉ 1 đoạn duy nhất, không có đối tác nào để ghép Mức 3 -> rơi xuống Mức 4; nhưng thanh
+        // 5000mm chỉ để lại 2000mm nên Mức 4 cũng từ chối, kết quả là thiếu vật tư.
         InventoryPool pool = new InventoryPool(List.of(batch(material, 5000, 1)));
 
         CuttingPlanResult result = strategy.computePlan(List.of(demand(material, 3000, 1)), pool);
 
-        assertThat(result.cuts()).hasSize(1);
-        CutRecord cut = result.cuts().get(0);
-        assertThat(cut.pieces()).hasSize(1);
-        assertThat(cut.remainderMm()).isEqualTo(2000);
-        assertThat(cut.remainderCategory()).isEqualTo(RemainderCategory.WASTE);
+        assertThat(result.cuts()).isEmpty();
+        assertThat(result.shortages()).hasSize(1);
+        assertThat(pool.remainingCount(10L, 5000)).isEqualTo(1);
     }
 
     @Test
@@ -233,16 +242,16 @@ class BestFitDecreasingStrategyTest {
     @Test
     void computePlan_restocksRemainderAboveThreeMeters_reusedByLaterOrderInSameRun() {
         SlatMaterial material = slatMaterial(13);
-        // Kho CHỈ có đúng 1 thanh 10000mm — không có thanh nào khác. Đơn X (giao trước) cắt
-        // 1000mm -> dư 9000mm (RESTOCK, >3m) được nhập lại pool ngay. Đơn Y (giao sau) cần
-        // 8600mm: không khớp Mức 1-3 với thanh 10000mm gốc (chọn số để không vô tình ghép được
-        // Mức 3 với X — 1000+8600=9600, dư so với 10000 là 400mm, không đủ điều kiện "dư<30cm"),
-        // nên khi tới lượt Y, thanh 10000mm gốc đã bị X tiêu thụ hết — nếu KHÔNG tái dùng phần dư
-        // 9000mm vừa nhập kho thì Y chắc chắn thiếu vật tư; ngược lại Y cắt được từ chính thanh
-        // 9000mm đó (độ dài này chưa từng tồn tại trong tồn kho gốc) chứng minh cơ chế tái dùng.
+        // Kho CHỈ có đúng 1 thanh 10000mm — không có thanh nào khác. Đơn X (giao trước) cắt 1000mm
+        // qua Mức 4 -> dư 9000mm (> 3m) được nhập lại pool ngay. Đơn Y (giao sau) cần 5000mm:
+        // Mức 3 không ghép được với X (1000+5000=6000, dư 4000mm so với thanh 10000mm, quá xa
+        // ngưỡng "dư < 30cm"), và tới lượt Y thì thanh 10000mm gốc đã bị X tiêu thụ hết — nếu
+        // KHÔNG tái dùng phần dư 9000mm vừa nhập kho thì Y chắc chắn thiếu vật tư. Y cắt được từ
+        // chính thanh 9000mm đó (độ dài chưa từng tồn tại trong tồn kho gốc) là bằng chứng của cơ
+        // chế tái dùng.
         InventoryPool pool = new InventoryPool(List.of(batch(material, 10000, 1)));
         CuttingDemand orderX = demand(material, 1000, 1, LocalDate.of(2026, 9, 10), "HY90001", 1);
-        CuttingDemand orderY = demand(material, 8600, 1, LocalDate.of(2026, 9, 15), "HY90002", 1);
+        CuttingDemand orderY = demand(material, 5000, 1, LocalDate.of(2026, 9, 15), "HY90002", 1);
 
         CuttingPlanResult result = strategy.computePlan(List.of(orderX, orderY), pool);
 
@@ -253,39 +262,51 @@ class BestFitDecreasingStrategyTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(cutForY.stockLengthMm()).isEqualTo(9000);
-        assertThat(cutForY.remainderMm()).isEqualTo(400);
-        assertThat(cutForY.remainderCategory()).isEqualTo(RemainderCategory.WASTE);
+        assertThat(cutForY.remainderMm()).isEqualTo(4000);
+        assertThat(cutForY.remainderCategory()).isEqualTo(RemainderCategory.RESTOCK);
     }
 
     @Test
-    void computePlan_remainderExactlyAtDiscardThreshold_rejectedByNearFitClassifiedWaste() {
+    void computePlan_remainderExactlyAtDiscardThreshold_rejectedByNearFitThenBecomesShortage() {
         SlatMaterial material = slatMaterial(14);
-        // 3300 - 3000 = 300mm, đúng bằng ngưỡng -> Mức 1 từ chối (điều kiện là "< 300mm"), rơi
-        // xuống Mức 4, phân loại WASTE (không phải DISCARDED).
+        // 3300 - 3000 = 300mm, đúng bằng ngưỡng -> Mức 1 từ chối (điều kiện là "< 300mm"). Mức 4
+        // cũng từ chối vì 300mm không phải phần dư nhập kho được -> thiếu vật tư, thanh còn nguyên.
         InventoryPool pool = new InventoryPool(List.of(batch(material, 3300, 1)));
 
         CuttingPlanResult result = strategy.computePlan(List.of(demand(material, 3000, 1)), pool);
 
-        assertThat(result.cuts()).hasSize(1);
-        CutRecord cut = result.cuts().get(0);
-        assertThat(cut.remainderMm()).isEqualTo(300);
-        assertThat(cut.remainderCategory()).isEqualTo(RemainderCategory.WASTE);
+        assertThat(result.cuts()).isEmpty();
+        assertThat(result.shortages()).hasSize(1);
+        assertThat(pool.remainingCount(14L, 3300)).isEqualTo(1);
     }
 
     @Test
-    void computePlan_remainderExactlyAtRestockThreshold_classifiedWasteNotRestocked() {
+    void computePlan_remainderExactlyAtRestockThreshold_rejectedByLevel4BecomesShortage() {
         SlatMaterial material = slatMaterial(15);
-        // 6000 - 3000 = 3000mm, đúng bằng ngưỡng -> phân loại WASTE (điều kiện restock là "> 3000mm"),
-        // KHÔNG được nhập lại kho.
+        // 6000 - 3000 = 3000mm, ĐÚNG BẰNG ngưỡng. Điều kiện nhập lại kho là "> 3000mm" (lớn hơn
+        // ngặt) nên Mức 4 phải từ chối chính xác tại đây, không được nới thành ">=".
         InventoryPool pool = new InventoryPool(List.of(batch(material, 6000, 1)));
 
         CuttingPlanResult result = strategy.computePlan(List.of(demand(material, 3000, 1)), pool);
 
+        assertThat(result.cuts()).isEmpty();
+        assertThat(result.shortages()).hasSize(1);
+        assertThat(pool.remainingCount(15L, 6000)).isEqualTo(1);
+    }
+
+    /** Cặp đôi của test trên: hơn ngưỡng đúng 1mm thì Mức 4 phải nhận. */
+    @Test
+    void computePlan_remainderOneMillimetreAboveRestockThreshold_acceptedByLevel4() {
+        SlatMaterial material = slatMaterial(25);
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 6001, 1)));
+
+        CuttingPlanResult result = strategy.computePlan(List.of(demand(material, 3000, 1)), pool);
+
+        assertThat(result.shortages()).isEmpty();
         assertThat(result.cuts()).hasSize(1);
         CutRecord cut = result.cuts().get(0);
-        assertThat(cut.remainderMm()).isEqualTo(3000);
-        assertThat(cut.remainderCategory()).isEqualTo(RemainderCategory.WASTE);
-        assertThat(pool.remainingCount(15L, 3000)).isZero();
+        assertThat(cut.remainderMm()).isEqualTo(3001);
+        assertThat(cut.remainderCategory()).isEqualTo(RemainderCategory.RESTOCK);
     }
 
     @Test
@@ -331,7 +352,8 @@ class BestFitDecreasingStrategyTest {
         SlatMaterial materialB = slatMaterial(21);
         InventoryPool pool = new InventoryPool(List.of(batch(materialA, 5000, 1), batch(materialB, 5000, 1)));
 
-        strategy.computePlan(List.of(demand(materialA, 4000, 1)), pool);
+        // Cắt 1000mm -> dư 4000mm, đủ điều kiện nhập lại kho nên Mức 4 nhận.
+        strategy.computePlan(List.of(demand(materialA, 1000, 1)), pool);
 
         assertThat(pool.remainingCount(materialA.getId(), 5000)).isZero();
         assertThat(pool.remainingCount(materialB.getId(), 5000)).isEqualTo(1);
@@ -360,7 +382,10 @@ class BestFitDecreasingStrategyTest {
         // ứng viên đứng SAU (4000mm) có thể ghép khít tuyệt đối dư=0mm nếu được xét trước. Cả 2
         // lựa chọn đều tồn tại sẵn trong kho cùng lúc -> Mức 3 phải dừng ở ứng viên ĐẦU TIÊN khớp
         // theo đúng thứ tự hàng đợi (dư 250mm), không quét tìm khớp "tốt nhất" toàn cục (dư 0mm).
-        InventoryPool pool = new InventoryPool(List.of(batch(material, 5250, 1), batch(material, 7000, 1)));
+        // Thanh 7500mm chỉ để đoạn 4000mm còn lại có chỗ cắt hợp lệ ở Mức 4 (dư 3500mm), tránh
+        // biến test thành ca thiếu vật tư và che mất điều đang cần kiểm.
+        InventoryPool pool = new InventoryPool(
+                List.of(batch(material, 5250, 1), batch(material, 7000, 1), batch(material, 7500, 1)));
         CuttingDemand x = demand(material, 3000, 1, LocalDate.of(2026, 9, 10), "HY90001", 1);
         CuttingDemand firstInQueue = demand(material, 2000, 1, LocalDate.of(2026, 9, 12), "HY90002", 1);
         CuttingDemand laterInQueue = demand(material, 4000, 1, LocalDate.of(2026, 9, 15), "HY90003", 1);
@@ -385,7 +410,10 @@ class BestFitDecreasingStrategyTest {
         // 2 đơn 1500mm đang chờ. Kho có CẢ thanh 3000mm (bội số hợp lệ, Mức 2) LẪN thanh 1600mm
         // (khớp gần đúng riêng cho 1 đơn, dư 100mm<300mm, Mức 1) — Mức 1 phải được thử trước,
         // dùng thanh 1600mm cho đơn đầu, để lại đơn thứ 2 riêng lẻ không đủ đối tác Mức 2 nữa.
-        InventoryPool pool = new InventoryPool(List.of(batch(material, 3000, 1), batch(material, 1600, 1)));
+        // Đơn thứ 2 vì thế phải xuống Mức 4, và ở đó thanh 3000mm bị loại (dư 1500mm là lãng phí)
+        // nên nó lấy thanh 5000mm — thanh 3000mm còn nguyên là bằng chứng Mức 2 đã thật sự từ chối.
+        InventoryPool pool = new InventoryPool(
+                List.of(batch(material, 3000, 1), batch(material, 1600, 1), batch(material, 5000, 1)));
 
         CuttingPlanResult result = strategy.computePlan(List.of(demand(material, 1500, 2)), pool);
 
@@ -393,6 +421,7 @@ class BestFitDecreasingStrategyTest {
         assertThat(result.cuts()).hasSize(2);
         assertThat(result.cuts())
                 .extracting(CutRecord::stockLengthMm)
-                .containsExactlyInAnyOrder(1600, 3000);
+                .containsExactlyInAnyOrder(1600, 5000);
+        assertThat(pool.remainingCount(24L, 3000)).isEqualTo(1);
     }
 }
