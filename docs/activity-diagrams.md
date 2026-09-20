@@ -43,7 +43,7 @@ Riêng luồng nhập tồn kho có thêm một hành vi không thể hiện ở
 
 ## 2. Luồng quản lý đơn hàng & BOM
 
-Áp dụng chung cho luồng quản lý đơn hàng (PLANNER và ADMIN đều thao tác được) và luồng quản lý định mức BOM (chỉ ADMIN) — cùng là thao tác CRUD cơ bản (xem/tìm-lọc, thêm mới, sửa, xóa) trên dữ liệu thường đã có sẵn trong hệ thống từ luồng nhập Excel ở mục 1, nhưng khác nhau ở tác nhân thực hiện, khóa nghiệp vụ dùng để kiểm tra trùng lặp khi thêm mới, và điều kiện lọc danh sách: đơn hàng lọc theo ngày giao yêu cầu, khách hàng hoặc trạng thái xử lý (trạng thái này không phải cột lưu sẵn mà suy ra từ việc đơn đã có kết quả cắt/thiếu vật tư tham chiếu hay chưa — xem `docs/domain-model.md` mục 3.3.1); BOM lọc theo mẫu cửa hoặc nhóm thanh nan.
+Áp dụng chung cho luồng quản lý đơn hàng (PLANNER và ADMIN đều thao tác được) và luồng quản lý định mức BOM (chỉ ADMIN) — cùng là thao tác CRUD cơ bản (xem/tìm-lọc, thêm mới, sửa, xóa) trên dữ liệu thường đã có sẵn trong hệ thống từ luồng nhập Excel ở mục 1, nhưng khác nhau ở tác nhân thực hiện, khóa nghiệp vụ dùng để kiểm tra trùng lặp khi thêm mới, và điều kiện lọc danh sách: đơn hàng lọc theo ngày giao yêu cầu, khách hàng hoặc trạng thái xử lý (bốn giá trị: chưa xử lý / đang bị chặn vì thiếu định mức / đủ vật tư / thiếu vật tư — việc đơn đã duyệt hay chưa đọc thẳng từ `approved_plan_id`, phần còn lại suy ra từ dữ liệu liên quan, xem `docs/domain-model.md` mục 3.3.1); BOM lọc theo mẫu cửa hoặc nhóm thanh nan.
 
 ```mermaid
 flowchart TD
@@ -73,30 +73,60 @@ flowchart TD
     M --> R
 
     D -- "Xóa" --> N["Chọn bản ghi cần xóa"]
-    N --> O{"Là đơn hàng và đã có<br/>kết quả cắt tham chiếu?<br/>(CuttingPlanDetailItem/ShortageRecord)"}
-    O -- "Có" --> O1["Từ chối xóa, báo lỗi<br/>'đơn đã được xử lý, không thể xóa'"]
+    N --> O{"Là đơn hàng và<br/>đã được duyệt?<br/>(approved_plan_id khác rỗng)"}
+    O -- "Có" --> O1["Từ chối xóa, báo lỗi<br/>'đơn đã thuộc một phương án cắt<br/>đã duyệt, không thể xóa'"]
     O1 --> Z
     O -- "Không" --> P["Xóa bản ghi"]
     P --> R
 ```
 
-Điểm cần lưu ý: nhánh xóa có rẽ nhánh riêng cho đơn hàng — một khi đơn hàng đã được đưa vào ít nhất một lần chạy thuật toán (có `CuttingPlanDetailItem` hoặc `ShortageRecord` tham chiếu tới, xem `docs/domain-model.md` mục 3.3.1), hệ thống từ chối xóa thay vì để phát sinh lỗi ràng buộc khóa ngoại ở tầng cơ sở dữ liệu. BOM không có bảng con nào tham chiếu trực tiếp đến `BomItem` nên nhánh này luôn cho phép xóa bình thường. Luồng quản lý tồn kho thanh nan không nằm trong sơ đồ này — tồn kho được nhập/cập nhật chủ yếu qua luồng Excel ở mục 1 (bao gồm cả chỉnh sửa thủ công theo cùng khóa nghiệp vụ loại thanh + độ dài), không có luồng CRUD tách rời riêng.
+Điểm cần lưu ý: nhánh xóa có rẽ nhánh riêng cho đơn hàng — một khi đơn hàng đã thuộc một phương án cắt được duyệt (`approved_plan_id` khác rỗng, xem `docs/domain-model.md` mục 3.3.1), hệ thống từ chối xóa thay vì để phát sinh lỗi ràng buộc khóa ngoại ở tầng cơ sở dữ liệu. BOM không có bảng con nào tham chiếu trực tiếp đến `BomItem` nên nhánh này luôn cho phép xóa bình thường. Luồng quản lý tồn kho thanh nan không nằm trong sơ đồ này — tồn kho được nhập/cập nhật chủ yếu qua luồng Excel ở mục 1 (bao gồm cả chỉnh sửa thủ công theo cùng khóa nghiệp vụ loại thanh + độ dài), không có luồng CRUD tách rời riêng.
 
-## 3. Luồng thuật toán sinh phương án cắt (luồng lõi)
+## 3. Luồng tính và duyệt phương án cắt (luồng lõi)
 
-Đây là luồng nghiệp vụ quan trọng nhất của khóa luận — thuật toán Best Fit Decreasing mở rộng 4 mức ưu tiên. Sơ đồ dưới đây bổ sung góc nhìn ra quyết định cho luồng đã có ở `docs/sequence-diagrams.md` mục "2. Luồng sinh phương án cắt" (thể hiện thành phần nào gọi thành phần nào); công thức chi tiết sinh `CuttingDemand` từ `SalesOrder`+`BomItem` cũng đã trình bày đầy đủ ở đó, không lặp lại ở đây.
+Đây là luồng nghiệp vụ quan trọng nhất của khóa luận. Nó được trình bày thành hai sơ đồ vì hai câu hỏi khác nhau cần trả lời riêng: sơ đồ 3.1 cho biết **đơn hàng nào được đưa vào và tới lúc nào dữ liệu mới thực sự thay đổi** — đây là phần khác nhau giữa chức năng tính và chức năng duyệt; sơ đồ 3.2 cho biết **thuật toán quyết định cắt thanh nào như thế nào** — phần này hai chức năng dùng chung y hệt, chỉ khác tập đơn đưa vào. Gộp cả hai vào một sơ đồ sẽ khiến nhánh quyết định của thuật toán bị lẫn với nhánh quyết định của quy trình phê duyệt, trong khi chúng thuộc hai tầng khác nhau.
+
+Cả hai sơ đồ bổ sung góc nhìn ra quyết định cho luồng đã có ở `docs/sequence-diagrams.md` mục "2. Luồng tính và duyệt phương án cắt" (thể hiện thành phần nào gọi thành phần nào); công thức chi tiết sinh `CuttingDemand` từ `SalesOrder`+`BomItem` cũng đã trình bày đầy đủ ở đó, không lặp lại ở đây.
+
+### 3.1. Phạm vi xử lý và ranh giới thay đổi dữ liệu
 
 ```mermaid
 flowchart TD
-    A([Bắt đầu]) --> A0["PLANNER bấm 'Sinh phương án cắt'"]
-    A0 --> B["Xác định phạm vi đợt xử lý:<br/>SalesOrder chưa có kết quả cắt tham chiếu,<br/>reqd_delivery_date sớm hơn hoặc bằng t+3 ngày,<br/>tổng số đơn trong phạm vi dưới 70<br/>(ngoài phạm vi → 'nhóm 99', chờ lần chạy sau)"]
-    B --> C["Sinh CuttingDemand từ SalesOrder + BomItem tương ứng<br/>(công thức chi tiết xem docs/sequence-diagrams.md)"]
+    A([Bắt đầu]) --> B{"Người dùng chọn<br/>chức năng nào?"}
+
+    B -- "Tính phương án cắt<br/>(PLANNER hoặc ADMIN)" --> C["Phạm vi: TOÀN BỘ đơn chưa duyệt<br/>(approved_plan_id rỗng và sinh được<br/>ít nhất 1 nhu cầu cắt);<br/>không giới hạn ngày giao, không giới hạn số đơn"]
+    C --> D["Chạy thuật toán 4 mức ưu tiên<br/>(xem sơ đồ 3.2)"]
+    D --> E["Hiển thị mức tổng quan + mức chi tiết theo đơn hàng,<br/>kèm số đơn đang bị chặn vì mẫu cửa thiếu định mức;<br/>cho phép xuất Excel"]
+    E --> Z1([Kết thúc — KHÔNG thay đổi dữ liệu nào])
+
+    B -- "Duyệt phương án cắt<br/>(chỉ PLANNER)" --> F["Trong CÙNG một lượt đọc: lấy phạm vi và ghi dấu vân trạng thái.<br/>Phạm vi = đơn chưa duyệt, sinh được ít nhất 1 nhu cầu cắt,<br/>reqd_delivery_date sớm hơn hoặc bằng t+3 ngày,<br/>tổng số đơn dưới 70 (ngoài phạm vi → 'nhóm 99', chờ lần duyệt sau)"]
+    F --> G["Chạy thuật toán 4 mức ưu tiên<br/>(xem sơ đồ 3.2)"]
+    G --> I["Trình phương án đề xuất kèm danh sách đợt cắt<br/>để PLANNER xem xét"]
+    I --> J{"PLANNER chấp nhận<br/>phương án?"}
+    J -- "Không" --> Z2([Kết thúc — KHÔNG thay đổi dữ liệu nào])
+    J -- "Có" --> K{"Trạng thái đơn hàng và tồn kho<br/>còn khớp dấu vân đã ghi?"}
+    K -- "Không" --> K1["Từ chối duyệt, báo 'dữ liệu đã thay đổi'"]
+    K1 --> F
+    K -- "Có" --> L["Trong 1 transaction: lưu CuttingPlan + CuttingPlanDetail<br/>+ CuttingPlanDetailItem + ShortageRecord + ảnh chụp tồn kho đầu lần chạy,<br/>trừ/cộng tồn kho, gán approved_plan_id cho MỌI đơn trong phạm vi"]
+    L --> Z3([Kết thúc — dữ liệu đã thay đổi])
+```
+
+Hai điểm quyết định cách đọc sơ đồ này. Thứ nhất, **nhánh tính không có ô nào ghi dữ liệu** — đó là toàn bộ lý do tách chức năng: người dùng chạy thử bao nhiêu lần tùy ý trên trạng thái đang có mà không làm lệch tồn kho, nên mới dám bỏ giới hạn t+3 ngày và giới hạn 70 đơn để nhìn bức tranh thiếu hụt của toàn bộ đơn tồn. Thứ hai, **ô kiểm dấu vân trạng thái trước khi ghi là bắt buộc, không phải tối ưu**: giữa lúc phương án được tính và lúc PLANNER bấm duyệt, một lượt nhập tồn kho hoặc một đơn vừa sửa có thể đã làm phương án lỗi thời; ghi xuống khi đó sẽ trừ tồn kho những phôi thực tế không còn, hoặc bỏ sót đơn vừa được bổ sung vào phạm vi. Dấu vân phải được lấy **trong cùng một lượt đọc** với danh sách đơn trong phạm vi, không phải sau khi thuật toán chạy xong: nếu chụp sau, dữ liệu đổi ngay trong lúc thuật toán chạy sẽ được ghi vào dấu vân như thể không có gì xảy ra, và cơ chế này mất tác dụng đúng ở tình huống nó sinh ra để chặn. Khi dấu vân lệch, luồng quay lại chính bước lấy phạm vi — không quay lại bước trình phương án, vì dấu vân cũ vẫn lệch thì PLANNER sẽ bị từ chối mãi.
+
+Lưu ý ở nhánh duyệt: `approved_plan_id` được gán cho **mọi** đơn trong phạm vi, kể cả đơn chỉ nhận kết quả thiếu vật tư — nếu chỉ gán cho đơn cắt được thì đơn thiếu vật tư sẽ quay lại hàng chờ và bị đưa vào lần duyệt sau, trong khi vật tư bù chưa kịp về. Còn đơn có mẫu cửa không sinh được nhu cầu cắt nào thì ngay từ đầu đã nằm ngoài phạm vi của cả hai nhánh (xem điều kiện lọc ở `docs/requirements-functional.md` Nhóm 3), nên không bị đánh dấu đã duyệt một cách oan uổng.
+
+### 3.2. Thuật toán cắt 4 mức ưu tiên
+
+Sơ đồ dưới đây là thuật toán Best Fit Decreasing mở rộng, nhận vào danh sách đơn hàng trong phạm vi đã xác định ở sơ đồ 3.1 và trả về kết quả cắt — giống hệt nhau dù được gọi từ chức năng tính hay chức năng duyệt.
+
+```mermaid
+flowchart TD
+    A([Nhận danh sách đơn hàng trong phạm vi<br/>từ sơ đồ 3.1]) --> C["Sinh CuttingDemand từ SalesOrder + BomItem tương ứng<br/>(công thức chi tiết xem docs/sequence-diagrams.md)"]
     C --> D["Nạp InventoryPool từ tồn kho hiện có"]
     D --> E["Nhóm CuttingDemand theo slatMaterial"]
     E --> F{"Còn nhóm slatMaterial<br/>chưa xử lý?"}
 
-    F -- "Không" --> G["Lưu CuttingPlan + CuttingPlanDetail + CuttingPlanDetailItem<br/>+ ShortageRecord, cập nhật tồn kho (trừ/cộng), trong 1 transaction"]
-    G --> Z([Kết thúc])
+    F -- "Không" --> G([Trả kết quả về sơ đồ 3.1:<br/>chi tiết cắt từng phôi + mức ưu tiên đã dùng<br/>+ danh sách thiếu vật tư])
 
     F -- "Có" --> H["Lấy 1 nhóm slatMaterial tiếp theo,<br/>sắp xếp hàng đợi đoạn cần cắt theo<br/>(reqd_delivery_date tăng dần, ycsx, z_item)"]
     H --> I{"Hàng đợi còn<br/>đoạn chưa cắt?"}
@@ -112,8 +142,8 @@ flowchart TD
     L -- "Có" --> L1["Cắt thanh thành k đoạn,<br/>gán X + (k−1) đoạn cùng độ dài;<br/>dư = 0; loại các đoạn đã gán"]
     L1 --> I
 
-    L -- "Không" --> M{"Mức 3: tồn tại tổ hợp<br/>{X, 1 hoặc nhiều đoạn khác<br/>trong cùng đợt xử lý} khớp 1 thanh,<br/>dư dự kiến dưới 30cm?"}
-    M -- "Có" --> M1["Cắt thanh đó, gán từng đoạn<br/>về đúng đơn của nó;<br/>dư dưới 30cm → 'bỏ'; loại các đoạn đã gán"]
+    L -- "Không" --> M{"Mức 3: tồn tại ĐÚNG 1 đoạn khác<br/>trong cùng phạm vi lần chạy, ghép với X<br/>vừa 1 thanh, dư dự kiến dưới 30cm?<br/>(lấy đoạn khớp ĐẦU TIÊN tìm được)"}
+    M -- "Có" --> M1["Cắt thanh đó, gán 2 đoạn<br/>về đúng đơn của từng đoạn;<br/>dư dưới 30cm → 'bỏ'; loại 2 đoạn khỏi hàng đợi"]
     M1 --> I
 
     M -- "Không" --> N{"Mức 4: tìm thanh ngắn nhất<br/>chứa được X và còn để lại<br/>phần dư TRÊN 3m (gồm cả phần dư<br/>vừa nhập kho trong lần chạy này)?"}
@@ -127,19 +157,21 @@ flowchart TD
 
 Một hệ quả quan trọng của cách đặt điều kiện ở Mức 4: hệ thống **không bao giờ tự tạo ra phần dư nằm trong khoảng 30cm–3m**. Mức 1 và Mức 3 chỉ nhận thanh khi phần dư dự kiến dưới 30cm, Mức 2 luôn cho phần dư bằng 0, còn Mức 4 chỉ nhận thanh khi phần dư trên 3m — tức là mọi nhánh cắt đều dẫn tới một phần dư hoặc đủ nhỏ để bỏ đi, hoặc đủ dài để nhập lại kho. Khi không nhánh nào thỏa mãn, đoạn cắt được đánh dấu thiếu vật tư thay vì hạ chuẩn để cắt. Điều này có nghĩa một đoạn có thể bị báo thiếu **dù trong kho vẫn còn thanh đủ dài**: nếu thanh đó chỉ để lại phần dư trong khoảng không chấp nhận được, nó được giữ lại nguyên vẹn cho một đoạn khác khớp hơn ở lần chạy sau. Đây là lựa chọn nghiệp vụ có chủ đích — phần dư 30cm–3m không tái sử dụng ngay được mà cũng không đủ nhỏ để bỏ qua, nên doanh nghiệp coi việc bổ sung thanh nan đúng độ dài là cách xử lý đúng, thay vì phá một thanh đang dùng được cho nhu cầu khác.
 
-Điểm dễ hiểu nhầm nhất, cần nhấn lại: thứ tự **xử lý** trong hàng đợi luôn theo đúng ưu tiên `(reqd_delivery_date, ycsx, z_item)` — đoạn X ở bước "Lấy đoạn X ưu tiên cao nhất còn lại" luôn là đoạn đầu hàng đợi, không bao giờ bị bỏ qua để chờ ghép; khác với phạm vi **ghép nối** ở Mức 2 và Mức 3, chỉ áp dụng giữa các đoạn cùng nằm trong đợt xử lý hiện tại (đã giới hạn bởi bước "Xác định phạm vi đợt xử lý" ở đầu sơ đồ), không bao giờ ghép với đơn thuộc "nhóm 99" hay đợt xử lý sau. Ngoài ra, mỗi nhóm `slatMaterial` ở vòng lặp ngoài được xử lý độc lập với nhau — vì tồn kho (`InventoryBatch`) đã tách riêng theo `slatMaterial`, không có ràng buộc chéo giữa các nhóm.
+Mức 3 cố ý chỉ ghép **đúng hai đoạn** và dừng ở đoạn khớp **đầu tiên** tìm được, không tìm tổ hợp ba đoạn trở lên cũng không duyệt hết hàng đợi để chọn tổ hợp tốt nhất: số tổ hợp tăng theo cấp số nhân với số đoạn được phép ghép, trong khi phần lợi thêm rất nhỏ vì điều kiện chấp nhận đã là phần dư dưới 30cm — và giới hạn này giữ cho kết quả tái lập được, không phụ thuộc thứ tự duyệt.
+
+Điểm dễ hiểu nhầm nhất, cần nhấn lại: thứ tự **xử lý** trong hàng đợi luôn theo đúng ưu tiên `(reqd_delivery_date, ycsx, z_item)` — đoạn X ở bước "Lấy đoạn X ưu tiên cao nhất còn lại" luôn là đoạn đầu hàng đợi, không bao giờ bị bỏ qua để chờ ghép; khác với phạm vi **ghép nối** ở Mức 2 và Mức 3, chỉ áp dụng giữa các đoạn cùng nằm trong phạm vi của chính lần chạy đó (đã xác định ở sơ đồ 3.1 — toàn bộ đơn chưa duyệt nếu là chức năng tính, tập đơn đã giới hạn t+3/dưới 70 đơn nếu là chức năng duyệt), không bao giờ ghép với đơn nằm ngoài phạm vi. Ngoài ra, mỗi nhóm `slatMaterial` ở vòng lặp ngoài được xử lý độc lập với nhau — vì tồn kho (`InventoryBatch`) đã tách riêng theo `slatMaterial`, không có ràng buộc chéo giữa các nhóm.
 
 ## 4. Luồng xem/xuất kết quả phương án cắt
 
-Sơ đồ dưới đây bổ sung góc nhìn ra quyết định cho luồng đã có ở `docs/sequence-diagrams.md` mục "3. Luồng xem / xuất kết quả phương án cắt" (thể hiện thành phần nào gọi thành phần nào, khá tuyến tính: xem danh sách → xem chi tiết → hai thao tác xuất Excel tùy chọn). Phần bổ sung giá trị nhất ở đây là cách hệ thống **tính và sắp xếp "đợt cắt"** để hiển thị ở mức tổng quan — quy tắc nghiệp vụ có nhiều rẽ nhánh nhất của luồng này, đã chốt ở `docs/requirements-functional.md` Nhóm 3 nhưng chưa từng thể hiện dưới dạng flowchart quyết định.
+Luồng này áp dụng cho các phương án **đã được duyệt** và lưu lại — chức năng tính không tạo lịch sử nên không có gì để tra cứu về sau. Sơ đồ dưới đây bổ sung góc nhìn ra quyết định cho luồng đã có ở `docs/sequence-diagrams.md` mục "3. Luồng xem / xuất kết quả phương án cắt" (thể hiện thành phần nào gọi thành phần nào, khá tuyến tính: xem lịch sử → xem chi tiết → hai thao tác xuất Excel tùy chọn). Phần bổ sung giá trị nhất ở đây là cách hệ thống **tính và sắp xếp "đợt cắt"** để hiển thị ở mức tổng quan — quy tắc nghiệp vụ có nhiều rẽ nhánh nhất của luồng này, đã chốt ở `docs/requirements-functional.md` Nhóm 3 nhưng chưa từng thể hiện dưới dạng flowchart quyết định.
 
 ```mermaid
 flowchart TD
-    A([Bắt đầu]) --> A0["PLANNER mở màn hình lịch sử phương án cắt"]
-    A0 --> B["Xem danh sách các lần chạy:<br/>thời điểm, tổng waste, trạng thái"]
-    B --> C{"Chọn 1 lần chạy<br/>để xem chi tiết?"}
+    A([Bắt đầu]) --> A0["Người dùng mở màn hình lịch sử<br/>phương án cắt đã duyệt"]
+    A0 --> B["Xem lịch sử các lần duyệt:<br/>thời điểm, tổng phế, trạng thái"]
+    B --> C{"Chọn 1 phương án<br/>để xem chi tiết?"}
     C -- "Không" --> Z([Kết thúc])
-    C -- "Có" --> D["Tải chi tiết lần chạy:<br/>CuttingPlanDetail + CuttingPlanDetailItem + ShortageRecord"]
+    C -- "Có" --> D["Tải chi tiết phương án:<br/>CuttingPlanDetail + CuttingPlanDetailItem + ShortageRecord"]
 
     D --> E["Nhóm các đơn hàng đã xử lý<br/>theo DoorProduct (mẫu cửa + màu)"]
     E --> F{"Còn nhóm DoorProduct<br/>chưa chia đợt cắt?"}
@@ -151,24 +183,22 @@ flowchart TD
     J --> F
     F -- "Không" --> K["Sắp xếp toàn bộ đợt cắt theo ngày giao sớm nhất trong đợt;<br/>trùng ngày giao sớm nhất → đợt có nhiều bộ hơn cùng rơi<br/>đúng ngày đó được xếp trước"]
 
-    K --> L["Hiển thị mức tổng quan: tổng số bộ cửa, tỷ lệ phế trung bình,<br/>tỷ trọng đủ/thiếu vật tư, biểu đồ theo ngày giao và theo mẫu cửa,<br/>danh sách đợt cắt đã sắp xếp"]
+    K --> L["Hiển thị mức tổng quan: tổng số bộ cửa, tỷ lệ phế,<br/>biểu đồ cột chồng theo ngày giao, biểu đồ thanh ngang theo model,<br/>biểu đồ tròn tỷ trọng đủ/thiếu vật tư, bảng vật tư thiếu,<br/>danh sách đợt cắt đã sắp xếp"]
 
-    L --> M{"PLANNER chọn thao tác tiếp theo"}
-    M -- "Xem chi tiết theo đơn hàng" --> N["Hiển thị từng dòng nhu cầu cắt:<br/>thứ tự ưu tiên, thông tin đơn, loại vật tư,<br/>độ dài cần cắt, trạng thái đủ/thiếu, mô tả cách cắt"]
+    L --> M{"Người dùng chọn thao tác tiếp theo"}
+    M -- "Xem chi tiết theo đơn hàng" --> N["Hiển thị từng dòng nhu cầu cắt:<br/>thứ tự ưu tiên, thông tin đơn, model cửa, loại vật tư,<br/>độ dài cần cắt, số thanh cần và thiếu,<br/>trạng thái đáp ứng, mô tả cách cắt, tồn kho đầu lần chạy"]
     N --> M
-    M -- "Xem chi tiết theo phôi xuất kho" --> O["Hiển thị từng dòng phôi đã dùng:<br/>đợt cắt, lệnh sản xuất, vật tư, độ dài phôi,<br/>số lượng phôi, mã pattern, đơn gốc + đơn ghép thêm (nếu có)"]
-    O --> M
     M -- "Lọc theo lệnh sản xuất / bộ cửa" --> P["Lọc lại dữ liệu đang hiển thị theo điều kiện nhập"]
     P --> M
-    M -- "Xuất Excel kết quả cắt" --> Q["Sinh file Excel theo cấu trúc mức chi tiết phôi xuất kho"]
-    Q --> R["PLANNER tải file Excel về máy"]
+    M -- "Xuất Excel kết quả cắt" --> Q["Sinh file Excel 1 sheet theo đúng bộ cột<br/>doanh nghiệp đang dùng, mỗi dòng là 1 nhu cầu cắt"]
+    Q --> R["Người dùng tải file Excel về máy"]
     R --> M
     M -- "Mở màn hình đơn thiếu vật tư" --> S["Màn hình phụ: danh sách các đơn bị thiếu vật tư<br/>của lần chạy này"]
     S --> T{"Thao tác trên màn hình phụ"}
     T -- "Lọc lại danh sách" --> T1["Lọc theo loại thanh nan còn thiếu /<br/>ngày giao yêu cầu / lệnh sản xuất - bộ cửa"]
     T1 --> T
-    T -- "Xuất báo cáo Excel" --> U["Sinh file Excel 2 sheet:<br/>gộp theo loại thanh nan (tổng số đoạn, tổng độ dài thiếu)<br/>và chi tiết theo từng đơn bị thiếu<br/>(ycsx/z_item, loại thanh nan, số lượng/độ dài thiếu,<br/>ngày giao yêu cầu)"]
-    U --> U1["PLANNER tải file báo cáo về máy,<br/>vẫn ở lại màn hình phụ"]
+    T -- "Xuất báo cáo Excel" --> U["Sinh file Excel 1 sheet — bản lọc của mức<br/>chi tiết theo đơn hàng: chỉ các dòng còn thiếu thanh,<br/>chỉ các cột cần cho việc lập lệnh sản xuất thanh nan"]
+    U --> U1["Người dùng tải file báo cáo về máy,<br/>vẫn ở lại màn hình phụ"]
     U1 --> T
     T -- "Quay lại phương án cắt" --> M
     M -- "Kết thúc xem" --> Z
