@@ -11,13 +11,13 @@ Mục này xác định danh sách entity nghiệp vụ và quan hệ giữa ch�
 | `Role` | Vai trò tài khoản (ADMIN, PLANNER) | `code`, `name` |
 | `User` | Tài khoản đăng nhập | `username`, `passwordHash`, `roleId` |
 | `Customer` | Khách hàng đặt đơn (nguồn: `don_hang.csv`) | `customer`, `customerName` |
-| `DoorProduct` | Mẫu cửa + màu cụ thể (nguồn: `bom_dinh_muc.csv`) | `material`, `doorMaterialName`, `mauSac` (cột `z_mau_sac`, xem quy ước tiền tố `z` ở 3.3.2) |
+| `DoorProduct` | Mẫu cửa + màu cụ thể (nguồn: `bom_dinh_muc.csv`) | `material`, `doorMaterialName`, `mauSac` (cột `z_mau_sac`, xem quy ước tiền tố `z` ở 3.3.2), `materialGroup` (model cửa) |
 | `SlatMaterial` | Loại thanh nan (nguồn: `bom_dinh_muc.csv` + `ton_kho_thanh_nan.csv`, xem lưu ý đặt tên ở dưới) | `slatMaterial`, `slatMaterialName`, `slatGroup` (Nan chính/Nan phụ/Thanh đáy/Ray/Khác) |
 | `BomItem` | Định mức: 1 `DoorProduct` cần bao nhiêu đoạn của 1 `SlatMaterial` — thông số do đội kỹ thuật cung cấp trực tiếp (xem 3.3.2) | `widthOffsetM`, `heightOffsetM`, `slatCountSlope`, `slatCountIntercept`, `dinhMucTbMPerBoCua` |
 | `InventoryBatch` | Một lô tồn kho: 1 `SlatMaterial` ở 1 độ dài chuẩn, còn bao nhiêu thanh (nguồn: `ton_kho_thanh_nan.csv`) | `doDaiThanhMm`, `soThanh` |
-| `SalesOrder` | 1 bộ cửa cụ thể trong 1 lô sản xuất — đơn vị ưu tiên cắt (nguồn: `don_hang.csv`) | `ycsx`, `zItem` (khóa nghiệp vụ), `salesDocument`, `salesOrderItem` (khóa nghiệp vụ thứ hai, dùng để tra cứu/đối chiếu SAP), `zChieuCaoDh`, `zChieuRongDh`, `reqdDeliveryDate` |
-| `CuttingPlan` | Header 1 lần chạy thuật toán | `runAt`, `status`, `totalWasteM`, `scopeCutoffDate`, `scopeOrderCount` |
-| `CuttingPlanDetail` | 1 hoặc nhiều phôi tồn kho vật lý **giống nhau** (cùng độ dài, cùng pattern, cùng tập đơn hàng phân bổ) đã dùng trong 1 lần chạy | `patternCode`, `remainderMm`, `remainderType` (DISCARDED/RESTOCK/WASTE), `stickCount` |
+| `SalesOrder` | 1 bộ cửa cụ thể trong 1 lô sản xuất — đơn vị ưu tiên cắt (nguồn: `don_hang.csv`) | `ycsx`, `zItem` (khóa nghiệp vụ), `salesDocument`, `salesOrderItem` (khóa nghiệp vụ thứ hai, dùng để tra cứu/đối chiếu SAP), `lenhSx` (lệnh sản xuất bộ cửa), `zChieuCaoDh`, `zChieuRongDh`, `reqdDeliveryDate`, `approvedPlan` (phương án cắt đã duyệt đơn này, NULL khi đơn còn chờ) |
+| `CuttingPlan` | Header 1 lần **duyệt** phương án cắt (lần tính không tạo bản ghi nào) | `runAt`, `status`, `totalWasteM`, `totalStockUsedM`, `scopeCutoffDate`, `scopeOrderCount` |
+| `CuttingPlanDetail` | 1 hoặc nhiều phôi tồn kho vật lý **giống nhau** (cùng độ dài, cùng pattern, cùng tập đơn hàng phân bổ) đã dùng trong 1 lần chạy | `patternCode`, `remainderMm`, `remainderType` (DISCARDED/RESTOCK/WASTE), `stickCount`, `cutLevel` (mức ưu tiên PA1–PA4 đã dùng để cắt) |
 | `CuttingPlanDetailItem` | Bảng nối: 1 phôi (`CuttingPlanDetail`) phục vụ 1 `SalesOrder` (1 bộ cửa), có thể nhiều dòng/phôi | `cutLengthMm`, `cutQuantity`, `isOriginalOrder` |
 | `ShortageRecord` | Ghi nhận thiếu vật tư cho 1 `SlatMaterial` của 1 `SalesOrder` trong 1 lần chạy | `missingQuantity`, `missingLengthM` |
 
@@ -38,27 +38,36 @@ erDiagram
     SalesOrder ||--o{ CuttingPlanDetailItem : "được cắt bởi"
     SalesOrder ||--o{ ShortageRecord : "thiếu vật tư ở"
     SlatMaterial ||--o{ ShortageRecord : "loại thanh thiếu"
+    CuttingPlan |o--o{ SalesOrder : "đã duyệt"
 ```
 
 Năm điểm cần lưu ý, đều xuất phát từ việc đối chiếu với báo cáo thật PLANNER đang dùng và dữ liệu thật ở `dataset/`, chứ không phải phác thảo domain model ban đầu:
 
 **1. `SalesOrder` không tách header/detail — gộp `SalesOrder`+`SalesOrderLine` (bản trước) thành 1 entity duy nhất, đúng theo grain của `don_hang.csv`.** Đối chiếu toàn bộ 190 dòng dữ liệu thật: `z_chieu_cao_dh`/`z_chieu_rong_dh` (kích thước cửa), `customer`, `reqd_delivery_date` **đều thay đổi tự do giữa các dòng cùng `ycsx`** (ví dụ 1 `ycsx` có tới 5 độ rộng khác nhau, hoặc 3 khách hàng + 3 ngày giao khác nhau) — tức `ycsx` là một **lô sản xuất** gộp nhiều đơn của nhiều khách khác nhau lại để cắt chung, không phải header "1 đơn của 1 khách" như giả định ban đầu. Không có thuộc tính nghiệp vụ nào thực sự dùng chung ổn định ở mức `ycsx` (ngoài chính `ycsx` là một nhãn gộp lô), nên tách bảng header riêng chỉ tạo ra 1 bảng gần như rỗng. Đồng thời xác nhận `total_order_quantity` luôn đúng bằng `z_dien_tich_dh` (diện tích = cao×rộng) ở toàn bộ 190 dòng — mỗi dòng (`ycsx`, `z_item`) luôn là **đúng 1 bộ cửa**, không có khái niệm "số lượng bộ" độc lập trên 1 dòng — nên `SalesOrder` không cần trường `quantity`.
 
-**2. `CuttingPlanDetail` — `SalesOrder` là quan hệ N-N, qua `CuttingPlanDetailItem`, không phải 1-1.** Ở Mức 2 (cắt bội số) và Mức 3 (ghép nối) của thuật toán, một phôi tồn kho có thể đồng thời phục vụ nhiều bộ cửa khác nhau — báo cáo mức chi tiết nhất (xuất kho theo phôi) cần thể hiện rõ **đơn hàng gốc** và **đơn hàng ghép thêm** dùng chung phôi đó. `CuttingPlanDetailItem` là bảng nối mang cờ `isOriginalOrder` để phân biệt hai vai trò này khi hiển thị, cùng `cutLengthMm`/`cutQuantity` cho biết đoạn cắt cụ thể của đơn đó trên phôi.
+**2. `CuttingPlanDetail` — `SalesOrder` là quan hệ N-N, qua `CuttingPlanDetailItem`, không phải 1-1.** Ở Mức 2 (cắt bội số) và Mức 3 (ghép nối) của thuật toán, một phôi tồn kho có thể đồng thời phục vụ nhiều bộ cửa khác nhau — cột mô tả cách cắt ở báo cáo mức chi tiết theo đơn hàng cần thể hiện rõ **đơn hàng gốc** và **đơn hàng ghép thêm** dùng chung phôi đó. `CuttingPlanDetailItem` là bảng nối mang cờ `isOriginalOrder` để phân biệt hai vai trò này khi hiển thị, cùng `cutLengthMm`/`cutQuantity` cho biết đoạn cắt cụ thể của đơn đó trên phôi.
 
 **3. `CuttingDemand` không phải là entity được lưu trữ.** Nhu cầu cắt (tổ hợp `slatMaterial`, `cutLength`, `quantity`, `dueDate`, `ycsx`/`zItem` — sinh từ `SalesOrder` × `BomItem`) chỉ là đối tượng tạm thời, tính lại mỗi lần chạy thuật toán, không cần bảng riêng: một khi đã có kết quả, nó được phản ánh đầy đủ qua `CuttingPlanDetailItem` (nếu cắt được) hoặc `ShortageRecord` (nếu thiếu vật tư). Lưu `CuttingDemand` như 1 entity sẽ tạo dữ liệu trùng lặp, không có giá trị tra cứu riêng.
 
-**4. `CuttingPlanDetail.stickCount` — gộp nhiều phôi giống nhau thành 1 dòng, thay vì 1 dòng/1 phôi.** Đối chiếu `dataset/processed/ton_kho_thanh_nan.csv`: tồn kho thật lưu song song cả tổng số mét (`ton_m`) **và số lượng thanh** (`so_thanh`), với `ton_m = so_thanh × độ dài` luôn đúng chính xác (không có trường hợp lệch) — chứng tỏ tồn kho luôn là số nguyên lần độ dài chuẩn, và số lượng thanh là đơn vị vận hành thật, không phải mét là đơn vị chính. Điều này khớp với báo cáo mức chi tiết nhất ở `docs/requirements-functional.md` ("độ dài phôi tồn kho, **số lượng phôi dùng** ở độ dài đó, và một mã phương án cắt") — khi nhiều phôi cùng pattern cùng phục vụ đúng 1 tập đơn hàng (điển hình ở Mức 2 — cắt bội số, ví dụ "15 thanh 6m cắt đôi" đều phục vụ đúng 1 đơn), báo cáo gộp thành 1 dòng có cột số lượng, không tách 15 dòng riêng. `stickCount` (mặc định 1) chỉ được gộp > 1 khi tất cả các phôi trong nhóm có **cùng `patternCode` và cùng tập `CuttingPlanDetailItem` phân bổ** — bất biến này do tầng Service đảm bảo khi lưu, không có ràng buộc DB nào enforce được.
+**4. `CuttingPlanDetail.stickCount` — gộp nhiều phôi giống nhau thành 1 dòng, thay vì 1 dòng/1 phôi.** Đối chiếu `dataset/processed/ton_kho_thanh_nan.csv`: tồn kho thật lưu song song cả tổng số mét (`ton_m`) **và số lượng thanh** (`so_thanh`), với `ton_m = so_thanh × độ dài` luôn đúng chính xác (không có trường hợp lệch) — chứng tỏ tồn kho luôn là số nguyên lần độ dài chuẩn, và số lượng thanh là đơn vị vận hành thật, không phải mét là đơn vị chính. Điều này khớp với cột mô tả cách cắt ở `docs/requirements-functional.md` ("dùng phôi tồn kho độ dài bao nhiêu, **bao nhiêu phôi**, cắt ra bao nhiêu nan") — khi nhiều phôi cùng pattern cùng phục vụ đúng 1 tập đơn hàng (điển hình ở Mức 2 — cắt bội số, ví dụ "15 thanh 6m cắt đôi" đều phục vụ đúng 1 đơn), báo cáo gộp thành 1 dòng có cột số lượng, không tách 15 dòng riêng. `stickCount` (mặc định 1) chỉ được gộp > 1 khi tất cả các phôi trong nhóm có **cùng `patternCode`, cùng `cutLevel`, và cùng tập `CuttingPlanDetailItem` phân bổ** — bất biến này do tầng Service đảm bảo khi lưu, không có ràng buộc DB nào enforce được.
 
-**5. Không cần cột trạng thái riêng cho "đơn thuộc nhóm 99".** Theo thuật toán (`docs/sequence-diagrams.md`, luồng sinh phương án cắt), phạm vi mỗi lần chạy được xác định **động** tại thời điểm chạy (`reqd_delivery_date <= t+3` và đơn "chưa được cắt"), không phải một trạng thái cố định gán sẵn cho đơn hàng. "Chưa được cắt" được suy ra trực tiếp từ việc `SalesOrder` đó **chưa có `CuttingPlanDetailItem`/`ShortageRecord` nào tham chiếu tới** — tức đơn chưa từng được đưa vào bất kỳ lần chạy nào. Một khi đơn đã được đưa vào 1 lần chạy (dù kết quả là đủ toàn phần, đủ từng phần, hay thiếu vật tư ở một số dòng), đơn đó được coi là đã xử lý xong và không được thuật toán tự động đưa lại vào lần chạy sau — đúng với phạm vi khóa luận (việc bổ sung vật tư thiếu là việc của hệ thống lập kế hoạch sản xuất ở giai đoạn sau, không phải việc tự động re-queue của thuật toán này). Vì vậy "nhóm 99" chỉ là cách gọi nghiệp vụ cho tập đơn **chưa có bản ghi kết quả nào** tại một thời điểm — không cần persist thành cột riêng, tránh rủi ro cột trạng thái bị lệch với dữ liệu thật (stale state).
+**5. Đơn hàng mang một trạng thái "đã duyệt" tường minh (`approvedPlan`), thay vì suy ra từ các bảng kết quả.** Bản thiết kế trước đây suy ra "đơn đã xử lý" bằng cách kiểm tra `SalesOrder` đó đã có `CuttingPlanDetailItem`/`ShortageRecord` nào tham chiếu tới hay chưa, và cố ý không thêm cột trạng thái để tránh rủi ro cột bị lệch với dữ liệu thật. Quyết định đó không còn phù hợp khi nhóm chức năng sinh phương án cắt tách làm hai (xem `docs/requirements-functional.md` Nhóm 3), vì ba lý do.
 
-**Đánh đổi cần lưu ý**: Nhóm 1 yêu cầu chức năng có đề cập PLANNER "lọc danh sách đơn hàng theo... trạng thái xử lý" — vì trạng thái này không phải cột thật, câu lệnh lọc phải dùng `EXISTS`/`LEFT JOIN` với `cutting_plan_detail_item` và `shortage_record` thay vì `WHERE status = ...` đơn giản. Ở quy mô dữ liệu hiện tại (vài trăm đơn/lần chạy theo NFR) việc này không đáng lo về hiệu năng, nhưng cần lưu ý khi viết `SalesOrderRepository` — không cố thêm cột trạng thái đệm (cache column) để "tối ưu" truy vấn này, vì sẽ tái tạo đúng rủi ro stale state mà quyết định ở trên đang tránh.
+Thứ nhất, **"đã duyệt" là một quyết định nghiệp vụ, không phải một hệ quả phụ của việc có dòng dữ liệu.** Chức năng tính phương án cắt chạy trọn vẹn thuật toán nhưng không ghi gì; nếu trạng thái vẫn suy ra từ sự tồn tại của bản ghi kết quả thì hệ thống không phân biệt được "đơn đã được chốt đưa xuống xưởng" với "đơn mới chỉ được tính thử". Ghi thẳng phương án đã duyệt đơn nào là cách duy nhất diễn đạt đúng sự kiện đó.
 
-**Công thức suy ra "trạng thái xử lý" hiển thị cho PLANNER** (3 giá trị, khớp `requirements-functional.md` Nhóm 3): "Chưa xử lý" nếu `SalesOrder` không có `CuttingPlanDetailItem` lẫn `ShortageRecord` nào tham chiếu tới; "Đủ vật tư" nếu có ít nhất 1 `CuttingPlanDetailItem` và **không có** `ShortageRecord` nào; "Thiếu vật tư" nếu có **ít nhất 1** `ShortageRecord` (kể cả khi đồng thời cũng có `CuttingPlanDetailItem` cho các loại thanh khác — đủ từng phần vẫn tính là "thiếu vật tư" ở mức tổng quan, chi tiết từng loại thanh xem ở mức chi tiết theo đơn hàng).
+Thứ hai, **cách suy ra cũ buộc truy vấn phạm vi phải chép lại luật bỏ qua của bước sinh nhu cầu cắt.** Một đơn không sinh ra nhu cầu cắt nào — mẫu cửa thiếu dòng định mức dùng được — sẽ không để lại `CuttingPlanDetailItem` lẫn `ShortageRecord` sau khi chạy, nên nếu cứ đưa vào phạm vi thì lần chạy sau vẫn thấy nó "chưa xử lý" và nó chiếm chỗ trong hạn mức 70 đơn mãi mãi. Cách duy nhất để tránh là loại nó khỏi phạm vi ngay từ đầu bằng một điều kiện phản chiếu đúng luật bỏ qua đó — nghĩa là cùng một quy tắc nghiệp vụ phải được viết ở hai nơi và giữ đồng bộ thủ công mãi mãi. Trạng thái tường minh không xóa được điều kiện lọc này (đơn thiếu định mức vẫn phải nằm ngoài phạm vi, xem đoạn dưới), nhưng nó tách bạch hai câu hỏi vốn bị trộn làm một: "đơn này đã được chốt chưa" và "đơn này có chạy ra kết quả gì không".
+
+Thứ ba, **rủi ro lệch trạng thái mà quyết định cũ lo ngại đã không còn.** Cột chỉ được ghi ở đúng một chỗ — bước duyệt phương án cắt — và ghi trong **cùng giao dịch** với `CuttingPlan` tương ứng, nên không tồn tại trạng thái trung gian mà cột nói một đằng còn bảng kết quả nói một nẻo. Đây là khác biệt căn bản so với một cột đệm (cache column) được cập nhật rời rạc sau sự kiện. Cột giữ luôn khóa ngoại tới `CuttingPlan` chứ không chỉ một cờ đúng/sai, nhờ vậy trả lời được thêm câu hỏi "đơn này đã được duyệt trong phương án nào" mà cách suy ra cũ phải quét ngược hai bảng con mới ra.
+
+Hệ quả: "nhóm 99" vẫn không cần cột riêng — nó vẫn là cách gọi nghiệp vụ cho tập đơn có `approvedPlan` còn rỗng nhưng nằm ngoài phạm vi t+3/70 đơn tại một thời điểm, suy ra động như cũ. Và đơn hàng **không bị xóa** khi duyệt: các phương án cắt cùng báo cáo thiếu vật tư đã ghi nhận phải truy ngược được về đúng bộ cửa đã sinh ra chúng.
+
+**Đánh đổi cần lưu ý**: Nhóm 1 yêu cầu chức năng có đề cập PLANNER "lọc danh sách đơn hàng theo... trạng thái xử lý". Trạng thái này nay chỉ còn **một phần** là cột thật: việc đơn đã được duyệt hay chưa đọc thẳng từ `approved_plan_id`, nhưng kết quả của đơn đã duyệt là đủ hay thiếu vật tư vẫn phải suy ra từ `cutting_plan_detail_item` và `shortage_record` bằng `EXISTS`/`LEFT JOIN`. Ở quy mô dữ liệu hiện tại việc này không đáng lo về hiệu năng. Điều cần giữ là ranh giới: chỉ sự kiện "đã duyệt" mới xứng đáng có cột riêng vì nó là một quyết định được ghi tại một thời điểm xác định; đừng thêm cột đệm cho phần kết quả đủ/thiếu, vì phần đó thay đổi theo chính dữ liệu bảng con và sẽ tái tạo đúng rủi ro trạng thái lệch.
+
+**Công thức suy ra "trạng thái xử lý" hiển thị cho PLANNER** (3 giá trị, khớp `requirements-functional.md` Nhóm 3): "Chưa xử lý" nếu `SalesOrder` có `approved_plan_id` rỗng — đơn còn nằm trong hàng chờ của cả chức năng tính lẫn chức năng duyệt; với đơn đã duyệt, "Đủ vật tư" nếu có ít nhất 1 `CuttingPlanDetailItem` và **không có** `ShortageRecord` nào, "Thiếu vật tư" nếu có **ít nhất 1** `ShortageRecord` (kể cả khi đồng thời cũng có `CuttingPlanDetailItem` cho các loại thanh khác — đủ từng phần vẫn tính là "thiếu vật tư" ở mức tổng quan, chi tiết từng loại thanh xem ở mức chi tiết theo đơn hàng). Ba giá trị này phủ kín mọi đơn vì phạm vi xử lý đã loại sẵn các đơn không sinh được nhu cầu cắt nào (xem đoạn ngay dưới): mọi đơn được duyệt đều để lại ít nhất một `CuttingPlanDetailItem` hoặc một `ShortageRecord`, không có đơn nào "đã duyệt mà rỗng".
 
 ## Ghi chú khác
 
-- **"Đợt cắt" (đợt rút vật tư)** ở báo cáo mức tổng quan — nhóm theo `DoorProduct` (mẫu cửa + màu), tối đa 7 bộ/đợt — **không phải một entity riêng**. Đây là kết quả tính toán tại thời điểm hiển thị/xuất báo cáo (group theo `DoorProduct` trên tập `CuttingPlanDetailItem`/`SalesOrder` của 1 `CuttingPlan`, sắp theo `reqd_delivery_date`), suy ra hoàn toàn từ dữ liệu đã có, nên không cần bảng lưu trữ riêng — tránh phải đồng bộ lại nếu logic nhóm đợt cắt thay đổi sau này.
+- **"Đợt cắt" (đợt rút vật tư)** ở màn hình duyệt phương án cắt — nhóm theo `DoorProduct` (mẫu cửa + màu), tối đa 7 bộ/đợt — **không phải một entity riêng**. Đây là kết quả tính toán tại thời điểm hiển thị/xuất báo cáo (group theo `DoorProduct` trên tập `CuttingPlanDetailItem`/`SalesOrder` của 1 `CuttingPlan`, sắp theo `reqd_delivery_date`), suy ra hoàn toàn từ dữ liệu đã có, nên không cần bảng lưu trữ riêng — tránh phải đồng bộ lại nếu logic nhóm đợt cắt thay đổi sau này.
 - `Role` giữ là bảng riêng (không phải enum trên `User`) để mở khả năng bổ sung vai trò mới sau khóa luận mà không cần đổi schema, dù ở phạm vi MVP chỉ có đúng 2 giá trị (ADMIN, PLANNER).
 - `BomItem` về bản chất là bảng nối N-N giữa `DoorProduct` và `SlatMaterial`, mang thêm các thuộc tính công thức kỹ thuật (offset, hệ số tính số lượng đoạn) — không cần bảng nối trung gian nào khác.
 - **`SlatMaterial` gom dữ liệu từ 2 file có tên cột khác nhau cho cùng 1 khái niệm**: `bom_dinh_muc.csv` gọi là `slat_material`/`slat_material_name`, nhưng `ton_kho_thanh_nan.csv` lại gọi chính khái niệm này là `material`/`material_description` (vì trong SAP, "material" là tên gọi chung cho mọi loại vật tư, không riêng gì thanh nan). Domain model chọn `slatMaterial`/`slatMaterialName` (theo `bom_dinh_muc.csv`) làm tên chuẩn; khi viết `ExcelImportService` cho tồn kho, cần map cột `material`/`material_description` của `ton_kho_thanh_nan.csv` vào đúng 2 trường này — **không được nhầm với `DoorProduct.material`** (cột tên giống nhau nhưng là 2 khái niệm khác nhau ở 2 file).
@@ -77,7 +86,7 @@ Mục này ánh xạ các entity ở mục 3.3.1 sang bảng MySQL cụ thể: t
 
 ## Sơ đồ ERD chi tiết
 
-Sơ đồ dưới đây thể hiện đúng 11 bảng vật lý và các khóa ngoại tương ứng — cùng bộ quan hệ như sơ đồ khái niệm ở 3.3.1, nay gắn với tên bảng/cột thật và đánh dấu khóa chính (PK), khóa ngoại (FK), khóa duy nhất (UK).
+Sơ đồ dưới đây thể hiện đúng 12 bảng vật lý và các khóa ngoại tương ứng — cùng bộ quan hệ như sơ đồ khái niệm ở 3.3.1, nay gắn với tên bảng/cột thật và đánh dấu khóa chính (PK), khóa ngoại (FK), khóa duy nhất (UK).
 
 ```mermaid
 erDiagram
@@ -103,6 +112,7 @@ erDiagram
         bigint material UK "cùng z_mau_sac"
         varchar door_material_name
         varchar z_mau_sac UK "cùng material"
+        varchar material_group "nullable, model cửa"
     }
     slat_material {
         bigint id PK
@@ -132,8 +142,10 @@ erDiagram
         int z_item UK "cùng ycsx"
         bigint sales_document UK "cùng sales_order_item, nullable"
         int sales_order_item UK "cùng sales_document, nullable"
+        bigint lenh_sx "nullable, lệnh sản xuất bộ cửa"
         bigint customer_id FK
         bigint door_product_id FK
+        bigint approved_plan_id FK "nullable, xem chú thích"
         decimal z_chieu_cao_dh
         decimal z_chieu_rong_dh
         date reqd_delivery_date
@@ -143,6 +155,7 @@ erDiagram
         datetime run_at
         enum status
         decimal total_waste_m
+        decimal total_stock_used_m
         date scope_cutoff_date
         int scope_order_count
     }
@@ -155,6 +168,7 @@ erDiagram
         int remainder_mm
         enum remainder_type
         int stick_count "xem chú thích"
+        enum cut_level "PA1..PA4, nullable"
     }
     cutting_plan_detail_item {
         bigint id PK
@@ -186,6 +200,7 @@ erDiagram
     sales_order ||--o{ cutting_plan_detail_item : "được cắt bởi"
     sales_order ||--o{ shortage_record : "thiếu vật tư ở"
     slat_material ||--o{ shortage_record : "loại thanh thiếu"
+    cutting_plan |o--o{ sales_order : "đã duyệt"
 ```
 
 Chú thích `"cùng ..."` trên một cột đánh dấu UK/FK nghĩa là ràng buộc UNIQUE hoặc mục đích của khóa ngoại đó là **composite** (nhiều cột cộng lại), mermaid không có ký hiệu riêng cho UNIQUE nhiều cột nên ghi chú trực tiếp bên cạnh — ví dụ `door_product.material` + `door_product.z_mau_sac` là một UNIQUE tổ hợp (không phải hai UNIQUE riêng lẻ). Chú thích `"nullable"`/`"xem chú thích"` đánh dấu các cột có ràng buộc hoặc quyết định thiết kế cần giải thích thêm ở phần bảng chi tiết bên dưới (không đủ chỗ ghi trực tiếp trên sơ đồ).
@@ -228,9 +243,12 @@ Cột `customer` (mã khách hàng SAP, ví dụ `1000000001`) khớp nguyên v�
 | material | BIGINT | NOT NULL |
 | door_material_name | VARCHAR(255) | NOT NULL |
 | z_mau_sac | VARCHAR(20) | NOT NULL |
+| material_group | VARCHAR(50) | NULL |
 | created_at / updated_at | DATETIME | NOT NULL |
 
 UNIQUE (`material`, `z_mau_sac`): xác nhận đúng với dữ liệu thật — cùng 1 `material` có thể tồn tại ở nhiều màu khác nhau (ví dụ `material=90000001` xuất hiện với `z_mau_sac` = `#02`/`#03`/`#05` trong `bom_dinh_muc.csv`), mỗi tổ hợp là một `DoorProduct` riêng.
+
+**`material_group` — mã model cửa, để NULL được.** Đây là cột phân loại mẫu cửa theo dòng sản phẩm (ví dụ các model nan nhôm, nan thép, ray) và là trục của biểu đồ "số bộ cửa theo model" ở báo cáo mức tổng quan. Cột nằm trong file đơn hàng chứ không nằm trong file định mức, trong khi `DoorProduct` có thể được tạo ra từ cả hai luồng nhập — nên một mẫu cửa mới biết tới qua luồng định mức sẽ tạm thời chưa có model, và được điền khi luồng nhập đơn hàng gặp đúng mẫu cửa đó. Vì vậy cột để NULL được, và chỉ được ghi khi đang rỗng — không ghi đè giá trị đã có, đúng nguyên tắc chung của các luồng nhập dữ liệu là không phá bản ghi sẵn có.
 
 **Quy ước đặt tên cho các trường có tiền tố `z` của SAP**: tên cột trong cơ sở dữ liệu giữ nguyên tiền tố theo đúng nguồn (`z_mau_sac`, và sau này `z_item`/`z_chieu_cao_dh`/`z_chieu_rong_dh` ở `sales_order`), nhưng thuộc tính tương ứng trong mã nguồn bỏ tiền tố này (`mauSac`, `item`, `chieuCaoDh`, `chieuRongDh`). Lý do: quy tắc đặt tên thuộc tính của Java (JavaBeans) coi một chữ cái thường đứng trước chữ hoa (`zMauSac`) là trường hợp đặc biệt và suy ra tên thuộc tính thành `ZMauSac`, khiến tên trường trong mã nguồn, tên thuộc tính khi ánh xạ dữ liệu và tên trường trong JSON của API lệch nhau. Bỏ tiền tố ở tầng mã nguồn giúp cả ba thống nhất; ánh xạ ngược về đúng cột nguồn được khai báo tường minh trên từng trường.
 
@@ -302,8 +320,10 @@ UNIQUE (`slat_material_id`, `do_dai_thanh_mm`): xác nhận đúng với dữ li
 | z_item | INT | NOT NULL |
 | sales_document | BIGINT | NULL |
 | sales_order_item | INT | NULL |
+| lenh_sx | BIGINT | NULL |
 | customer_id | BIGINT | NOT NULL, FK → `customer.id` |
 | door_product_id | BIGINT | NOT NULL, FK → `door_product.id` |
+| approved_plan_id | BIGINT | NULL, FK → `cutting_plan.id` |
 | z_chieu_cao_dh | DECIMAL(6,3) | NOT NULL |
 | z_chieu_rong_dh | DECIMAL(6,3) | NOT NULL |
 | reqd_delivery_date | DATE | NOT NULL |
@@ -313,9 +333,13 @@ UNIQUE (`ycsx`, `z_item`): khóa nghiệp vụ đúng theo grain của `don_hang
 
 **UNIQUE (`sales_document`, `sales_order_item`) — khóa nghiệp vụ thứ hai, chỉ phục vụ tra cứu/đối chiếu SAP, không thay đổi thứ tự ưu tiên cắt.** Đối chiếu 190 dòng dữ liệu thật: cặp này cũng phân biệt tuyệt đối (190/190, không trùng), cùng grain với `(ycsx, z_item)` — 1 dòng dữ liệu có cả hai cặp khóa hợp lệ song song, vì `sales_document`/`sales_order_item` là mã đơn hàng khách thật trong SAP còn `ycsx`/`z_item` là mã lô sản xuất nội bộ gộp nhiều đơn khách khác nhau lại để cắt chung (xem điểm 1 ở trên). Thêm cột này để PLANNER tra ngược đúng đơn khách trên SAP khi cần đối chiếu, không phải vì thuật toán cần — thứ tự ưu tiên xử lý của thuật toán sinh phương án cắt vẫn giữ nguyên `(reqd_delivery_date, ycsx, z_item)` như `docs/requirements-functional.md` đã chốt, vì đơn vị "chưa xử lý/đã xử lý" của thuật toán gắn với `SalesOrder` (1 bộ cửa) chứ không phải khái niệm đơn hàng SAP. Cặp cột này để **NULL** được: PLANNER/ADMIN cũng có thể tạo đơn thủ công trực tiếp trên hệ thống (không qua import từ SAP), khi đó không có mã đơn khách SAP để điền — UNIQUE vẫn đúng vì MySQL coi mỗi hàng NULL là phân biệt trong ràng buộc tổ hợp.
 
-`INDEX (reqd_delivery_date)`: cột được lọc (`<= t+3`) và sắp xếp ưu tiên ở mọi lần sinh phương án cắt — cần chỉ mục riêng để truy vấn phạm vi đợt xử lý không phải quét toàn bảng khi số đơn hàng lịch sử tăng dần theo thời gian.
+**`lenh_sx` — lệnh sản xuất của bộ cửa, để NULL được.** Cột nguồn trong dữ liệu đơn hàng tên là `order`, trùng từ khóa dự trữ của MySQL nên đổi tên khi ánh xạ — cùng lý do với `slat_group` ở trên, và là ngoại lệ thứ hai của quy ước giữ nguyên tên cột nguồn. Đây là mã lệnh sản xuất mà hệ thống nguồn cấp cho từng bộ cửa; khác với `ycsx` (lô sản xuất gộp nhiều bộ) và khác hẳn với "lệnh sản xuất thanh nan" nói tới ở báo cáo thiếu vật tư. Cột này không tham gia khóa nghiệp vụ hay thứ tự ưu tiên, chỉ để in ra báo cáo cho khớp chứng từ mà xưởng đang dùng, nên để NULL được như cặp cột SAP ở trên — đơn tạo thủ công không có mã này.
 
-**Các cột có trong `don_hang.csv` nhưng chưa đưa vào schema** (vì chưa có yêu cầu chức năng nào cần dùng, và có thể suy ra hoặc trùng lặp): `item_description`/`material_group` (đã có ở `door_product`), `z_dien_tich_dh`/`total_order_quantity`/`cumul_confirmed_qty`/`base_unit_of_measure` (luôn bằng đúng diện tích cao×rộng, suy ra được, không lưu trùng), `z_lo_cuon` (2 giá trị TRONG/NGOÀI — hướng cuốn, chưa rõ có ảnh hưởng BOM/cắt hay không), `status`, `planned_order_delivery_date`. Nếu về sau phát hiện cần dùng, bổ sung cột tương ứng, tên khớp nguyên văn dataset như quy ước.
+**`approved_plan_id` — trạng thái "đã duyệt" của đơn, để NULL khi đơn còn chờ.** Đơn có cột này rỗng là đơn còn trong hàng chờ: chức năng tính phương án cắt lấy **toàn bộ** các đơn như vậy, chức năng duyệt lấy tập con của chúng theo quy tắc t+3/dưới 70 đơn. Khi một phương án được duyệt, mọi đơn trong phạm vi được gán khóa ngoại tới đúng `cutting_plan` đó trong cùng giao dịch, kể cả đơn chỉ nhận kết quả thiếu vật tư. Đơn có mẫu cửa thiếu định mức dùng được thì **không** nằm trong phạm vi nên không được gán và vẫn ở lại hàng chờ — đúng chủ ý, vì đó là đơn **đang bị chặn** chờ khai báo định mức chứ không phải đơn đã xử lý xong; hệ thống đếm riêng và cảnh báo số đơn này thay vì để nó lẫn vào hàng chờ bình thường. Lý do chọn cột tường minh thay vì suy ra từ các bảng kết quả, xem điểm 5 ở mục 3.3.1. Luồng nhập đơn hàng hàng loạt cập nhật dữ liệu của đơn đã duyệt nhưng **không bao giờ xóa giá trị cột này**; nếu không, mỗi lượt nhập định kỳ sẽ đẩy toàn bộ đơn đã duyệt trở lại hàng chờ.
+
+`INDEX (reqd_delivery_date)`: cột được lọc (`<= t+3`) và sắp xếp ưu tiên ở mọi lần duyệt phương án cắt — cần chỉ mục riêng để truy vấn phạm vi đợt xử lý không phải quét toàn bảng khi số đơn hàng lịch sử tăng dần theo thời gian. `INDEX (approved_plan_id)`: cột được lọc ở **mọi** lần tính lẫn lần duyệt (`IS NULL`), và là đường tra ngược từ một phương án về các đơn nó đã duyệt.
+
+**Các cột có trong `don_hang.csv` nhưng chưa đưa vào schema** (vì chưa có yêu cầu chức năng nào cần dùng, và có thể suy ra hoặc trùng lặp): `item_description` (đã có ở `door_product`, nơi cũng lưu luôn `material_group`), `z_dien_tich_dh`/`total_order_quantity`/`cumul_confirmed_qty`/`base_unit_of_measure` (luôn bằng đúng diện tích cao×rộng, suy ra được, không lưu trùng), `z_lo_cuon` (2 giá trị TRONG/NGOÀI — hướng cuốn, chưa rõ có ảnh hưởng BOM/cắt hay không), `status`, `planned_order_delivery_date`. Nếu về sau phát hiện cần dùng, bổ sung cột tương ứng, tên khớp nguyên văn dataset như quy ước.
 
 ## Bảng kết quả phương án cắt
 
@@ -326,8 +350,11 @@ UNIQUE (`ycsx`, `z_item`): khóa nghiệp vụ đúng theo grain của `don_hang
 | run_at | DATETIME | NOT NULL |
 | status | ENUM('COMPLETED','FAILED') | NOT NULL, DEFAULT 'COMPLETED' |
 | total_waste_m | DECIMAL(10,2) | NOT NULL |
+| total_stock_used_m | DECIMAL(10,2) | NOT NULL |
 | scope_cutoff_date | DATE | NOT NULL |
 | scope_order_count | INT | NOT NULL |
+
+**Mỗi dòng là một lần duyệt, không phải một lần tính.** Chức năng tính phương án cắt chạy trọn vẹn thuật toán nhưng không tạo dòng nào ở bảng này, nên lịch sử ở đây đúng bằng lịch sử các quyết định đã chốt — không lẫn các lần chạy thử. `total_stock_used_m` là tổng độ dài tồn kho thực tiêu hao của lần duyệt (đã trừ phần dư nhập lại kho), tức mẫu số của tỷ lệ phế; lưu sẵn thay vì cộng lại từ bảng con mỗi lần đọc báo cáo.
 
 Không có `updated_at`: một `CuttingPlan` và toàn bộ bảng con được ghi trong đúng 1 transaction, không có luồng chỉnh sửa sau khi lưu. Giá trị `FAILED` mang tính dự phòng (nếu về sau cần một bước xử lý nhiều giai đoạn có thể thất bại giữa chừng); ở phạm vi khóa luận, transaction rollback khi lỗi thì không có dòng nào được lưu, nên hiện tại chỉ `COMPLETED` được set trong thực tế.
 
@@ -342,12 +369,15 @@ Không có `updated_at`: một `CuttingPlan` và toàn bộ bảng con được 
 | remainder_mm | INT | NOT NULL, DEFAULT 0 |
 | remainder_type | ENUM('DISCARDED','RESTOCK','WASTE') | NOT NULL |
 | stick_count | INT | NOT NULL, DEFAULT 1 |
+| cut_level | ENUM('PA1','PA2','PA3','PA4') | NULL |
 
 `INDEX (cutting_plan_id)`.
 
+**`cut_level` — mức ưu tiên mà thuật toán đã dùng để cắt phôi này.** Bốn giá trị tương ứng bốn mức của thuật toán: khớp gần đúng, cắt bội số, ghép nối, và cắt để lại phần dư nhập kho. Mức này phải được lưu chứ không suy ngược được từ kết quả: một phôi cắt ra đúng một đoạn với phần dư dưới 30cm có thể đến từ mức một (khớp gần đúng ngay) hoặc từ mức ba (ghép nối nhưng đối tác ghép chỉ có một đoạn), và báo cáo gửi xuống xưởng phải nói đúng phương án nào đã được áp dụng. Cột để NULL được vì các phương án đã lưu trước khi bổ sung cột này không có thông tin đó — không suy đoán ngược cho dữ liệu lịch sử.
+
 **Giá trị `WASTE` của `remainder_type` chỉ còn ý nghĩa lịch sử.** Thuật toán hiện tại không sinh ra phần dư nằm trong khoảng 30cm–3m nữa: cả bốn mức cắt đều chỉ nhận thanh khi phần dư dưới 30cm hoặc trên 3m, hết cách thì báo thiếu vật tư (xem `docs/requirements-functional.md` Nhóm 3). Enum vẫn giữ đủ ba giá trị, và công thức tỷ lệ phế vẫn cộng cả ba, để các phương án cắt được lưu trước khi Mức 4 siết điều kiện vẫn đọc và đối chiếu được — bỏ giá trị này đi sẽ làm hỏng dữ liệu lịch sử.
 
-**`stick_count`: số phôi giống nhau (cùng độ dài nguồn, cùng pattern) được gộp vào 1 dòng.** Khớp với thực tế tồn kho vận hành theo số lượng thanh (`so_thanh` ở `inventory_batch`), không phải 1 dòng/1 thanh; báo cáo mức chi tiết nhất ở `requirements-functional.md` cũng có cột "số lượng phôi dùng ở độ dài đó" riêng với pattern. Chỉ gộp khi các phôi đó có **cùng pattern và cùng tập `CuttingPlanDetailItem` phân bổ** (ví dụ Mức 2 — cắt bội số: "15 thanh 6m cắt đôi" cùng phục vụ 1 đơn → 1 dòng, `stick_count = 15`); nếu các phôi cùng pattern nhưng phục vụ tập đơn khác nhau (ví dụ Mức 3 — ghép nối, mỗi thanh ghép các đơn khác nhau) thì mỗi phôi vẫn phải là 1 dòng riêng (`stick_count = 1`).
+**`stick_count`: số phôi giống nhau (cùng độ dài nguồn, cùng pattern) được gộp vào 1 dòng.** Khớp với thực tế tồn kho vận hành theo số lượng thanh (`so_thanh` ở `inventory_batch`), không phải 1 dòng/1 thanh; cột mô tả cách cắt ở `requirements-functional.md` cũng tách riêng "bao nhiêu phôi" với cách chia đoạn trên mỗi phôi. Chỉ gộp khi các phôi đó có **cùng pattern, cùng `cut_level`, và cùng tập `CuttingPlanDetailItem` phân bổ** (ví dụ Mức 2 — cắt bội số: "15 thanh 6m cắt đôi" cùng phục vụ 1 đơn → 1 dòng, `stick_count = 15`); nếu các phôi cùng pattern nhưng phục vụ tập đơn khác nhau (ví dụ Mức 3 — ghép nối, mỗi thanh ghép các đơn khác nhau) thì mỗi phôi vẫn phải là 1 dòng riêng (`stick_count = 1`).
 
 **Quyết định thiết kế đáng chú ý: không có khóa ngoại tới `inventory_batch`.** `source_length_mm` copy trực tiếp độ dài phôi tồn kho tại thời điểm cắt, không FK, vì `inventory_batch` là số liệu tổng hợp còn-bao-nhiêu-thanh luôn thay đổi theo thời gian (bị trừ dần trong lúc thuật toán chạy, được cộng thêm khi nhập lại kho phần dư > 3m ở Mức 4) — nếu giữ FK tới đúng dòng `inventory_batch`, lịch sử phương án cắt cũ sẽ bị ảnh hưởng khi dòng đó sau này thay đổi số liệu. Copy giá trị giữ lịch sử phương án cắt bất biến, đúng yêu cầu phi chức năng "kết quả tái lập được".
 
@@ -361,7 +391,7 @@ Không có `updated_at`: một `CuttingPlan` và toàn bộ bảng con được 
 | cut_quantity | INT | NOT NULL |
 | is_original_order | BOOLEAN | NOT NULL |
 
-UNIQUE (`cutting_plan_detail_id`, `sales_order_id`): một bộ cửa chỉ xuất hiện đúng 1 lần trên 1 phôi cụ thể (nhiều đoạn của cùng bộ cửa trên cùng phôi gộp vào `cut_quantity`, không tách nhiều dòng). `INDEX (sales_order_id)` phục vụ truy vấn suy ra trạng thái "đã xử lý" của một `SalesOrder` (điểm 5, mục 3.3.1): kiểm tra tồn tại bản ghi tham chiếu tới `SalesOrder` đó.
+UNIQUE (`cutting_plan_detail_id`, `sales_order_id`): một bộ cửa chỉ xuất hiện đúng 1 lần trên 1 phôi cụ thể (nhiều đoạn của cùng bộ cửa trên cùng phôi gộp vào `cut_quantity`, không tách nhiều dòng). `INDEX (sales_order_id)` phục vụ truy vấn suy ra **kết quả đủ/thiếu vật tư** của một đơn đã duyệt (điểm 5, mục 3.3.1): kiểm tra tồn tại bản ghi tham chiếu tới `SalesOrder` đó. Bản thân việc đơn đã được duyệt hay chưa không đọc ở đây mà đọc thẳng từ `sales_order.approved_plan_id`.
 
 ### `shortage_record`
 | Cột | Kiểu | Ràng buộc |
@@ -373,4 +403,4 @@ UNIQUE (`cutting_plan_detail_id`, `sales_order_id`): một bộ cửa chỉ xu�
 | missing_quantity | INT | NOT NULL |
 | missing_length_m | DECIMAL(10,2) | NOT NULL |
 
-UNIQUE (`cutting_plan_id`, `sales_order_id`, `slat_material_id`): trong 1 lần chạy, một bộ cửa chỉ thiếu đúng 1 lần cho 1 loại thanh nan cụ thể. `INDEX (sales_order_id)` dùng cho cùng mục đích suy ra trạng thái xử lý như ở `cutting_plan_detail_item`.
+UNIQUE (`cutting_plan_id`, `sales_order_id`, `slat_material_id`): trong 1 lần chạy, một bộ cửa chỉ thiếu đúng 1 lần cho 1 loại thanh nan cụ thể. `INDEX (sales_order_id)` dùng cho cùng mục đích suy ra kết quả đủ/thiếu vật tư như ở `cutting_plan_detail_item`.
