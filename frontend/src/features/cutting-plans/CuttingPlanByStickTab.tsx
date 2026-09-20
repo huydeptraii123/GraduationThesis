@@ -1,5 +1,5 @@
-import { Card, Space, Table, Tag, Typography } from 'antd'
-import { useMemo } from 'react'
+import { Card, Pagination, Space, Table, Tag, Typography } from 'antd'
+import { useMemo, useState } from 'react'
 import { CuttingBarDiagram } from '../../components/CuttingBarDiagram'
 import { expandDetailToPieces } from './expandDetailToPieces'
 import { REMAINDER_TYPE_LABEL } from './remainderLabels'
@@ -27,9 +27,19 @@ function StatusChip({ detail }: { detail: CuttingPlanDetailResponse }) {
   return <Tag>Hiệu suất {efficiency}%</Tag>
 }
 
+/** Số thẻ phôi vẽ mỗi trang. Mỗi thẻ là một SVG, nên số này là thứ quyết định trang có mượt không. */
+const STICKS_PER_PAGE = 10
+
 export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
+  const [current, setCurrent] = useState(1)
+  const [pageSize, setPageSize] = useState(STICKS_PER_PAGE)
+
   // Gọi assignOrderColor theo đúng thứ tự xuất hiện trước khi các card bên dưới gọi lại (idempotent,
   // cùng 1 map dùng chung) để chú thích màu và các thanh luôn khớp nhau.
+  //
+  // PHẢI duyệt TOÀN BỘ plan.details, không phải chỉ trang đang xem: màu gán theo thứ tự đơn hàng
+  // xuất hiện lần đầu, nên nếu để các thẻ ở trang sau tự gán thì mở thẳng trang 3 sẽ ra bảng màu
+  // khác với khi lật từ trang 1 — cùng một đơn hàng đổi màu theo đường người dùng đi tới.
   const legend = useMemo(() => {
     const seen = new Map<string, { label: string; color: string }>()
     plan.details.forEach((detail) => {
@@ -42,6 +52,15 @@ export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
     })
     return Array.from(seen.values())
   }, [plan, assignOrderColor])
+
+  // Giữ lại chỉ số gốc để nhãn "Phôi #n" vẫn là số thứ tự trong CẢ phương án, không phải trong trang.
+  const pageDetails = useMemo(
+    () =>
+      plan.details
+        .map((detail, index) => ({ detail, index }))
+        .slice((current - 1) * pageSize, current * pageSize),
+    [plan.details, current, pageSize],
+  )
 
   return (
     <div>
@@ -57,13 +76,26 @@ export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
             Phần dư:
           </Typography.Text>
           <Tag>Bỏ (&lt;30cm)</Tag>
-          <Tag color="warning">Lãng phí (30cm–3m)</Tag>
           <Tag color="success">Nhập kho (&gt;3m)</Tag>
         </Space>
       </Card>
 
+      <Pagination
+        style={{ marginBottom: 16, textAlign: 'right' }}
+        current={current}
+        pageSize={pageSize}
+        total={plan.details.length}
+        showSizeChanger
+        pageSizeOptions={['5', '10', '20', '50']}
+        showTotal={(total) => `${total} phôi`}
+        onChange={(nextCurrent, nextPageSize) => {
+          setCurrent(nextCurrent)
+          setPageSize(nextPageSize)
+        }}
+      />
+
       <Space orientation="vertical" size={16} style={{ width: '100%' }}>
-        {plan.details.map((detail, index) => (
+        {pageDetails.map(({ detail, index }) => (
           <Card
             key={detail.id}
             size="small"
@@ -86,11 +118,25 @@ export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
         ))}
       </Space>
 
+      <Pagination
+        style={{ marginTop: 16, textAlign: 'right' }}
+        current={current}
+        pageSize={pageSize}
+        total={plan.details.length}
+        showSizeChanger
+        pageSizeOptions={['5', '10', '20', '50']}
+        showTotal={(total) => `${total} phôi`}
+        onChange={(nextCurrent, nextPageSize) => {
+          setCurrent(nextCurrent)
+          setPageSize(nextPageSize)
+        }}
+      />
+
       <Card size="small" title="Bảng tổng hợp phôi đã sử dụng" style={{ marginTop: 16 }}>
         <Table
           size="small"
           rowKey="id"
-          pagination={false}
+          pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `${total} dòng phôi` }}
           dataSource={plan.details}
           columns={[
             {
