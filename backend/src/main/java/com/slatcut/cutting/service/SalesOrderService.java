@@ -68,6 +68,7 @@ public class SalesOrderService {
     @Transactional
     public SalesOrderResponse update(Long id, SalesOrderRequest request) {
         SalesOrder entity = findEntityById(id);
+        checkNotApproved(entity, "sửa");
         Customer customer = findCustomerById(request.getCustomerId());
         DoorProduct doorProduct = findDoorProductById(request.getDoorProductId());
         checkNoDuplicateYcsxItem(request, id);
@@ -82,15 +83,23 @@ public class SalesOrderService {
     @Transactional
     public void delete(Long id) {
         SalesOrder entity = findEntityById(id);
-        // Một câu hỏi duy nhất thay cho việc dò hai bảng con: đơn đã thuộc phương án nào chưa.
-        // Bao phủ rộng hơn cách cũ — đơn được duyệt nhưng không sinh ra dòng kết quả nào (mẫu cửa
-        // hết dòng định mức dùng được sau khi ADMIN sửa) trước đây lọt qua guard và xóa được, làm
-        // mất dấu vết một đơn đã nằm trong phương án đã chốt.
+        checkNotApproved(entity, "xóa");
+        salesOrderRepository.delete(entity);
+    }
+
+    /**
+     * Đơn đã duyệt là bất biến (docs/requirements-functional.md Nhóm 1): nan của bộ cửa đó đã cắt
+     * theo đúng kích thước đang lưu và đã ra khỏi kho, nên sửa chỉ làm hồ sơ lệch với vật tư thực
+     * tế mà không khiến bộ cửa được cắt lại, còn xóa thì làm mất dấu vết của phương án đã ghi nhận.
+     *
+     * <p>Một câu hỏi duy nhất thay cho việc dò hai bảng con như trước: cách cũ bỏ lọt đơn đã duyệt
+     * mà không còn dòng kết quả nào.
+     */
+    private static void checkNotApproved(SalesOrder entity, String action) {
         if (entity.getApprovedPlan() != null) {
-            throw new ConflictException("Không thể xóa: đơn hàng đã thuộc phương án cắt #"
+            throw new ConflictException("Không thể " + action + ": đơn hàng đã thuộc phương án cắt #"
                     + entity.getApprovedPlan().getId() + " đã được duyệt");
         }
-        salesOrderRepository.delete(entity);
     }
 
     private void checkNoDuplicateYcsxItem(SalesOrderRequest request, Long excludeId) {

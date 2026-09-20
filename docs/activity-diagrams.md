@@ -27,15 +27,20 @@ flowchart TD
     I -- "Không" --> M["Mở transaction"]
     M --> N{"Còn dòng chưa upsert?"}
     N -- "Có" --> O{"Bản ghi đã tồn tại theo khóa nghiệp vụ?"}
-    O -- "Có" --> P["Cập nhật bản ghi hiện có"]
+    O -- "Có" --> O2{"Là đơn hàng và<br/>đã được duyệt?"}
+    O2 -- "Có" --> O3["Giữ nguyên bản ghi cũ;<br/>nếu dữ liệu nguồn khác thì ghi nhận<br/>cảnh báo: bộ cửa nào, trường nào khác"]
+    O3 --> N
+    O2 -- "Không" --> P["Cập nhật bản ghi hiện có"]
     O -- "Không" --> Q["Tạo bản ghi mới"]
     P --> N
     Q --> N
     N -- "Không, đã xử lý hết" --> R["Commit transaction"]
-    R --> S["Trả về số dòng đã nhập thành công"]
-    S --> T["Người dùng thấy thông báo 'Nhập thành công N dòng'"]
+    R --> S["Trả về số dòng đã nhập + danh sách cảnh báo"]
+    S --> T["Người dùng thấy 'Nhập thành công N dòng'<br/>kèm danh sách bộ cửa đã duyệt bị bỏ qua"]
     T --> Z
 ```
+
+Nhánh "đã được duyệt" ở vòng lặp upsert là ranh giới bất biến của đơn hàng đã chốt: nan của bộ cửa đó đã cắt theo kích thước đã lưu, ghi đè chỉ làm hồ sơ lệch với vật tư đã ra khỏi kho mà không khiến bộ cửa được cắt lại. Cảnh báo **không** hủy lượt nhập — khác hẳn nhánh lỗi định dạng ở trên: dòng lỗi định dạng nghĩa là file nguồn sai và phải sửa rồi nhập lại, còn ở đây file nguồn không sai, chỉ là hệ thống không được phép tự ý áp thay đổi lên một việc đã làm xong; quyết định tạo bộ cửa mới để cắt lại thuộc về PLANNER.
 
 Điểm cần lưu ý: hai vòng lặp (kiểm tra định dạng và upsert) được tách rời — chỉ bước sang giai đoạn upsert khi **toàn bộ** các dòng đã qua kiểm tra định dạng, tránh trường hợp nhập được một phần rồi mới phát hiện lỗi ở dòng sau.
 
@@ -69,7 +74,10 @@ flowchart TD
     K --> L{"Đủ trường bắt buộc<br/>và đúng định dạng?"}
     L -- "Không" --> L1["Báo lỗi, giữ nguyên form"]
     L1 --> K
-    L -- "Có" --> M["Cập nhật bản ghi"]
+    L -- "Có" --> L2{"Là đơn hàng và<br/>đã được duyệt?"}
+    L2 -- "Có" --> L3["Từ chối sửa, báo lỗi<br/>'đơn đã thuộc một phương án cắt<br/>đã duyệt, không thể sửa'"]
+    L3 --> Z
+    L2 -- "Không" --> M["Cập nhật bản ghi"]
     M --> R
 
     D -- "Xóa" --> N["Chọn bản ghi cần xóa"]

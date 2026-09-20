@@ -373,6 +373,21 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void update_throwsConflictWhenOrderBelongsToApprovedPlan() {
+        Customer customer = persistCustomer(91000018L, "Khách hàng P");
+        DoorProduct doorProduct = persistDoorProduct(83000017L, "#02");
+        SalesOrder existing = persistOrder("HY90018", 1, 1000900021L, 1, customer, doorProduct);
+        existing.setApprovedPlan(persistCuttingPlan());
+        salesOrderRepository.saveAndFlush(existing);
+
+        assertThatThrownBy(() -> service.update(
+                        existing.getId(),
+                        request("HY90018", 1, 1000900021L, 1, customer.getId(), doorProduct.getId())))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("sửa");
+    }
+
+    @Test
     void delete_removesOrderWhenNotYetApproved() {
         Customer customer = persistCustomer(91000015L, "Khách hàng M");
         DoorProduct doorProduct = persistDoorProduct(83000014L, "#02");
