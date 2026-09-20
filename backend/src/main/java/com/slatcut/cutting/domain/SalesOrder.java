@@ -48,6 +48,21 @@ public class SalesOrder {
     @JoinColumn(name = "door_product_id", nullable = false)
     private DoorProduct doorProduct;
 
+    /**
+     * Phương án cắt đã duyệt đơn này; null khi đơn còn trong hàng chờ.
+     *
+     * <p>Đây là trạng thái "đã duyệt" tường minh, ghi đúng một lần tại bước duyệt phương án cắt và
+     * trong cùng transaction với {@link CuttingPlan} tương ứng — không phải cột đệm được cập nhật
+     * rời rạc sau sự kiện, nên không có trạng thái trung gian nào để lệch.
+     *
+     * <p>Không suy ra từ việc đơn đã có CuttingPlanDetailItem/ShortageRecord hay chưa như thiết kế
+     * trước: chức năng "tính phương án cắt" chạy trọn thuật toán nhưng không ghi gì, nên sự tồn tại
+     * của bản ghi kết quả không còn phân biệt được "đã chốt" với "mới tính thử".
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "approved_plan_id")
+    private CuttingPlan approvedPlan;
+
     @Column(name = "z_chieu_cao_dh")
     private BigDecimal chieuCaoDh;
 

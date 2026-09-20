@@ -373,7 +373,7 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void delete_removesOrderWhenNoCuttingResultReferencesIt() {
+    void delete_removesOrderWhenNotYetApproved() {
         Customer customer = persistCustomer(91000015L, "Khách hàng M");
         DoorProduct doorProduct = persistDoorProduct(83000014L, "#02");
         SalesOrder existing = persistOrder("HY90015", 1, 1000900018L, 1, customer, doorProduct);
@@ -389,25 +389,36 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void delete_throwsConflictWhenCuttingPlanDetailItemReferencesOrder() {
+    void delete_throwsConflictWhenOrderBelongsToApprovedPlan() {
         Customer customer = persistCustomer(91000016L, "Khách hàng N");
         DoorProduct doorProduct = persistDoorProduct(83000015L, "#02");
         SalesOrder existing = persistOrder("HY90016", 1, 1000900019L, 1, customer, doorProduct);
         CuttingPlan plan = persistCuttingPlan();
         CuttingPlanDetail detail = persistCuttingPlanDetail(plan, persistSlatMaterial(70000015L));
         persistCuttingPlanDetailItem(detail, existing);
+        existing.setApprovedPlan(plan);
+        salesOrderRepository.saveAndFlush(existing);
 
-        assertThatThrownBy(() -> service.delete(existing.getId())).isInstanceOf(ConflictException.class);
+        assertThatThrownBy(() -> service.delete(existing.getId()))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("#" + plan.getId());
         assertThat(salesOrderRepository.findById(existing.getId())).isPresent();
     }
 
+    /**
+     * Guard đọc approvedPlan chứ không dò hai bảng con — ca này chứng minh sự khác biệt đó là có
+     * thật, không phải cách viết lại cùng một phép kiểm: đơn chỉ bị báo thiếu vật tư (không có
+     * CuttingPlanDetailItem nào) vẫn bị chặn xóa, vì nó vẫn nằm trong một phương án đã duyệt.
+     */
     @Test
-    void delete_throwsConflictWhenShortageRecordReferencesOrder() {
+    void delete_throwsConflictWhenApprovedOrderOnlyProducedShortage() {
         Customer customer = persistCustomer(91000017L, "Khách hàng O");
         DoorProduct doorProduct = persistDoorProduct(83000016L, "#02");
         SalesOrder existing = persistOrder("HY90017", 1, 1000900020L, 1, customer, doorProduct);
         CuttingPlan plan = persistCuttingPlan();
         persistShortageRecord(plan, existing, persistSlatMaterial(70000016L));
+        existing.setApprovedPlan(plan);
+        salesOrderRepository.saveAndFlush(existing);
 
         assertThatThrownBy(() -> service.delete(existing.getId())).isInstanceOf(ConflictException.class);
         assertThat(salesOrderRepository.findById(existing.getId())).isPresent();

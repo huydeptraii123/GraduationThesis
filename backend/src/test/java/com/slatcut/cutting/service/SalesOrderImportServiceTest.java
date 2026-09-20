@@ -7,11 +7,14 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import com.slatcut.cutting.AbstractIntegrationTest;
 import com.slatcut.cutting.config.ImportValidationException;
 import com.slatcut.cutting.domain.Customer;
+import com.slatcut.cutting.domain.CuttingPlan;
+import com.slatcut.cutting.domain.CuttingPlanStatus;
 import com.slatcut.cutting.domain.DoorProduct;
 import com.slatcut.cutting.domain.SalesOrder;
 import com.slatcut.cutting.dto.ImportRowError;
 import com.slatcut.cutting.dto.SalesOrderImportResult;
 import com.slatcut.cutting.repository.CustomerRepository;
+import com.slatcut.cutting.repository.CuttingPlanRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
 import java.io.ByteArrayOutputStream;
@@ -59,6 +62,9 @@ class SalesOrderImportServiceTest extends AbstractIntegrationTest {
 
     @Autowired
     private CustomerRepository customerRepository;
+
+    @Autowired
+    private CuttingPlanRepository cuttingPlanRepository;
 
     @Autowired
     private DoorProductRepository doorProductRepository;
@@ -212,6 +218,49 @@ class SalesOrderImportServiceTest extends AbstractIntegrationTest {
         SalesOrder updated = salesOrderRepository.findById(existing.getId()).orElseThrow();
         assertThat(updated.getSalesDocument()).isEqualTo(1000100004L);
         assertThat(updated.getReqdDeliveryDate()).isEqualTo(LocalDate.of(2026, 9, 28));
+    }
+
+    /**
+     * Đơn hàng được nhập lại từ hệ thống nguồn mỗi ngày. Nếu lượt nhập ghi đè trạng thái đã duyệt,
+     * toàn bộ đơn đã chốt sẽ quay lại hàng chờ sau đúng một lần nhập định kỳ và bị cắt lần hai
+     * trên tồn kho đã bị trừ. Bất biến này không có ràng buộc CSDL nào bảo vệ nên phải khóa bằng
+     * test.
+     */
+    @Test
+    void importFromExcel_doesNotResetApprovedPlanOfAlreadyApprovedOrder() {
+        Customer customer = persistCustomer(92000014L, "Khách hàng đã duyệt");
+        DoorProduct doorProduct = persistDoorProduct(85000011L, "#05", "Cửa đã duyệt");
+        SalesOrder existing = new SalesOrder();
+        existing.setYcsx("HY10014");
+        existing.setItem(1);
+        existing.setSalesDocument(1L);
+        existing.setSalesOrderItem(1);
+        existing.setCustomer(customer);
+        existing.setDoorProduct(doorProduct);
+        existing.setChieuCaoDh(new BigDecimal("1.000"));
+        existing.setChieuRongDh(new BigDecimal("1.000"));
+        existing.setReqdDeliveryDate(LocalDate.of(2020, 1, 1));
+        existing.setApprovedPlan(persistCuttingPlan());
+        existing = salesOrderRepository.save(existing);
+        Long approvedPlanId = existing.getApprovedPlan().getId();
+
+        service.importFromExcel(excel(HEADER, doorRow("HY10014", 1, 1000100014L, 9, 92000014L)));
+
+        SalesOrder updated = salesOrderRepository.findById(existing.getId()).orElseThrow();
+        assertThat(updated.getSalesDocument()).isEqualTo(1000100014L);
+        assertThat(updated.getApprovedPlan()).isNotNull();
+        assertThat(updated.getApprovedPlan().getId()).isEqualTo(approvedPlanId);
+    }
+
+    private CuttingPlan persistCuttingPlan() {
+        CuttingPlan plan = new CuttingPlan();
+        plan.setRunAt(java.time.LocalDateTime.now());
+        plan.setStatus(CuttingPlanStatus.COMPLETED);
+        plan.setScopeCutoffDate(LocalDate.now().plusDays(3));
+        plan.setScopeOrderCount(1);
+        plan.setTotalWasteM(BigDecimal.ZERO);
+        plan.setTotalStockUsedM(BigDecimal.ZERO);
+        return cuttingPlanRepository.save(plan);
     }
 
     @Test
