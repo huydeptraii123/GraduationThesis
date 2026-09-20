@@ -4,17 +4,25 @@ import com.slatcut.cutting.domain.SalesOrder;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
+public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, JpaSpecificationExecutor<SalesOrder> {
 
     @Override
     @EntityGraph(attributePaths = {"customer", "doorProduct"})
     List<SalesOrder> findAll();
+
+    /** Bản phân trang cho màn hình danh sách; {@code @EntityGraph} giữ nguyên chống N+1 như trên. */
+    @Override
+    @EntityGraph(attributePaths = {"customer", "doorProduct"})
+    Page<SalesOrder> findAll(Specification<SalesOrder> spec, Pageable pageable);
 
     Optional<SalesOrder> findByYcsxAndItem(String ycsx, Integer item);
 

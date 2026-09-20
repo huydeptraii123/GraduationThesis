@@ -4,14 +4,18 @@ import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.config.ResourceNotFoundException;
 import com.slatcut.cutting.domain.BomItem;
 import com.slatcut.cutting.domain.DoorProduct;
+import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
 import com.slatcut.cutting.dto.BomItemRequest;
 import com.slatcut.cutting.dto.BomItemResponse;
+import com.slatcut.cutting.dto.BomSummaryResponse;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.mapper.BomItemMapper;
 import com.slatcut.cutting.repository.BomItemRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
-import java.util.List;
+import com.slatcut.cutting.repository.spec.BomItemSpecifications;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,8 +39,16 @@ public class BomItemService {
     }
 
     @Transactional(readOnly = true)
-    public List<BomItemResponse> getAll() {
-        return bomItemRepository.findAll().stream().map(mapper::toResponse).toList();
+    public PageResponse<BomItemResponse> getPage(String keyword, SlatGroup slatGroup, Pageable pageable) {
+        return PageResponse.of(
+                bomItemRepository.findAll(BomItemSpecifications.filter(keyword, slatGroup), pageable),
+                mapper::toResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public BomSummaryResponse getSummary() {
+        BomItemRepository.BomTotals totals = bomItemRepository.sumBomTotals();
+        return new BomSummaryResponse(totals.getTotalItems(), totals.getGroupCount(), totals.getDoorProductCount());
     }
 
     @Transactional(readOnly = true)

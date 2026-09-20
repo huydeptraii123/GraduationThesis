@@ -17,6 +17,7 @@ import com.slatcut.cutting.domain.SalesOrder;
 import com.slatcut.cutting.domain.ShortageRecord;
 import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.SalesOrderRequest;
 import com.slatcut.cutting.dto.SalesOrderResponse;
 import com.slatcut.cutting.repository.CustomerRepository;
@@ -32,6 +33,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 class SalesOrderServiceTest extends AbstractIntegrationTest {
 
@@ -79,6 +83,18 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
 
     private SalesOrder persistOrder(
             String ycsx, int item, long salesDocument, int salesOrderItem, Customer customer, DoorProduct doorProduct) {
+        return persistOrder(
+                ycsx, item, salesDocument, salesOrderItem, customer, doorProduct, LocalDate.of(2026, 9, 28));
+    }
+
+    private SalesOrder persistOrder(
+            String ycsx,
+            int item,
+            long salesDocument,
+            int salesOrderItem,
+            Customer customer,
+            DoorProduct doorProduct,
+            LocalDate reqdDeliveryDate) {
         SalesOrder entity = new SalesOrder();
         entity.setYcsx(ycsx);
         entity.setItem(item);
@@ -88,7 +104,7 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
         entity.setDoorProduct(doorProduct);
         entity.setChieuCaoDh(new BigDecimal("2.500"));
         entity.setChieuRongDh(new BigDecimal("3.500"));
-        entity.setReqdDeliveryDate(LocalDate.of(2026, 9, 28));
+        entity.setReqdDeliveryDate(reqdDeliveryDate);
         return salesOrderRepository.save(entity);
     }
 
@@ -214,13 +230,68 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void getAll_returnsEveryPersistedOrder() {
+    void getPage_returnsEveryPersistedOrder() {
         Customer customer = persistCustomer(91000007L, "Khách hàng F");
         DoorProduct doorProduct = persistDoorProduct(83000006L, "#02");
         persistOrder("HY90007", 1, 1000900008L, 1, customer, doorProduct);
         persistOrder("HY90007", 2, 1000900009L, 1, customer, doorProduct);
 
-        assertThat(service.getAll()).extracting(SalesOrderResponse::ycsx).contains("HY90007");
+        assertThat(service.getPage("HY90007", null, null, null, PageRequest.of(0, 20)).content())
+                .extracting(SalesOrderResponse::ycsx)
+                .contains("HY90007");
+    }
+
+    @Test
+    void getPage_splitsResultAcrossPagesInDeliveryPriorityOrder() {
+        Customer customer = persistCustomer(91100000L, "Khách phân trang");
+        DoorProduct doorProduct = persistDoorProduct(83100000L, "#09");
+        // Chèn ngày giao GIẢM DẦN để nếu mất sắp xếp thì thứ tự trả về sẽ khác hẳn kỳ vọng.
+        for (int index = 0; index < 25; index++) {
+            persistOrder(
+                    "PT%05d".formatted(index),
+                    1,
+                    1001000000L + index,
+                    1,
+                    customer,
+                    doorProduct,
+                    LocalDate.of(2026, 10, 1).plusDays(24 - index));
+        }
+        Pageable byPriority = PageRequest.of(0, 10, Sort.by("reqdDeliveryDate", "ycsx", "item"));
+
+        PageResponse<SalesOrderResponse> first = service.getPage("Khách phân trang", null, null, null, byPriority);
+        PageResponse<SalesOrderResponse> second =
+                service.getPage("Khách phân trang", null, null, null, byPriority.withPage(1));
+        PageResponse<SalesOrderResponse> last =
+                service.getPage("Khách phân trang", null, null, null, byPriority.withPage(2));
+
+        assertThat(first.totalElements()).isEqualTo(25);
+        assertThat(first.totalPages()).isEqualTo(3);
+        assertThat(first.content()).hasSize(10);
+        assertThat(last.content()).hasSize(5);
+        assertThat(first.content().getFirst().reqdDeliveryDate()).isEqualTo(LocalDate.of(2026, 10, 1));
+        assertThat(first.content().getLast().reqdDeliveryDate()).isEqualTo(LocalDate.of(2026, 10, 10));
+        assertThat(second.content().getFirst().reqdDeliveryDate()).isEqualTo(LocalDate.of(2026, 10, 11));
+        assertThat(last.content().getLast().reqdDeliveryDate()).isEqualTo(LocalDate.of(2026, 10, 25));
+    }
+
+    @Test
+    void getPage_filtersByCustomerAndDeliveryRange() {
+        Customer target = persistCustomer(91200001L, "Khách lọc đích");
+        Customer other = persistCustomer(91200002L, "Khách lọc khác");
+        DoorProduct doorProduct = persistDoorProduct(83200000L, "#10");
+        persistOrder("LOC0001", 1, 1001100001L, 1, target, doorProduct, LocalDate.of(2026, 11, 5));
+        persistOrder("LOC0002", 1, 1001100002L, 1, target, doorProduct, LocalDate.of(2026, 11, 20));
+        persistOrder("LOC0003", 1, 1001100003L, 1, other, doorProduct, LocalDate.of(2026, 11, 5));
+        Pageable firstPage = PageRequest.of(0, 20);
+
+        PageResponse<SalesOrderResponse> byCustomer =
+                service.getPage(null, target.getId(), null, null, firstPage);
+        PageResponse<SalesOrderResponse> byRange = service.getPage(
+                null, target.getId(), LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 30), firstPage);
+
+        assertThat(byCustomer.totalElements()).isEqualTo(2);
+        assertThat(byRange.totalElements()).isEqualTo(1);
+        assertThat(byRange.content().getFirst().ycsx()).isEqualTo("LOC0002");
     }
 
     @Test
