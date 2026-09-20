@@ -1,22 +1,23 @@
 import { Alert, Card, Space, Statistic, Tag, Typography } from 'antd'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
 import { useAuth } from '../auth/AuthContext'
 import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
 import { canEditBom } from '../auth/permissions'
-import { buildSlatGroupLookup } from '../inventory/constants'
-import { listMaterials } from '../inventory/inventoryApi'
+import { listMaterialOptions } from '../inventory/inventoryApi'
 import type { SlatMaterialResponse } from '../inventory/types'
 import { BomItemTable } from './BomItemTable'
-import { listBomItems, listDoorProducts } from './bomApi'
-import type { BomItemResponse, DoorProductResponse } from './types'
+import { getBomSummary, listDoorProducts } from './bomApi'
+import type { BomSummaryResponse, DoorProductResponse } from './types'
 
 export function BomPage() {
   const { user } = useAuth()
   // Định mức BOM là dữ liệu nền tảng, chỉ ADMIN được ghi (khác 6.1 — tồn kho thuộc PLANNER).
   const canEdit = canEditBom(user)
 
-  const [bomItems, setBomItems] = useState<BomItemResponse[]>([])
+  // Trang cha chỉ giữ thứ KHÔNG phân trang được: số liệu tổng hợp và 2 danh mục tra cứu. Dữ liệu
+  // bảng do chính bảng tự tải theo từng trang.
+  const [summary, setSummary] = useState<BomSummaryResponse | null>(null)
   const [doorProducts, setDoorProducts] = useState<DoorProductResponse[]>([])
   const [slatMaterials, setSlatMaterials] = useState<SlatMaterialResponse[]>([])
   const [loading, setLoading] = useState(true)
@@ -30,15 +31,15 @@ export function BomPage() {
     const loadId = ++latestLoadId.current
     setLoading(true)
     try {
-      const [loadedBomItems, loadedDoorProducts, loadedSlatMaterials] = await Promise.all([
-        listBomItems(),
+      const [loadedSummary, loadedDoorProducts, loadedSlatMaterials] = await Promise.all([
+        getBomSummary(),
         listDoorProducts(),
-        listMaterials(),
+        listMaterialOptions(),
       ])
       if (loadId !== latestLoadId.current) {
         return
       }
-      setBomItems(loadedBomItems)
+      setSummary(loadedSummary)
       setDoorProducts(loadedDoorProducts)
       setSlatMaterials(loadedSlatMaterials)
       setLoadError(null)
@@ -61,21 +62,6 @@ export function BomPage() {
     void reload()
   }, [reload])
 
-  const groupByMaterialId = useMemo(() => buildSlatGroupLookup(slatMaterials), [slatMaterials])
-
-  const stats = useMemo(() => {
-    const groups = new Set<string>()
-    const doorProductIds = new Set<number>()
-    bomItems.forEach((item) => {
-      const group = groupByMaterialId.get(item.slatMaterialId)
-      if (group) {
-        groups.add(group)
-      }
-      doorProductIds.add(item.doorProductId)
-    })
-    return { totalBomItems: bomItems.length, groupCount: groups.size, doorProductCount: doorProductIds.size }
-  }, [bomItems, groupByMaterialId])
-
   return (
     <div>
       <Space align="center" style={{ marginBottom: 4 }}>
@@ -94,22 +80,20 @@ export function BomPage() {
 
       <Space size={16} style={{ margin: '16px 0' }} wrap>
         <Card size="small" style={{ width: 220 }}>
-          <Statistic title="Tổng định mức BOM" value={stats.totalBomItems} loading={loading} />
+          <Statistic title="Tổng định mức BOM" value={summary?.totalItems ?? 0} loading={loading} />
         </Card>
         <Card size="small" style={{ width: 220 }}>
-          <Statistic title="Nhóm thanh nan đang dùng" value={stats.groupCount} loading={loading} />
+          <Statistic title="Nhóm thanh nan đang dùng" value={summary?.groupCount ?? 0} loading={loading} />
         </Card>
         <Card size="small" style={{ width: 220 }}>
-          <Statistic title="Mẫu cửa đang có định mức" value={stats.doorProductCount} loading={loading} />
+          <Statistic title="Mẫu cửa đang có định mức" value={summary?.doorProductCount ?? 0} loading={loading} />
         </Card>
       </Space>
 
       <BomItemTable
-        bomItems={bomItems}
         doorProducts={doorProducts}
         slatMaterials={slatMaterials}
         canEdit={canEdit}
-        loading={loading}
         onChanged={() => void reload()}
       />
     </div>

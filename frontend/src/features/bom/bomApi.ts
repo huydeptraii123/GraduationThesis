@@ -1,5 +1,14 @@
 import { httpClient } from '../../api/httpClient'
-import type { BomImportResult, BomItemRequest, BomItemResponse, DoorProductRequest, DoorProductResponse } from './types'
+import type { Page, PageParams } from '../../api/pagination'
+import type { SlatGroup } from '../inventory/types'
+import type {
+  BomImportResult,
+  BomItemRequest,
+  BomItemResponse,
+  BomSummaryResponse,
+  DoorProductRequest,
+  DoorProductResponse,
+} from './types'
 
 const DOOR_PRODUCTS_URL = '/api/v1/door-products'
 const BOM_ITEMS_URL = '/api/v1/bom-items'
@@ -20,8 +29,18 @@ export function deleteDoorProduct(id: number): Promise<void> {
   return httpClient.delete(`${DOOR_PRODUCTS_URL}/${id}`).then(() => undefined)
 }
 
-export function listBomItems(): Promise<BomItemResponse[]> {
-  return httpClient.get<BomItemResponse[]>(BOM_ITEMS_URL).then((res) => res.data)
+export interface BomItemFilterParams extends PageParams {
+  keyword?: string
+  slatGroup?: SlatGroup | null
+}
+
+export function listBomItems(params: BomItemFilterParams): Promise<Page<BomItemResponse>> {
+  return httpClient.get<Page<BomItemResponse>>(BOM_ITEMS_URL, { params }).then((res) => res.data)
+}
+
+/** Số liệu tổng hợp toàn bộ định mức — danh sách giờ chỉ trả về trang đang xem nên không tự cộng được. */
+export function getBomSummary(): Promise<BomSummaryResponse> {
+  return httpClient.get<BomSummaryResponse>(`${BOM_ITEMS_URL}/summary`).then((res) => res.data)
 }
 
 export function createBomItem(payload: BomItemRequest): Promise<BomItemResponse> {

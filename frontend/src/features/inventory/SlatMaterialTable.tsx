@@ -1,40 +1,42 @@
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { App, Button, Input, Select, Space, Table, Tag } from 'antd'
-import { useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
+import { ListLoadError } from '../../components/ListLoadError'
+import { tablePagination, type PageParams } from '../../api/pagination'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { usePagedList } from '../../hooks/usePagedList'
 import { SlatMaterialFormModal } from './SlatMaterialFormModal'
 import { SLAT_GROUP_COLOR, SLAT_GROUP_LABEL, SLAT_GROUP_OPTIONS } from './constants'
-import { deleteMaterial } from './inventoryApi'
+import { deleteMaterial, listMaterials } from './inventoryApi'
 import type { SlatGroup, SlatMaterialResponse } from './types'
 
 interface Props {
-  materials: SlatMaterialResponse[]
   canEdit: boolean
-  loading: boolean
+  /** Báo trang cha nạp lại danh mục vật tư đầy đủ (dropdown, tra mã ở bảng lô tồn kho). */
   onChanged: () => void
 }
 
-export function SlatMaterialTable({ materials, canEdit, loading, onChanged }: Props) {
+export function SlatMaterialTable({ canEdit, onChanged }: Props) {
   const { message, modal } = App.useApp()
   const [keyword, setKeyword] = useState('')
   const [groupFilter, setGroupFilter] = useState<SlatGroup | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<SlatMaterialResponse | null>(null)
 
-  const filtered = useMemo(() => {
-    const needle = keyword.trim().toLowerCase()
-    return materials.filter((material) => {
-      if (groupFilter && material.slatGroup !== groupFilter) {
-        return false
-      }
-      if (!needle) {
-        return true
-      }
-      return (
-        material.slatMaterialName.toLowerCase().includes(needle) || String(material.slatMaterial).includes(needle)
-      )
-    })
-  }, [materials, keyword, groupFilter])
+  const debouncedKeyword = useDebouncedValue(keyword)
+  const load = useCallback(
+    (params: PageParams) => listMaterials({ ...params, keyword: debouncedKeyword, slatGroup: groupFilter }),
+    [debouncedKeyword, groupFilter],
+  )
+  const { data, loading, error, current, pageSize, handleTableChange, reload } = usePagedList(load, [debouncedKeyword, groupFilter], {
+    errorMessage: 'Không tải được danh mục loại thanh nan.',
+  })
+
+  const handleChanged = useCallback(() => {
+    reload()
+    onChanged()
+  }, [reload, onChanged])
 
   function confirmDelete(material: SlatMaterialResponse) {
     modal.confirm({
@@ -47,7 +49,7 @@ export function SlatMaterialTable({ materials, canEdit, loading, onChanged }: Pr
         try {
           await deleteMaterial(material.id)
           message.success('Đã xóa loại thanh nan.')
-          onChanged()
+          handleChanged()
         } catch (error) {
           message.error(extractErrorMessage(error, 'Không xóa được loại thanh nan.'))
           // Ném lại để AntD giữ hộp thoại mở — đóng lại sẽ khiến người dùng tưởng đã xóa xong.
@@ -92,17 +94,20 @@ export function SlatMaterialTable({ materials, canEdit, loading, onChanged }: Pr
         )}
       </Space>
 
+      <ListLoadError message={error} onRetry={reload} />
+
       <Table
         rowKey="id"
         loading={loading}
-        dataSource={filtered}
-        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `${total} loại thanh nan` }}
+        dataSource={data.content}
+        pagination={tablePagination({ current, pageSize, total: data.totalElements }, (total) => `${total} loại thanh nan`)}
+        onChange={handleTableChange}
         columns={[
           {
             title: 'Mã vật tư',
             dataIndex: 'slatMaterial',
             width: 140,
-            sorter: (a, b) => a.slatMaterial - b.slatMaterial,
+            sorter: true,
           },
           { title: 'Tên loại thanh nan', dataIndex: 'slatMaterialName' },
           {
@@ -142,7 +147,7 @@ export function SlatMaterialTable({ materials, canEdit, loading, onChanged }: Pr
         open={formOpen}
         material={editing}
         onClose={() => setFormOpen(false)}
-        onSaved={onChanged}
+        onSaved={handleChanged}
       />
     </>
   )

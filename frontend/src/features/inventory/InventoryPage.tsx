@@ -1,13 +1,13 @@
 import { Alert, Card, Space, Statistic, Tabs, Typography } from 'antd'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
 import { useAuth } from '../auth/AuthContext'
 import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
 import { canEditInventoryBatch, canEditSlatMaterial } from '../auth/permissions'
 import { InventoryBatchTable } from './InventoryBatchTable'
 import { SlatMaterialTable } from './SlatMaterialTable'
-import { listBatches, listMaterials } from './inventoryApi'
-import type { InventoryBatchResponse, SlatMaterialResponse } from './types'
+import { getInventorySummary, listMaterialOptions } from './inventoryApi'
+import type { InventorySummaryResponse, SlatMaterialResponse } from './types'
 
 export function InventoryPage() {
   const { user } = useAuth()
@@ -16,7 +16,10 @@ export function InventoryPage() {
   const canEditBatches = canEditInventoryBatch(user)
   const canEditMaterials = canEditSlatMaterial(user)
 
-  const [batches, setBatches] = useState<InventoryBatchResponse[]>([])
+  // Trang cha chỉ còn giữ 2 thứ KHÔNG phân trang được: số liệu tổng hợp toàn kho và danh mục vật tư
+  // đầy đủ (dùng cho dropdown + tra mã/nhóm ở bảng lô tồn). Dữ liệu bảng do chính bảng tự tải theo
+  // từng trang.
+  const [summary, setSummary] = useState<InventorySummaryResponse | null>(null)
   const [materials, setMaterials] = useState<SlatMaterialResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -25,16 +28,15 @@ export function InventoryPage() {
   // sẽ ghi đè kết quả mới hơn và tắt cờ loading quá sớm nếu không bỏ qua kết quả cũ.
   const latestLoadId = useRef(0)
 
-  // Nạp cả hai danh sách cùng lúc: bảng lô tồn cần mã và nhóm vật tư nằm ở danh mục loại thanh nan.
   const reload = useCallback(async () => {
     const loadId = ++latestLoadId.current
     setLoading(true)
     try {
-      const [loadedBatches, loadedMaterials] = await Promise.all([listBatches(), listMaterials()])
+      const [loadedSummary, loadedMaterials] = await Promise.all([getInventorySummary(), listMaterialOptions()])
       if (loadId !== latestLoadId.current) {
         return
       }
-      setBatches(loadedBatches)
+      setSummary(loadedSummary)
       setMaterials(loadedMaterials)
       setLoadError(null)
     } catch (error) {
@@ -56,16 +58,6 @@ export function InventoryPage() {
     void reload()
   }, [reload])
 
-  const totals = useMemo(() => {
-    let totalSticks = 0
-    let totalMm = 0
-    batches.forEach((batch) => {
-      totalSticks += batch.soThanh
-      totalMm += batch.doDaiThanhMm * batch.soThanh
-    })
-    return { totalSticks, totalMeters: totalMm / 1000 }
-  }, [batches])
-
   return (
     <div>
       <Typography.Title level={3} style={{ marginTop: 0 }}>
@@ -80,7 +72,7 @@ export function InventoryPage() {
         <Card size="small" style={{ width: 260 }}>
           <Statistic
             title="Tổng chiều dài tồn kho"
-            value={totals.totalMeters}
+            value={summary?.totalLengthM ?? 0}
             // Statistic mặc định ngăn cách kiểu en-US, lệch với các bảng bên dưới đang dùng vi-VN.
             formatter={(value) => Number(value).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}
             suffix="mét"
@@ -90,7 +82,7 @@ export function InventoryPage() {
         <Card size="small" style={{ width: 260 }}>
           <Statistic
             title="Tổng số thanh"
-            value={totals.totalSticks}
+            value={summary?.totalSticks ?? 0}
             formatter={(value) => Number(value).toLocaleString('vi-VN')}
             suffix="thanh"
             loading={loading}
@@ -102,17 +94,17 @@ export function InventoryPage() {
         items={[
           {
             key: 'batches',
-            label: `Tồn kho theo lô (${batches.length})`,
+            // Số trên nhãn tab lấy từ số liệu tổng hợp, không phải độ dài mảng đang hiển thị — sau
+            // khi phân trang, mảng đó chỉ còn 20 dòng.
+            label: `Tồn kho theo lô (${summary?.batchCount ?? 0})`,
             children: (
               <>
                 {!canEditBatches && (
                   <RoleRestrictionNotice requiredRole="PLANNER" action="thêm/sửa/xóa lô tồn kho" />
                 )}
                 <InventoryBatchTable
-                  batches={batches}
                   materials={materials}
                   canEdit={canEditBatches}
-                  loading={loading}
                   onChanged={() => void reload()}
                 />
               </>
@@ -121,14 +113,7 @@ export function InventoryPage() {
           {
             key: 'materials',
             label: `Danh mục loại thanh nan (${materials.length})`,
-            children: (
-              <SlatMaterialTable
-                materials={materials}
-                canEdit={canEditMaterials}
-                loading={loading}
-                onChanged={() => void reload()}
-              />
-            ),
+            children: <SlatMaterialTable canEdit={canEditMaterials} onChanged={() => void reload()} />,
           },
         ]}
       />
