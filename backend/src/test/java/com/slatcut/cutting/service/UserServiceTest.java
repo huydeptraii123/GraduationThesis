@@ -8,6 +8,7 @@ import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.config.ResourceNotFoundException;
 import com.slatcut.cutting.dto.CreateUserRequest;
 import com.slatcut.cutting.dto.LoginRequest;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.ResetPasswordRequest;
 import com.slatcut.cutting.dto.UpdateUserRequest;
 import com.slatcut.cutting.dto.UserResponse;
@@ -15,6 +16,9 @@ import com.slatcut.cutting.repository.UserRepository;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 
@@ -187,12 +191,50 @@ class UserServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void getAll_returnsEveryAccountSortedByUsername() {
+    void getPage_returnsEveryAccountSortedByUsername() {
         service.create(createRequest("aaa_dau_bang", "matkhau123", "PLANNER"));
 
-        List<String> usernames = service.getAll().stream().map(UserResponse::username).toList();
+        List<String> usernames = service.getPage(null, null, null, PageRequest.of(0, 20, Sort.by("username")))
+                .content()
+                .stream()
+                .map(UserResponse::username)
+                .toList();
 
         assertThat(usernames).containsExactly("aaa_dau_bang", SEEDED_ADMIN, SEEDED_PLANNER);
+    }
+
+    @Test
+    void getPage_splitsResultAcrossPages() {
+        for (int index = 0; index < 5; index++) {
+            service.create(createRequest("pt_taikhoan_%d".formatted(index), "matkhau123", "PLANNER"));
+        }
+        Pageable byUsername = PageRequest.of(0, 2, Sort.by("username"));
+
+        PageResponse<UserResponse> first = service.getPage("pt_taikhoan", null, null, byUsername);
+        PageResponse<UserResponse> second = service.getPage("pt_taikhoan", null, null, byUsername.withPage(1));
+        PageResponse<UserResponse> last = service.getPage("pt_taikhoan", null, null, byUsername.withPage(2));
+
+        assertThat(first.totalElements()).isEqualTo(5);
+        assertThat(first.totalPages()).isEqualTo(3);
+        assertThat(first.content()).extracting(UserResponse::username)
+                .containsExactly("pt_taikhoan_0", "pt_taikhoan_1");
+        assertThat(second.content()).extracting(UserResponse::username)
+                .containsExactly("pt_taikhoan_2", "pt_taikhoan_3");
+        assertThat(last.content()).extracting(UserResponse::username).containsExactly("pt_taikhoan_4");
+    }
+
+    @Test
+    void getPage_filtersByRoleAndEnabledFlag() {
+        service.create(createRequest("loc_quanly", "matkhau123", "ADMIN"));
+        service.create(createRequest("loc_kehoach", "matkhau123", "PLANNER"));
+        service.update(idOf("loc_kehoach"), updateRequest("PLANNER", false), SEEDED_ADMIN);
+        Pageable firstPage = PageRequest.of(0, 20, Sort.by("username"));
+
+        PageResponse<UserResponse> admins = service.getPage("loc_", "ADMIN", null, firstPage);
+        PageResponse<UserResponse> disabled = service.getPage("loc_", null, false, firstPage);
+
+        assertThat(admins.content()).extracting(UserResponse::username).containsExactly("loc_quanly");
+        assertThat(disabled.content()).extracting(UserResponse::username).containsExactly("loc_kehoach");
     }
 
     /**

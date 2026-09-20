@@ -174,8 +174,18 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
 
                 // Đọc: mở cho mọi vai trò đã đăng nhập.
                 new Endpoint("GET /slat-materials", Set.of(ADMIN, PLANNER), () -> get("/api/v1/slat-materials")),
+                new Endpoint(
+                        "GET /slat-materials/options",
+                        Set.of(ADMIN, PLANNER),
+                        () -> get("/api/v1/slat-materials/options")),
                 new Endpoint("GET /inventory-batches", Set.of(ADMIN, PLANNER), () -> get("/api/v1/inventory-batches")),
+                new Endpoint(
+                        "GET /inventory-batches/summary",
+                        Set.of(ADMIN, PLANNER),
+                        () -> get("/api/v1/inventory-batches/summary")),
                 new Endpoint("GET /bom-items", Set.of(ADMIN, PLANNER), () -> get("/api/v1/bom-items")),
+                new Endpoint(
+                        "GET /bom-items/summary", Set.of(ADMIN, PLANNER), () -> get("/api/v1/bom-items/summary")),
                 new Endpoint("GET /sales-orders", Set.of(ADMIN, PLANNER), () -> get("/api/v1/sales-orders")),
                 new Endpoint("GET /cutting-plans", Set.of(ADMIN, PLANNER), () -> get("/api/v1/cutting-plans")),
                 new Endpoint("GET /dashboard", Set.of(ADMIN, PLANNER), () -> get("/api/v1/dashboard")));

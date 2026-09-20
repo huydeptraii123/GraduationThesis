@@ -4,16 +4,25 @@ import com.slatcut.cutting.domain.User;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 
-public interface UserRepository extends JpaRepository<User, Long> {
+public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificationExecutor<User> {
 
     /** {@code role} là LAZY nên màn danh sách sẽ bắn thêm 1 query mỗi dòng nếu không nạp sẵn ở đây. */
     @Override
     @EntityGraph(attributePaths = "role")
     List<User> findAll();
+
+    /** Bản phân trang cho màn hình danh sách; {@code @EntityGraph} giữ nguyên chống N+1 như trên. */
+    @Override
+    @EntityGraph(attributePaths = "role")
+    Page<User> findAll(Specification<User> spec, Pageable pageable);
 
     Optional<User> findByUsername(String username);
 
