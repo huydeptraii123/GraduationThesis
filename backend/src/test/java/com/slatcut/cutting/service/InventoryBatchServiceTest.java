@@ -11,10 +11,15 @@ import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
 import com.slatcut.cutting.dto.InventoryBatchRequest;
 import com.slatcut.cutting.dto.InventoryBatchResponse;
+import com.slatcut.cutting.dto.InventorySummaryResponse;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 class InventoryBatchServiceTest extends AbstractIntegrationTest {
 
@@ -28,10 +33,14 @@ class InventoryBatchServiceTest extends AbstractIntegrationTest {
     private SlatMaterialRepository slatMaterialRepository;
 
     private SlatMaterial persistMaterial(long code, String name) {
+        return persistMaterial(code, name, SlatGroup.MAIN_SLAT);
+    }
+
+    private SlatMaterial persistMaterial(long code, String name, SlatGroup group) {
         SlatMaterial entity = new SlatMaterial();
         entity.setSlatMaterial(code);
         entity.setSlatMaterialName(name);
-        entity.setSlatGroup(SlatGroup.MAIN_SLAT);
+        entity.setSlatGroup(group);
         return slatMaterialRepository.save(entity);
     }
 
@@ -99,13 +108,73 @@ class InventoryBatchServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void getAll_exposesMaterialNameOfEachBatch() {
+    void getSummary_sumsEveryBatchNotJustOnePage() {
+        // Đo bằng phần CHÊNH LỆCH thay vì con số tuyệt đối: lớp test khác có thể để lại dữ liệu khi
+        // chạy cả bộ, và một test chỉ đúng lúc chạy riêng thì không bảo vệ được gì.
+        InventorySummaryResponse before = service.getSummary();
+        SlatMaterial material = persistMaterial(71300000L, "Nan tổng hợp");
+        persistBatch(material, 6000, 10);
+        persistBatch(material, 4000, 5);
+
+        InventorySummaryResponse after = service.getSummary();
+
+        // 10 thanh 6m + 5 thanh 4m = 80m, thêm 2 lô.
+        assertThat(after.batchCount() - before.batchCount()).isEqualTo(2);
+        assertThat(after.totalSticks() - before.totalSticks()).isEqualTo(15);
+        assertThat(after.totalLengthM().subtract(before.totalLengthM())).isEqualByComparingTo("80.000");
+    }
+
+    @Test
+    void getPage_exposesMaterialNameOfEachBatch() {
         SlatMaterial material = persistMaterial(71000004L, "Nan hiển thị tên");
         persistBatch(material, 2800, 1);
 
-        assertThat(service.getAll())
+        assertThat(service.getPage("Nan hiển thị tên", null, PageRequest.of(0, 20)).content())
                 .extracting(InventoryBatchResponse::slatMaterialName)
                 .contains("Nan hiển thị tên");
+    }
+
+    @Test
+    void getPage_splitsResultAcrossPagesInStableOrder() {
+        SlatMaterial material = persistMaterial(71100000L, "Nan phân trang lô");
+        for (int index = 0; index < 25; index++) {
+            persistBatch(material, 2000 + index * 10, 1);
+        }
+        // Mồi nhử ngoài từ khóa: thiếu nó thì test vẫn xanh kể cả khi bộ lọc bị vô hiệu hóa.
+        persistBatch(persistMaterial(71199999L, "Nan không thuộc phép đếm"), 2000, 1);
+        Pageable byLength = PageRequest.of(0, 10, Sort.by("doDaiThanhMm"));
+
+        PageResponse<InventoryBatchResponse> first = service.getPage("Nan phân trang lô", null, byLength);
+        PageResponse<InventoryBatchResponse> second = service.getPage("Nan phân trang lô", null, byLength.withPage(1));
+        PageResponse<InventoryBatchResponse> last = service.getPage("Nan phân trang lô", null, byLength.withPage(2));
+
+        assertThat(first.totalElements()).isEqualTo(25);
+        assertThat(first.totalPages()).isEqualTo(3);
+        assertThat(first.content()).hasSize(10);
+        assertThat(last.content()).hasSize(5);
+        assertThat(first.content()).extracting(InventoryBatchResponse::doDaiThanhMm).startsWith(2000);
+        assertThat(second.content()).extracting(InventoryBatchResponse::doDaiThanhMm).startsWith(2100);
+        assertThat(first.content())
+                .extracting(InventoryBatchResponse::doDaiThanhMm)
+                .doesNotContainAnyElementsOf(
+                        second.content().stream().map(InventoryBatchResponse::doDaiThanhMm).toList());
+    }
+
+    @Test
+    void getPage_filtersByMaterialCodeAndBySlatGroup() {
+        SlatMaterial mainSlat = persistMaterial(71200001L, "Nan lọc lô chính", SlatGroup.MAIN_SLAT);
+        SlatMaterial rail = persistMaterial(71200002L, "Nan lọc lô ray", SlatGroup.RAIL);
+        persistBatch(mainSlat, 3000, 4);
+        persistBatch(rail, 3000, 7);
+        Pageable firstPage = PageRequest.of(0, 20);
+
+        PageResponse<InventoryBatchResponse> byCode = service.getPage("71200002", null, firstPage);
+        PageResponse<InventoryBatchResponse> byGroup = service.getPage("Nan lọc lô", SlatGroup.RAIL, firstPage);
+
+        assertThat(byCode.totalElements()).isEqualTo(1);
+        assertThat(byCode.content().getFirst().soThanh()).isEqualTo(7);
+        assertThat(byGroup.totalElements()).isEqualTo(1);
+        assertThat(byGroup.content().getFirst().slatMaterialName()).isEqualTo("Nan lọc lô ray");
     }
 
     @Test

@@ -13,6 +13,11 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
+  data:
+    web:
+      pageable:
+        # Chặn ?size=999999 kéo cả bảng về — mất tác dụng của phân trang và có thể làm sập bộ nhớ.
+        max-page-size: 200
 
 jwt:
   secret: ${JWT_SECRET:local-dev-secret-key-please-override-in-real-deployments-0123456789}

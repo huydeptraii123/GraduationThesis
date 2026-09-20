@@ -11,6 +11,7 @@ import com.slatcut.cutting.domain.DoorProduct;
 import com.slatcut.cutting.domain.InventoryBatch;
 import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.SlatMaterialRequest;
 import com.slatcut.cutting.dto.SlatMaterialResponse;
 import com.slatcut.cutting.repository.BomItemRepository;
@@ -19,6 +20,9 @@ import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 class SlatMaterialServiceTest extends AbstractIntegrationTest {
 
@@ -38,10 +42,14 @@ class SlatMaterialServiceTest extends AbstractIntegrationTest {
     private BomItemRepository bomItemRepository;
 
     private SlatMaterial persistMaterial(long code, String name) {
+        return persistMaterial(code, name, SlatGroup.MAIN_SLAT);
+    }
+
+    private SlatMaterial persistMaterial(long code, String name, SlatGroup group) {
         SlatMaterial entity = new SlatMaterial();
         entity.setSlatMaterial(code);
         entity.setSlatMaterialName(name);
-        entity.setSlatGroup(SlatGroup.MAIN_SLAT);
+        entity.setSlatGroup(group);
         return slatMaterialRepository.save(entity);
     }
 
@@ -77,13 +85,67 @@ class SlatMaterialServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void getAll_returnsEveryPersistedMaterial() {
+    void getAllOptions_returnsEveryPersistedMaterial() {
         persistMaterial(70000003L, "Nan A");
         persistMaterial(70000004L, "Nan B");
 
-        assertThat(service.getAll())
+        assertThat(service.getAllOptions())
                 .extracting(SlatMaterialResponse::slatMaterial)
                 .contains(70000003L, 70000004L);
+    }
+
+    @Test
+    void getPage_splitsResultAcrossPagesInStableOrder() {
+        for (int index = 0; index < 25; index++) {
+            persistMaterial(70100000L + index, "Nan phân trang " + index);
+        }
+        // Mồi nhử ngoài từ khóa: thiếu nó thì test vẫn xanh kể cả khi bộ lọc bị vô hiệu hóa.
+        persistMaterial(70199999L, "Nan không thuộc phép đếm");
+        Pageable byCode = PageRequest.of(0, 10, Sort.by("slatMaterial"));
+
+        PageResponse<SlatMaterialResponse> first = service.getPage("Nan phân trang", null, byCode);
+        PageResponse<SlatMaterialResponse> second = service.getPage("Nan phân trang", null, byCode.withPage(1));
+        PageResponse<SlatMaterialResponse> last = service.getPage("Nan phân trang", null, byCode.withPage(2));
+
+        assertThat(first.totalElements()).isEqualTo(25);
+        assertThat(first.totalPages()).isEqualTo(3);
+        assertThat(first.content()).hasSize(10);
+        // Trang cuối thiếu phần tử — kiểm luôn để chắc không phải mọi trang đều trả về cùng 10 dòng đầu.
+        assertThat(last.content()).hasSize(5);
+        assertThat(first.content()).extracting(SlatMaterialResponse::slatMaterial).startsWith(70100000L);
+        assertThat(second.content()).extracting(SlatMaterialResponse::slatMaterial).startsWith(70100010L);
+        assertThat(first.content())
+                .extracting(SlatMaterialResponse::slatMaterial)
+                .doesNotContainAnyElementsOf(second.content().stream().map(SlatMaterialResponse::slatMaterial).toList());
+    }
+
+    @Test
+    void getPage_treatsSqlWildcardsInKeywordAsPlainCharacters() {
+        persistMaterial(70300001L, "Nan ky tu 100_A");
+        persistMaterial(70300002L, "Nan ky tu 100XA");
+        Pageable firstPage = PageRequest.of(0, 20);
+
+        // "_" trong LIKE nghĩa là "một ký tự bất kỳ"; không thoát thì dòng 100XA cũng khớp.
+        PageResponse<SlatMaterialResponse> underscore = service.getPage("100_A", null, firstPage);
+
+        assertThat(underscore.totalElements()).isEqualTo(1);
+        assertThat(underscore.content().getFirst().slatMaterialName()).isEqualTo("Nan ky tu 100_A");
+        assertThat(service.getPage("%", null, firstPage).totalElements()).isZero();
+    }
+
+    @Test
+    void getPage_filtersByKeywordOnCodeAndByGroup() {
+        persistMaterial(70200001L, "Nan lọc nhóm chính", SlatGroup.MAIN_SLAT);
+        persistMaterial(70200002L, "Nan lọc nhóm ray", SlatGroup.RAIL);
+        Pageable firstPage = PageRequest.of(0, 20);
+
+        PageResponse<SlatMaterialResponse> byCode = service.getPage("70200002", null, firstPage);
+        PageResponse<SlatMaterialResponse> byGroup = service.getPage("Nan lọc nhóm", SlatGroup.RAIL, firstPage);
+
+        assertThat(byCode.totalElements()).isEqualTo(1);
+        assertThat(byCode.content().getFirst().slatMaterial()).isEqualTo(70200002L);
+        assertThat(byGroup.totalElements()).isEqualTo(1);
+        assertThat(byGroup.content().getFirst().slatMaterialName()).isEqualTo("Nan lọc nhóm ray");
     }
 
     @Test
