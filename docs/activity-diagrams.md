@@ -112,7 +112,7 @@ flowchart TD
     G --> I["Trình phương án đề xuất kèm danh sách đợt cắt<br/>để PLANNER xem xét"]
     I --> J{"PLANNER chấp nhận<br/>phương án?"}
     J -- "Không" --> Z2([Kết thúc — KHÔNG thay đổi dữ liệu nào])
-    J -- "Có" --> K{"Trạng thái đơn hàng và tồn kho<br/>còn khớp dấu vân đã ghi?"}
+    J -- "Có" --> K{"Bốn nguồn dữ liệu thuật toán đã đọc<br/>còn khớp dấu vân đã ghi?"}
     K -- "Không" --> K1["Từ chối duyệt, báo 'dữ liệu đã thay đổi'"]
     K1 --> F
     K -- "Có" --> L["Trong 1 transaction: lưu CuttingPlan + CuttingPlanDetail<br/>+ CuttingPlanDetailItem + ShortageRecord + ảnh chụp tồn kho đầu lần chạy,<br/>trừ/cộng tồn kho, gán approved_plan_id cho MỌI đơn trong phạm vi"]
@@ -120,6 +120,10 @@ flowchart TD
 ```
 
 Hai điểm quyết định cách đọc sơ đồ này. Thứ nhất, **nhánh tính không có ô nào ghi dữ liệu** — đó là toàn bộ lý do tách chức năng: người dùng chạy thử bao nhiêu lần tùy ý trên trạng thái đang có mà không làm lệch tồn kho, nên mới dám bỏ giới hạn t+3 ngày và giới hạn 70 đơn để nhìn bức tranh thiếu hụt của toàn bộ đơn tồn. Thứ hai, **ô kiểm dấu vân trạng thái trước khi ghi là bắt buộc, không phải tối ưu**: giữa lúc phương án được tính và lúc PLANNER bấm duyệt, một lượt nhập tồn kho hoặc một đơn vừa sửa có thể đã làm phương án lỗi thời; ghi xuống khi đó sẽ trừ tồn kho những phôi thực tế không còn, hoặc bỏ sót đơn vừa được bổ sung vào phạm vi. Dấu vân phải được lấy **trong cùng một lượt đọc** với danh sách đơn trong phạm vi, không phải sau khi thuật toán chạy xong: nếu chụp sau, dữ liệu đổi ngay trong lúc thuật toán chạy sẽ được ghi vào dấu vân như thể không có gì xảy ra, và cơ chế này mất tác dụng đúng ở tình huống nó sinh ra để chặn. Khi dấu vân lệch, luồng quay lại chính bước lấy phạm vi — không quay lại bước trình phương án, vì dấu vân cũ vẫn lệch thì PLANNER sẽ bị từ chối mãi.
+
+Dấu vân phủ đúng **tập đầu vào của thuật toán, không hơn không kém**. Đầu vào gồm bốn nguồn: đơn hàng chưa duyệt trong hạn giao, tồn kho thanh nan, định mức vật tư, và danh mục thanh nan (nhóm vật tư của mỗi mã quyết định công thức cắt áp cho dòng định mức tương ứng) — cộng thêm chính mốc t+3, đầu vào duy nhất không đến từ cơ sở dữ liệu mà tính ra từ ngày hiện tại. Thiếu một nguồn thì thay đổi ở đó đi lọt và phương án ghi xuống khác phương án vừa được duyệt: thêm một dòng định mức cho mẫu cửa đang bị chặn kéo cả đơn đó vào phạm vi, còn xem phương án lúc gần nửa đêm rồi bấm duyệt sau nửa đêm thì phạm vi đã rộng thêm một ngày mà không dòng dữ liệu nào đổi để báo điều đó. Ngược lại, phủ rộng hơn cũng có giá: đơn hàng được nhập liên tục trong ngày và phần lớn có ngày giao còn xa, để những đơn không thể lọt vào đợt duyệt này làm lệch dấu vân thì PLANNER bị từ chối bởi thay đổi không liên quan, lặp lại nhiều lần thì thao tác duyệt không bao giờ hoàn tất được. Một đơn được sửa ngày giao từ xa về gần vẫn bị bắt, vì khi đó nó bước vào đúng cửa sổ hạn giao đang được theo dõi.
+
+Dấu vân **không** thay được khóa dòng: nó bảo vệ khoảng thời gian PLANNER xem xét (tính bằng phút), chứ hai lượt duyệt chạy song song cùng đọc được dấu vân cũ thì cả hai đều vượt qua ô kiểm này. Ở quy mô hiện tại chỉ có một PLANNER thao tác tuần tự nên tình huống đó không xảy ra; chặn triệt để cần khóa dòng ngay lúc đọc tồn kho, nằm ngoài phạm vi hệ thống này.
 
 Lưu ý ở nhánh duyệt: `approved_plan_id` được gán cho **mọi** đơn trong phạm vi, kể cả đơn chỉ nhận kết quả thiếu vật tư — nếu chỉ gán cho đơn cắt được thì đơn thiếu vật tư sẽ quay lại hàng chờ và bị đưa vào lần duyệt sau, trong khi vật tư bù chưa kịp về. Ngoại lệ duy nhất là lớp phòng vệ cho kẽ hở của điều kiện lọc phạm vi: đơn lọt vào phạm vi nhưng rốt cuộc không để lại kết quả nào thì giữ nguyên ở hàng chờ thay vì đánh dấu đã duyệt (xem `docs/domain-model.md`). Còn đơn có mẫu cửa không sinh được nhu cầu cắt nào thì ngay từ đầu đã nằm ngoài phạm vi của cả hai nhánh (xem điều kiện lọc ở `docs/requirements-functional.md` Nhóm 3), nên không bị đánh dấu đã duyệt một cách oan uổng.
 
