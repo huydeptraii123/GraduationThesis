@@ -17,9 +17,10 @@ Mục này xác định danh sách entity nghiệp vụ và quan hệ giữa ch�
 | `InventoryBatch` | Một lô tồn kho: 1 `SlatMaterial` ở 1 độ dài chuẩn, còn bao nhiêu thanh (nguồn: `ton_kho_thanh_nan.csv`) | `doDaiThanhMm`, `soThanh` |
 | `SalesOrder` | 1 bộ cửa cụ thể trong 1 lô sản xuất — đơn vị ưu tiên cắt (nguồn: `don_hang.csv`) | `ycsx`, `zItem` (khóa nghiệp vụ), `salesDocument`, `salesOrderItem` (khóa nghiệp vụ thứ hai, dùng để tra cứu/đối chiếu SAP), `lenhSx` (lệnh sản xuất bộ cửa), `zChieuCaoDh`, `zChieuRongDh`, `reqdDeliveryDate`, `approvedPlan` (phương án cắt đã duyệt đơn này, NULL khi đơn còn chờ) |
 | `CuttingPlan` | Header 1 lần **duyệt** phương án cắt (lần tính không tạo bản ghi nào) | `runAt`, `status`, `totalWasteM`, `totalStockUsedM`, `scopeCutoffDate`, `scopeOrderCount` |
-| `CuttingPlanDetail` | 1 hoặc nhiều phôi tồn kho vật lý **giống nhau** (cùng độ dài, cùng pattern, cùng tập đơn hàng phân bổ) đã dùng trong 1 lần chạy | `patternCode`, `remainderMm`, `remainderType` (DISCARDED/RESTOCK/WASTE), `stickCount`, `cutLevel` (mức ưu tiên PA1–PA4 đã dùng để cắt) |
+| `CuttingPlanDetail` | 1 hoặc nhiều phôi tồn kho vật lý **giống nhau** (cùng độ dài, cùng pattern, cùng tập đơn hàng phân bổ) đã dùng trong 1 lần chạy | `patternCode`, `remainderMm`, `remainderType` (DISCARDED/RESTOCK/WASTE), `stickCount`, `cutLevel` (mức ưu tiên PA1–PA4 đã dùng để cắt), `remainingSticksAfter` (số phôi cùng loại và cùng độ dài còn lại sau lần chạy) |
 | `CuttingPlanDetailItem` | Bảng nối: 1 phôi (`CuttingPlanDetail`) phục vụ 1 `SalesOrder` (1 bộ cửa), có thể nhiều dòng/phôi | `cutLengthMm`, `cutQuantity`, `isOriginalOrder` |
 | `ShortageRecord` | Ghi nhận thiếu vật tư cho 1 `SlatMaterial` của 1 `SalesOrder` trong 1 lần chạy | `missingQuantity`, `missingLengthM` |
+| `CuttingPlanStockSnapshot` | Ảnh chụp tồn kho tại thời điểm bắt đầu 1 lần duyệt, theo từng (`SlatMaterial`, độ dài) | `lengthMm`, `stickCount` |
 
 ## Quan hệ giữa các entity
 
@@ -39,6 +40,8 @@ erDiagram
     SalesOrder ||--o{ ShortageRecord : "thiếu vật tư ở"
     SlatMaterial ||--o{ ShortageRecord : "loại thanh thiếu"
     CuttingPlan |o--o{ SalesOrder : "đã duyệt"
+    CuttingPlan ||--o{ CuttingPlanStockSnapshot : "chụp tồn kho đầu lần chạy"
+    SlatMaterial ||--o{ CuttingPlanStockSnapshot : "tồn kho của loại thanh"
 ```
 
 Năm điểm cần lưu ý, đều xuất phát từ việc đối chiếu với báo cáo thật PLANNER đang dùng và dữ liệu thật ở `dataset/`, chứ không phải phác thảo domain model ban đầu:
@@ -61,9 +64,9 @@ Thứ ba, **rủi ro lệch trạng thái mà quyết định cũ lo ngại đã
 
 Hệ quả: "nhóm 99" vẫn không cần cột riêng — nó vẫn là cách gọi nghiệp vụ cho tập đơn có `approvedPlan` còn rỗng nhưng nằm ngoài phạm vi t+3/70 đơn tại một thời điểm, suy ra động như cũ. Và đơn hàng **không bị xóa** khi duyệt: các phương án cắt cùng báo cáo thiếu vật tư đã ghi nhận phải truy ngược được về đúng bộ cửa đã sinh ra chúng.
 
-**Đánh đổi cần lưu ý**: Nhóm 1 yêu cầu chức năng có đề cập PLANNER "lọc danh sách đơn hàng theo... trạng thái xử lý". Trạng thái này nay chỉ còn **một phần** là cột thật: việc đơn đã được duyệt hay chưa đọc thẳng từ `approved_plan_id`, nhưng kết quả của đơn đã duyệt là đủ hay thiếu vật tư vẫn phải suy ra từ `cutting_plan_detail_item` và `shortage_record` bằng `EXISTS`/`LEFT JOIN`. Ở quy mô dữ liệu hiện tại việc này không đáng lo về hiệu năng. Điều cần giữ là ranh giới: chỉ sự kiện "đã duyệt" mới xứng đáng có cột riêng vì nó là một quyết định được ghi tại một thời điểm xác định; đừng thêm cột đệm cho phần kết quả đủ/thiếu, vì phần đó thay đổi theo chính dữ liệu bảng con và sẽ tái tạo đúng rủi ro trạng thái lệch.
+**Đánh đổi cần lưu ý**: Nhóm 1 yêu cầu chức năng có đề cập PLANNER "lọc danh sách đơn hàng theo... trạng thái xử lý". Trạng thái này nay chỉ còn **một phần** là cột thật: việc đơn đã được duyệt hay chưa đọc thẳng từ `approved_plan_id`, nhưng kết quả của đơn đã duyệt là đủ hay thiếu vật tư vẫn phải suy ra từ `cutting_plan_detail_item` và `shortage_record` bằng `EXISTS`/`LEFT JOIN`, còn "đang bị chặn" phải suy ra từ `bom_item` của mẫu cửa. Ở quy mô dữ liệu hiện tại việc này không đáng lo về hiệu năng. Điều cần giữ là ranh giới: chỉ sự kiện "đã duyệt" mới xứng đáng có cột riêng vì nó là một quyết định được ghi tại một thời điểm xác định; đừng thêm cột đệm cho phần kết quả đủ/thiếu, vì phần đó thay đổi theo chính dữ liệu bảng con và sẽ tái tạo đúng rủi ro trạng thái lệch.
 
-**Công thức suy ra "trạng thái xử lý" hiển thị cho PLANNER** (3 giá trị, khớp `requirements-functional.md` Nhóm 3): "Chưa xử lý" nếu `SalesOrder` có `approved_plan_id` rỗng — đơn còn nằm trong hàng chờ của cả chức năng tính lẫn chức năng duyệt; với đơn đã duyệt, "Đủ vật tư" nếu có ít nhất 1 `CuttingPlanDetailItem` và **không có** `ShortageRecord` nào, "Thiếu vật tư" nếu có **ít nhất 1** `ShortageRecord` (kể cả khi đồng thời cũng có `CuttingPlanDetailItem` cho các loại thanh khác — đủ từng phần vẫn tính là "thiếu vật tư" ở mức tổng quan, chi tiết từng loại thanh xem ở mức chi tiết theo đơn hàng). Ba giá trị này phủ kín mọi đơn vì phạm vi xử lý đã loại sẵn các đơn không sinh được nhu cầu cắt nào (xem đoạn ngay dưới): mọi đơn được duyệt đều để lại ít nhất một `CuttingPlanDetailItem` hoặc một `ShortageRecord`, không có đơn nào "đã duyệt mà rỗng".
+**Công thức suy ra "trạng thái xử lý" hiển thị cho PLANNER** (4 giá trị, khớp `requirements-functional.md` Nhóm 1): với đơn có `approved_plan_id` rỗng, "Đang bị chặn" nếu mẫu cửa của đơn không có dòng định mức nào dùng được (đơn này không vào được phạm vi xử lý cho tới khi ADMIN khai báo định mức) và "Chưa xử lý" nếu ngược lại — đang chờ tới lượt trong hàng chờ; với đơn đã duyệt, "Đủ vật tư" nếu có ít nhất 1 `CuttingPlanDetailItem` và **không có** `ShortageRecord` nào, "Thiếu vật tư" nếu có **ít nhất 1** `ShortageRecord` (kể cả khi đồng thời cũng có `CuttingPlanDetailItem` cho các loại thanh khác — đủ từng phần vẫn tính là "thiếu vật tư" ở mức tổng quan, chi tiết từng loại thanh xem ở mức chi tiết theo đơn hàng). Bốn giá trị này phủ kín mọi đơn. Hai giá trị sau chỉ có ở đơn đã duyệt và luôn xác định được, vì phạm vi xử lý đã loại sẵn các đơn không sinh được nhu cầu cắt nào (xem đoạn ngay dưới): mọi đơn được duyệt đều để lại ít nhất một `CuttingPlanDetailItem` hoặc một `ShortageRecord`, không có đơn nào "đã duyệt mà rỗng". Tách "Đang bị chặn" khỏi "Chưa xử lý" là yêu cầu vận hành: hai nhóm này trông giống nhau trên danh sách nhưng cần hai hành động khác hẳn — một bên chỉ việc chờ, một bên phải báo ADMIN khai báo định mức thì mới nhúc nhích được.
 
 ## Ghi chú khác
 
@@ -86,7 +89,7 @@ Mục này ánh xạ các entity ở mục 3.3.1 sang bảng MySQL cụ thể: t
 
 ## Sơ đồ ERD chi tiết
 
-Sơ đồ dưới đây thể hiện đúng 12 bảng vật lý và các khóa ngoại tương ứng — cùng bộ quan hệ như sơ đồ khái niệm ở 3.3.1, nay gắn với tên bảng/cột thật và đánh dấu khóa chính (PK), khóa ngoại (FK), khóa duy nhất (UK).
+Sơ đồ dưới đây thể hiện đúng 13 bảng vật lý và các khóa ngoại tương ứng — cùng bộ quan hệ như sơ đồ khái niệm ở 3.3.1, nay gắn với tên bảng/cột thật và đánh dấu khóa chính (PK), khóa ngoại (FK), khóa duy nhất (UK).
 
 ```mermaid
 erDiagram
@@ -169,6 +172,7 @@ erDiagram
         enum remainder_type
         int stick_count "xem chú thích"
         enum cut_level "PA1..PA4, nullable"
+        int remaining_sticks_after "nullable"
     }
     cutting_plan_detail_item {
         bigint id PK
@@ -200,7 +204,17 @@ erDiagram
     sales_order ||--o{ cutting_plan_detail_item : "được cắt bởi"
     sales_order ||--o{ shortage_record : "thiếu vật tư ở"
     slat_material ||--o{ shortage_record : "loại thanh thiếu"
+    cutting_plan_stock_snapshot {
+        bigint id PK
+        bigint cutting_plan_id FK "cùng slat_material_id, do_dai_thanh_mm"
+        bigint slat_material_id FK "cùng cutting_plan_id, do_dai_thanh_mm"
+        int do_dai_thanh_mm UK "cùng cutting_plan_id, slat_material_id"
+        int so_thanh
+    }
+
     cutting_plan |o--o{ sales_order : "đã duyệt"
+    cutting_plan ||--o{ cutting_plan_stock_snapshot : "chụp tồn kho đầu lần chạy"
+    slat_material ||--o{ cutting_plan_stock_snapshot : "tồn kho của loại thanh"
 ```
 
 Chú thích `"cùng ..."` trên một cột đánh dấu UK/FK nghĩa là ràng buộc UNIQUE hoặc mục đích của khóa ngoại đó là **composite** (nhiều cột cộng lại), mermaid không có ký hiệu riêng cho UNIQUE nhiều cột nên ghi chú trực tiếp bên cạnh — ví dụ `door_product.material` + `door_product.z_mau_sac` là một UNIQUE tổ hợp (không phải hai UNIQUE riêng lẻ). Chú thích `"nullable"`/`"xem chú thích"` đánh dấu các cột có ràng buộc hoặc quyết định thiết kế cần giải thích thêm ở phần bảng chi tiết bên dưới (không đủ chỗ ghi trực tiếp trên sơ đồ).
@@ -306,7 +320,7 @@ UNIQUE (`slat_material_id`, `do_dai_thanh_mm`): xác nhận đúng với dữ li
 
 **Có 2 luồng ghi khác bản chất vào `so_thanh`, cần phân biệt rõ (không nên gộp chung là "upsert cộng/trừ" — upsert đúng nghĩa là ghi đè, không phải cộng dồn):**
 - **Nhập Excel / chỉnh sửa thủ công** (Nhóm 1 yêu cầu chức năng): `ton_kho_thanh_nan.csv` là một **snapshot** tồn kho tại một thời điểm (giống cách nguồn `v_mchb_batch_stock` được truy vấn), nên đây là **upsert ghi đè đúng nghĩa** — `SET so_thanh = giá trị mới` cho đúng (`slat_material_id`, `do_dai_thanh_mm`), giống hệt cách `sales_order` upsert theo (`ycsx`, `z_item`) ở Nhóm 1. Cần lưu ý thêm: nếu 1 tổ hợp (loại thanh, độ dài) từng có trong lần nhập trước nhưng **biến mất** khỏi snapshot mới (tồn kho về 0, không còn xuất hiện trong file), `ExcelImportService` cần chủ động đưa `so_thanh` dòng đó về 0 — không chỉ upsert những dòng có mặt trong file, tránh để lại số liệu ảo.
-- **Thuật toán tự cập nhật khi chạy** (Mức 4, xem `docs/sequence-diagrams.md` mục "2. Luồng sinh phương án cắt"): đây mới thực sự là **cộng/trừ** (`UPDATE ... SET so_thanh = so_thanh - X` khi tiêu thụ, `UPSERT ... so_thanh = so_thanh + X` khi nhập lại kho phần dư > 3m) — khác bản chất với luồng ghi đè ở trên. UPSERT tạo **dòng mới** (độ dài phần dư chưa từng có trong kho) chỉ cần khởi tạo `so_thanh` bằng đúng số lượng vừa nhập lại; nếu UPSERT cộng thêm vào **dòng đã có sẵn** (trùng đúng độ dài phần dư với một lô đang tồn), cộng dồn `so_thanh` bình thường.
+- **Thuật toán tự cập nhật khi chạy** (Mức 4, xem `docs/sequence-diagrams.md` mục "2. Luồng tính và duyệt phương án cắt"): đây mới thực sự là **cộng/trừ** (`UPDATE ... SET so_thanh = so_thanh - X` khi tiêu thụ, `UPSERT ... so_thanh = so_thanh + X` khi nhập lại kho phần dư > 3m) — khác bản chất với luồng ghi đè ở trên. UPSERT tạo **dòng mới** (độ dài phần dư chưa từng có trong kho) chỉ cần khởi tạo `so_thanh` bằng đúng số lượng vừa nhập lại; nếu UPSERT cộng thêm vào **dòng đã có sẵn** (trùng đúng độ dài phần dư với một lô đang tồn), cộng dồn `so_thanh` bình thường.
 
 `InventoryPool.load()` chỉ cần `INDEX (slat_material_id)` (đã có sẵn từ UNIQUE phía trên) để nạp toàn bộ lô còn tồn theo từng loại thanh.
 
@@ -370,12 +384,15 @@ Không có `updated_at`: một `CuttingPlan` và toàn bộ bảng con được 
 | remainder_type | ENUM('DISCARDED','RESTOCK','WASTE') | NOT NULL |
 | stick_count | INT | NOT NULL, DEFAULT 1 |
 | cut_level | ENUM('PA1','PA2','PA3','PA4') | NULL |
+| remaining_sticks_after | INT | NULL |
 
 `INDEX (cutting_plan_id)`.
 
 **`cut_level` — mức ưu tiên mà thuật toán đã dùng để cắt phôi này.** Bốn giá trị tương ứng bốn mức của thuật toán: khớp gần đúng, cắt bội số, ghép nối, và cắt để lại phần dư nhập kho. Mức này phải được lưu chứ không suy ngược được từ kết quả: một phôi cắt ra đúng một đoạn với phần dư dưới 30cm có thể đến từ mức một (khớp gần đúng ngay) hoặc từ mức ba (ghép nối nhưng đối tác ghép chỉ có một đoạn), và báo cáo gửi xuống xưởng phải nói đúng phương án nào đã được áp dụng. Cột để NULL được vì các phương án đã lưu trước khi bổ sung cột này không có thông tin đó — không suy đoán ngược cho dữ liệu lịch sử.
 
-**Giá trị `WASTE` của `remainder_type` chỉ còn ý nghĩa lịch sử.** Thuật toán hiện tại không sinh ra phần dư nằm trong khoảng 30cm–3m nữa: cả bốn mức cắt đều chỉ nhận thanh khi phần dư dưới 30cm hoặc trên 3m, hết cách thì báo thiếu vật tư (xem `docs/requirements-functional.md` Nhóm 3). Enum vẫn giữ đủ ba giá trị, và công thức tỷ lệ phế vẫn cộng cả ba, để các phương án cắt được lưu trước khi Mức 4 siết điều kiện vẫn đọc và đối chiếu được — bỏ giá trị này đi sẽ làm hỏng dữ liệu lịch sử.
+**`remaining_sticks_after` — số phôi cùng loại và cùng độ dài còn lại trong kho sau lần chạy.** Con số này xuất hiện ở cuối mỗi mệnh đề của cột mô tả cách cắt trong báo cáo. Phải lưu lại thay vì đọc `inventory_batch` lúc xuất báo cáo, vì tồn kho thay đổi hằng ngày: đọc lại thì cùng một phương án xuất ra ở hai thời điểm sẽ cho hai con số khác nhau, trong khi báo cáo đã phát hành xuống xưởng thì phải bất biến. Cũng để NULL được, cùng lý do với `cut_level`.
+
+**Giá trị `WASTE` của `remainder_type` chỉ còn ý nghĩa lịch sử.** Thuật toán hiện tại không sinh ra phần dư nằm trong khoảng 30cm–3m nữa: cả bốn mức cắt đều chỉ nhận thanh khi phần dư dưới 30cm hoặc trên 3m, hết cách thì báo thiếu vật tư (xem `docs/requirements-functional.md` Nhóm 3). Enum vẫn giữ đủ ba giá trị — và tử số của tỷ lệ phế vẫn cộng cả "bỏ" lẫn "lãng phí" (không cộng phần nhập lại kho) — để các phương án cắt được lưu trước khi Mức 4 siết điều kiện vẫn đọc và đối chiếu được — bỏ giá trị này đi sẽ làm hỏng dữ liệu lịch sử.
 
 **`stick_count`: số phôi giống nhau (cùng độ dài nguồn, cùng pattern) được gộp vào 1 dòng.** Khớp với thực tế tồn kho vận hành theo số lượng thanh (`so_thanh` ở `inventory_batch`), không phải 1 dòng/1 thanh; cột mô tả cách cắt ở `requirements-functional.md` cũng tách riêng "bao nhiêu phôi" với cách chia đoạn trên mỗi phôi. Chỉ gộp khi các phôi đó có **cùng pattern, cùng `cut_level`, và cùng tập `CuttingPlanDetailItem` phân bổ** (ví dụ Mức 2 — cắt bội số: "15 thanh 6m cắt đôi" cùng phục vụ 1 đơn → 1 dòng, `stick_count = 15`); nếu các phôi cùng pattern nhưng phục vụ tập đơn khác nhau (ví dụ Mức 3 — ghép nối, mỗi thanh ghép các đơn khác nhau) thì mỗi phôi vẫn phải là 1 dòng riêng (`stick_count = 1`).
 
@@ -404,3 +421,20 @@ UNIQUE (`cutting_plan_detail_id`, `sales_order_id`): một bộ cửa chỉ xu�
 | missing_length_m | DECIMAL(10,2) | NOT NULL |
 
 UNIQUE (`cutting_plan_id`, `sales_order_id`, `slat_material_id`): trong 1 lần chạy, một bộ cửa chỉ thiếu đúng 1 lần cho 1 loại thanh nan cụ thể. `INDEX (sales_order_id)` dùng cho cùng mục đích suy ra kết quả đủ/thiếu vật tư như ở `cutting_plan_detail_item`.
+
+### `cutting_plan_stock_snapshot`
+| Cột | Kiểu | Ràng buộc |
+|---|---|---|
+| id | BIGINT | PK |
+| cutting_plan_id | BIGINT | NOT NULL, FK → `cutting_plan.id` |
+| slat_material_id | BIGINT | NOT NULL, FK → `slat_material.id` |
+| do_dai_thanh_mm | INT | NOT NULL |
+| so_thanh | INT | NOT NULL |
+
+UNIQUE (`cutting_plan_id`, `slat_material_id`, `do_dai_thanh_mm`), `INDEX (cutting_plan_id, slat_material_id)`.
+
+**Ảnh chụp tồn kho tại thời điểm bắt đầu một lần duyệt** — mỗi dòng ghi lại một lô tồn kho (loại thanh nan + độ dài) còn bao nhiêu thanh ngay trước khi thuật toán bắt đầu tiêu thụ. Báo cáo mức chi tiết theo đơn hàng có một cột liệt kê toàn bộ tồn kho của loại thanh nan đang xét theo từng độ dài; cột đó đọc từ bảng này.
+
+Đây là bảng **duy nhất** trong hệ thống lưu dữ liệu chỉ để phục vụ báo cáo chứ không tham gia tính toán, nên lý do tồn tại cần rõ ràng: tồn kho là số liệu thay đổi hằng ngày, còn báo cáo đã phát hành xuống xưởng thì phải đọc lại được nguyên trạng. Không có bảng này, mở lại một phương án đã duyệt từ vài tuần trước sẽ hiển thị tồn kho của **hôm nay** bên cạnh phương án cắt của **hôm đó** — hai con số không cùng thời điểm đặt cạnh nhau, đúng kiểu sai lệch khó phát hiện nhất khi đối chiếu chứng từ. Đây cũng là lý do chấp nhận đánh đổi về dung lượng: mỗi lần duyệt ghi thêm số dòng bằng số lô tồn kho của các loại thanh nan có mặt trong lần chạy đó.
+
+Chỉ chụp cho những `SlatMaterial` thực sự xuất hiện trong lần chạy, không chụp toàn bộ kho — các loại thanh nan không liên quan tới lần duyệt đó không bao giờ được hỏi tới ở báo cáo. Chức năng **tính** phương án cắt không ghi bảng này (không ghi gì cả); bản tính lấy thẳng tồn kho hiện hành vì nó đang mô tả đúng trạng thái tại thời điểm bấm.
