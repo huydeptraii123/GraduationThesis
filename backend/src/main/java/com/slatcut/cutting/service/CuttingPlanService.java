@@ -1,5 +1,6 @@
 package com.slatcut.cutting.service;
 
+import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.config.ResourceNotFoundException;
 import com.slatcut.cutting.domain.CuttingPlan;
 import com.slatcut.cutting.domain.CuttingPlanDetail;
@@ -18,12 +19,15 @@ import com.slatcut.cutting.dto.CuttingPlanSummaryResponse;
 import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.ShortageRecordResponse;
 import com.slatcut.cutting.mapper.CuttingPlanMapper;
+import com.slatcut.cutting.repository.BomItemRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailRepository;
 import com.slatcut.cutting.repository.CuttingPlanRepository;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
 import com.slatcut.cutting.repository.ShortageRecordRepository;
+import com.slatcut.cutting.repository.SlatMaterialRepository;
+import com.slatcut.cutting.repository.TableState;
 import com.slatcut.cutting.repository.spec.CuttingPlanSpecifications;
 import com.slatcut.cutting.service.optimizer.CutRecord;
 import com.slatcut.cutting.service.optimizer.CuttingPlanResult;
@@ -33,10 +37,14 @@ import com.slatcut.cutting.service.optimizer.RemainderCategory;
 import com.slatcut.cutting.service.optimizer.ShortageEntry;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,11 +58,24 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Nối CuttingDemandService (7.3) và CuttingStrategy (8.1-8.4) thành 1 luồng thật, đúng phạm vi đợt
- * duyệt đã chốt ở docs/requirements-functional.md Nhóm 3: chỉ SalesOrder chưa được duyệt
- * (sales_order.approved_plan_id còn rỗng) và sinh được ít nhất 1 nhu cầu cắt, reqdDeliveryDate
- * &lt;= t+3, tối đa 70 đơn. Đơn ngoài phạm vi thuộc "nhóm 99" — vẫn suy ra động, không cần cột
- * riêng; còn trạng thái "đã duyệt" thì có cột tường minh, ghi ở {@link #markScopeApproved}.
+ * Nối CuttingDemandService (7.3) và CuttingStrategy (8.1-8.4) thành hai chức năng tách bạch của
+ * docs/requirements-functional.md Nhóm 3, khác nhau ở đúng hai điểm — phạm vi lấy đơn, và có ghi
+ * dữ liệu hay không:
+ *
+ * <ul>
+ *   <li><b>Tính</b> ({@link #simulate()}) — toàn bộ đơn chưa duyệt đang có, không giới hạn ngày
+ *       giao, không giới hạn số đơn, và KHÔNG ghi một dòng nào. Bỏ cả hai giới hạn chính là giá
+ *       trị của chức năng: nó trả lời được "với toàn bộ đơn và toàn bộ tồn kho hiện tại thì còn
+ *       thiếu loại thanh nan nào", thứ mà một đợt duyệt tối đa 70 đơn không bao giờ trả lời được.
+ *   <li><b>Duyệt</b> ({@link #approvalPreview()} rồi {@link #approve(String)}) — phạm vi hẹp theo
+ *       đúng luật đợt cắt: đơn chưa duyệt sinh được ít nhất 1 nhu cầu cắt, reqdDeliveryDate
+ *       &lt;= t+3, tối đa 70 đơn (đơn ngoài phạm vi thuộc "nhóm 99", vẫn suy ra động nên không cần
+ *       cột riêng). Đây là đường ghi dữ liệu duy nhất của lớp này.
+ * </ul>
+ *
+ * <p>Ranh giới đó được giữ bằng cấu trúc chứ không bằng kỷ luật: {@link #runAlgorithm} là phần
+ * dùng chung và thuần tính toán, còn mọi thao tác ghi đều nằm trong {@link #persistApprovedPlan},
+ * chỉ có một đường gọi tới. Trạng thái "đã duyệt" của đơn ghi ở {@link #markScopeApproved}.
  */
 @Service
 public class CuttingPlanService {
@@ -69,6 +90,8 @@ public class CuttingPlanService {
     private final InventoryBatchRepository inventoryBatchRepository;
     private final CuttingDemandService cuttingDemandService;
     private final CuttingStrategy cuttingStrategy;
+    private final BomItemRepository bomItemRepository;
+    private final SlatMaterialRepository slatMaterialRepository;
     private final CuttingPlanRepository cuttingPlanRepository;
     private final CuttingPlanDetailRepository cuttingPlanDetailRepository;
     private final CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository;
@@ -80,6 +103,8 @@ public class CuttingPlanService {
             InventoryBatchRepository inventoryBatchRepository,
             CuttingDemandService cuttingDemandService,
             CuttingStrategy cuttingStrategy,
+            BomItemRepository bomItemRepository,
+            SlatMaterialRepository slatMaterialRepository,
             CuttingPlanRepository cuttingPlanRepository,
             CuttingPlanDetailRepository cuttingPlanDetailRepository,
             CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository,
@@ -89,6 +114,8 @@ public class CuttingPlanService {
         this.inventoryBatchRepository = inventoryBatchRepository;
         this.cuttingDemandService = cuttingDemandService;
         this.cuttingStrategy = cuttingStrategy;
+        this.bomItemRepository = bomItemRepository;
+        this.slatMaterialRepository = slatMaterialRepository;
         this.cuttingPlanRepository = cuttingPlanRepository;
         this.cuttingPlanDetailRepository = cuttingPlanDetailRepository;
         this.cuttingPlanDetailItemRepository = cuttingPlanDetailItemRepository;
@@ -96,21 +123,190 @@ public class CuttingPlanService {
         this.mapper = mapper;
     }
 
+    /**
+     * Tính phương án cắt cho TOÀN BỘ đơn chưa duyệt trên hệ thống và tồn kho tại thời điểm gọi,
+     * không ghi bất cứ thứ gì xuống cơ sở dữ liệu.
+     *
+     * <p>Không lưu lịch sử là quyết định nghiệp vụ, không phải thiếu sót: đơn hàng và tồn kho được
+     * cập nhật liên tục trong ngày nên mỗi lần bấm là một lần tính trên trạng thái tại đúng thời
+     * điểm đó, và một lịch sử các lần tính chỉ là một chồng số liệu đã lỗi thời. Đổi lại, người
+     * dùng chạy thử bao nhiêu lần tùy ý mà không làm lệch tồn kho.
+     *
+     * <p>{@code readOnly = true} ở đây không chỉ là gợi ý tối ưu mà là hàng rào cuối cùng: nếu có
+     * thao tác ghi nào lọt vào nhánh này, transaction sẽ ném lỗi thay vì âm thầm trừ tồn kho.
+     * {@link InventoryPool} cũng sao chép tồn kho sang cấu trúc riêng chứ không sửa entity, nên
+     * việc "cắt" trong lúc tính không để lại dirty state nào để Hibernate flush lúc commit.
+     */
+    @Transactional(readOnly = true)
+    public CuttingPlanPreview simulate() {
+        List<SalesOrder> scopeOrders = salesOrderRepository.findUnapproved();
+        CuttingPlanResult result = runAlgorithm(scopeOrders);
+        long blockedOrderCount = salesOrderRepository.countUnapprovedIgnoringBom() - scopeOrders.size();
+        return buildPreview(scopeOrders, result, blockedOrderCount);
+    }
+
+    /**
+     * Phương án đề xuất cho một đợt duyệt, kèm dấu vân trạng thái để {@link #approve(String)} nhận
+     * lại. Không ghi gì — PLANNER còn phải xem xét trước đã.
+     */
+    @Transactional(readOnly = true)
+    public CuttingPlanApprovalPreview approvalPreview() {
+        ScopeSnapshot snapshot = readApprovalScope();
+        CuttingPlanResult result = runAlgorithm(snapshot.orders());
+        long blockedOrderCount = countPendingMissingBom(snapshot.cutoffDate());
+        return new CuttingPlanApprovalPreview(
+                buildPreview(snapshot.orders(), result, blockedOrderCount),
+                snapshot.cutoffDate(),
+                snapshot.fingerprint());
+    }
+
+    /**
+     * Duyệt phương án cắt — đường ghi dữ liệu duy nhất của lớp này ngoài các thao tác nhập/sửa dữ
+     * liệu gốc.
+     *
+     * <p>Thuật toán chạy LẠI ở đây thay vì nhận lại kết quả đã trình cho PLANNER xem. Nghe như
+     * lãng phí nhưng đó là điều kiện để phương án ghi xuống khớp dữ liệu thật: nhận một kết quả
+     * tính sẵn do phía client gửi lên là tin vào đúng thứ đang phải kiểm. Chạy lại ở đây thì phương
+     * án được tính từ chính dữ liệu mà transaction này đọc được, còn dấu vân đảm bảo dữ liệu đó
+     * vẫn là dữ liệu PLANNER đã nhìn thấy.
+     *
+     * <p><b>Giới hạn đã biết:</b> phép so dấu vân là một lần đọc thường, không khóa dòng — hai lượt
+     * duyệt chạy song song đều đọc được dấu vân cũ sẽ cùng vượt qua cửa này và cùng trừ tồn kho.
+     * Đây đúng là giới hạn đã ghi ở {@link InventoryBatchRepository#applyDelta}: hệ thống hiện có
+     * một PLANNER thao tác tuần tự, và chặn triệt để cần khóa dòng khi đọc chứ không phải chạy lại
+     * thuật toán.
+     *
+     * @param expectedStateFingerprint dấu vân mà {@link #approvalPreview()} đã trả về cùng phương
+     *     án đang hiển thị
+     * @throws ConflictException khi dấu vân lệch — đơn hàng hoặc tồn kho đã thay đổi, phương án
+     *     đang hiển thị đã lỗi thời và ghi xuống sẽ trừ tồn kho những phôi thực tế không còn, hoặc
+     *     bỏ sót đơn vừa được bổ sung vào phạm vi
+     */
+    @Transactional
+    public CuttingPlan approve(String expectedStateFingerprint) {
+        ScopeSnapshot snapshot = readApprovalScope();
+        if (!snapshot.fingerprint().equals(expectedStateFingerprint)) {
+            throw new ConflictException("Đơn hàng hoặc tồn kho đã thay đổi kể từ lúc phương án này được tính."
+                    + " Hãy xem lại phương án tính trên trạng thái mới rồi duyệt lại.");
+        }
+        return persistApprovedPlan(snapshot);
+    }
+
+    /**
+     * Đường ghi cũ: duyệt ngay phương án vừa tính, không qua bước PLANNER xem xét nên cũng không có
+     * dấu vân trạng thái để kiểm. Giữ lại cho endpoint {@code POST /cutting-plans/generate} chạy
+     * được cho tới khi màn hình duyệt thay thế nó; mọi thao tác ghi vẫn đi qua đúng
+     * {@link #persistApprovedPlan} như {@link #approve(String)}.
+     */
     @Transactional
     public CuttingPlan generate() {
+        return persistApprovedPlan(readApprovalScope());
+    }
+
+    /**
+     * Phần thuần tính toán dùng chung cho cả ba hàm trên: dựng nhu cầu cắt, nạp ảnh chụp tồn kho,
+     * chạy 4 mức ưu tiên. Không chạm tới một repository ghi nào — đó là lý do chức năng tính có thể
+     * dùng lại y nguyên thuật toán của chức năng duyệt mà không có rủi ro làm đổi dữ liệu.
+     */
+    private CuttingPlanResult runAlgorithm(List<SalesOrder> orders) {
+        List<CuttingDemand> demands = cuttingDemandService.buildDemands(orders);
+        InventoryPool pool = new InventoryPool(inventoryBatchRepository.findAll());
+        return cuttingStrategy.computePlan(demands, pool);
+    }
+
+    private CuttingPlanPreview buildPreview(
+            List<SalesOrder> scopeOrders, CuttingPlanResult result, long blockedOrderCount) {
+        return new CuttingPlanPreview(
+                LocalDateTime.now(),
+                scopeOrders,
+                result,
+                blockedOrderCount,
+                totalWasteM(result.cuts()),
+                totalStockUsedM(result.cuts()));
+    }
+
+    /**
+     * Lấy phạm vi đợt duyệt và dấu vân trạng thái TRONG CÙNG một lượt đọc.
+     *
+     * <p>Thứ tự này là bắt buộc chứ không tùy tiện: dấu vân phải mô tả đúng trạng thái đã dựng nên
+     * danh sách đơn, nên nó được đọc ngay sau truy vấn phạm vi và trước khi thuật toán chạy. Chụp
+     * sau khi thuật toán chạy xong thì một thay đổi xảy ra trong lúc thuật toán đang chạy sẽ được
+     * ghi vào dấu vân như thể không có gì xảy ra, và cơ chế này mất tác dụng đúng ở tình huống nó
+     * sinh ra để chặn. Hai truy vấn nằm trong cùng một transaction nên cùng đọc trên một ảnh chụp
+     * nhất quán của cơ sở dữ liệu.
+     */
+    private ScopeSnapshot readApprovalScope() {
         LocalDate cutoffDate = scopeCutoffDate();
         List<SalesOrder> scopeOrders = findScopeOrders(cutoffDate);
+        return new ScopeSnapshot(scopeOrders, cutoffDate, readStateFingerprint(cutoffDate));
+    }
+
+    /**
+     * Dấu vân trạng thái: băm của mốc ngày giao đã dùng để lấy phạm vi, cộng tóm tắt của cả BỐN
+     * bảng mà thuật toán đọc — đơn hàng trong hạn giao, tồn kho, định mức, danh mục thanh nan. Vì
+     * sao mỗi thành phần cần có mặt thì nằm ở javadoc của chính truy vấn nguồn.
+     *
+     * <p>Nguyên tắc chọn thành phần: dấu vân phải phủ đúng tập đầu vào của thuật toán, không hơn
+     * không kém. Thiếu một bảng thì một thay đổi ở đó đi lọt và phương án ghi xuống khác phương án
+     * vừa được duyệt; thừa một bảng thì PLANNER bị từ chối bởi những thay đổi không thể ảnh hưởng
+     * tới đợt duyệt này.
+     *
+     * <p>Mốc ngày giao nằm trong dấu vân vì chính nó cũng là một đầu vào, và là đầu vào duy nhất
+     * không đến từ cơ sở dữ liệu: nó được tính từ ngày hiện tại. Xem phương án lúc 23h59 rồi bấm
+     * duyệt sau nửa đêm thì phạm vi đã rộng thêm một ngày so với thứ PLANNER vừa xem, và không có
+     * dòng dữ liệu nào đổi để báo điều đó.
+     *
+     * <p>Băm thay vì trả thẳng chuỗi các con số: giá trị này đi qua trình duyệt rồi quay lại, không
+     * có lý do gì để nó tiết lộ quy mô dữ liệu, và băm cho chuỗi dài cố định dù sau này có thêm
+     * thành phần.
+     */
+    private String readStateFingerprint(LocalDate cutoffDate) {
+        TableState orders = salesOrderRepository.readScopeState(cutoffDate);
+        InventoryBatchRepository.InventoryState stock = inventoryBatchRepository.readInventoryState();
+        TableState bom = bomItemRepository.readState();
+        TableState materials = slatMaterialRepository.readState();
+        String canonical = "cutoff=%s|orders=%s|stock=%s/%d|bom=%s|materials=%s"
+                .formatted(
+                        cutoffDate,
+                        describe(orders),
+                        describe(stock),
+                        stock.getTotalSticks(),
+                        describe(bom),
+                        describe(materials));
+        return sha256Hex(canonical);
+    }
+
+    private static String describe(TableState state) {
+        return state.getRowCount() + "@" + state.getLastUpdatedAt();
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 là thuật toán bắt buộc có của mọi JVM — nhánh này không đạt tới được.
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Ghi xuống toàn bộ kết quả của một đợt duyệt trong đúng 1 transaction: phương án và 3 bảng con,
+     * tồn kho bị trừ cùng phần dư nhập lại, và trạng thái đã duyệt của mọi đơn trong phạm vi. Tách
+     * ra được thì hệ thống có thể rơi vào trạng thái nửa vời nguy hiểm — ví dụ tồn kho đã trừ nhưng
+     * đơn vẫn nằm trong hàng chờ, khiến lần duyệt sau cắt lại chính những đơn đó trên một kho đã
+     * cạn.
+     */
+    private CuttingPlan persistApprovedPlan(ScopeSnapshot snapshot) {
+        List<SalesOrder> scopeOrders = snapshot.orders();
         Map<OrderKey, SalesOrder> orderIndex = scopeOrders.stream()
                 .collect(Collectors.toMap(so -> new OrderKey(so.getYcsx(), so.getItem()), so -> so));
-
-        List<CuttingDemand> demands = cuttingDemandService.buildDemands(scopeOrders);
-        InventoryPool pool = new InventoryPool(inventoryBatchRepository.findAll());
-        CuttingPlanResult result = cuttingStrategy.computePlan(demands, pool);
+        CuttingPlanResult result = runAlgorithm(scopeOrders);
 
         CuttingPlan plan = new CuttingPlan();
         plan.setRunAt(LocalDateTime.now());
         plan.setStatus(CuttingPlanStatus.COMPLETED);
-        plan.setScopeCutoffDate(cutoffDate);
+        plan.setScopeCutoffDate(snapshot.cutoffDate());
         plan.setScopeOrderCount(scopeOrders.size());
         plan.setTotalWasteM(totalWasteM(result.cuts()));
         plan.setTotalStockUsedM(totalStockUsedM(result.cuts()));
@@ -250,7 +446,11 @@ public class CuttingPlanService {
      */
     @Transactional(readOnly = true)
     public long countPendingMissingBom() {
-        LocalDate cutoffDate = scopeCutoffDate();
+        return countPendingMissingBom(scopeCutoffDate());
+    }
+
+    /** Bản nhận sẵn mốc ngày giao, để luồng duyệt khỏi tính lại {@link #scopeCutoffDate()} lần hai. */
+    private long countPendingMissingBom(LocalDate cutoffDate) {
         return salesOrderRepository.countUnprocessedInScopeIgnoringBom(cutoffDate)
                 - salesOrderRepository.countUnprocessedInScope(cutoffDate);
     }
@@ -462,6 +662,13 @@ public class CuttingPlanService {
     private static BigDecimal toMeters(int lengthMm) {
         return BigDecimal.valueOf(lengthMm).divide(MM_PER_M, 2, RoundingMode.HALF_UP);
     }
+
+    /**
+     * Một lượt đọc trạng thái hệ thống: danh sách đơn trong phạm vi duyệt, mốc ngày giao đã dùng để
+     * lấy chúng, và dấu vân của đúng lượt đọc đó. Gói chung làm một để dấu vân không thể bị tách ra
+     * khỏi danh sách đơn mà nó mô tả.
+     */
+    private record ScopeSnapshot(List<SalesOrder> orders, LocalDate cutoffDate, String fingerprint) {}
 
     private record OrderKey(String ycsx, Integer item) {}
 

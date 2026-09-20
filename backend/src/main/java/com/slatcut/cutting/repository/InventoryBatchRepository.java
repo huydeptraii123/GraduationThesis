@@ -60,6 +60,32 @@ public interface InventoryBatchRepository
     }
 
     /**
+     * Dấu vân trạng thái phía tồn kho: số lô, tổng số thanh và mốc sửa gần nhất.
+     *
+     * <p>Cần cả ba vì mỗi con số bắt một loại thay đổi khác nhau. Tổng số thanh bắt việc nhập/xuất
+     * kho — kể cả khi nó đi qua {@link #applyDelta}, vốn là câu UPDATE hàng loạt nên KHÔNG chạm
+     * {@code @PreUpdate} và không làm {@code updated_at} nhúc nhích. Ngược lại, mốc sửa bắt những
+     * thay đổi mà tổng số thanh không nhìn thấy, ví dụ sửa độ dài của một lô. Số lô bắt việc thêm
+     * hoặc xóa dòng.
+     *
+     * <p>Khác {@link #sumInventoryTotals()} ở mục đích: hàm kia phục vụ 2 ô thống kê trên màn hình
+     * và cần tổng độ dài; hàm này phục vụ việc so sánh trạng thái và cần mốc thời gian. Tách riêng
+     * để sửa một bên không âm thầm làm lệch bên kia.
+     */
+    @Query("""
+            SELECT COUNT(b) AS rowCount,
+                   COALESCE(SUM(b.soThanh), 0) AS totalSticks,
+                   MAX(b.updatedAt) AS lastUpdatedAt
+            FROM InventoryBatch b
+            """)
+    InventoryState readInventoryState();
+
+    /** Ba thành phần tồn kho của dấu vân trạng thái — xem {@link #readInventoryState()}. */
+    interface InventoryState extends TableState {
+        long getTotalSticks();
+    }
+
+    /**
      * Cộng delta thẳng ở CSDL thay vì đọc-sửa-ghi trong Java. Trả về số dòng bị ảnh hưởng: 0 nghĩa
      * là lô ở độ dài đó chưa tồn tại.
      *
