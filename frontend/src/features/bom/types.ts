@@ -10,6 +10,13 @@ export interface DoorProductResponse {
   mauSac: string
 }
 
+export interface BomSummaryResponse {
+  totalItems: number
+  /** Số nhóm thanh nan (MAIN_SLAT, RAIL...) đang thực sự có định mức. */
+  groupCount: number
+  doorProductCount: number
+}
+
 export interface DoorProductRequest {
   material: number
   doorMaterialName: string

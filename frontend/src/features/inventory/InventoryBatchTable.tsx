@@ -1,28 +1,41 @@
 import { PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons'
 import { App, Button, Input, Select, Space, Table, Tag } from 'antd'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
+import { ListLoadError } from '../../components/ListLoadError'
+import { tablePagination, type PageParams } from '../../api/pagination'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { usePagedList } from '../../hooks/usePagedList'
 import { ImportInventoryModal } from './ImportInventoryModal'
 import { InventoryBatchFormModal } from './InventoryBatchFormModal'
 import { SLAT_GROUP_COLOR, SLAT_GROUP_LABEL, SLAT_GROUP_OPTIONS } from './constants'
-import { deleteBatch } from './inventoryApi'
+import { deleteBatch, listBatches } from './inventoryApi'
 import type { InventoryBatchResponse, SlatGroup, SlatMaterialResponse } from './types'
 
 interface Props {
-  batches: InventoryBatchResponse[]
+  /** Danh mục vật tư ĐẦY ĐỦ (không phân trang) — cần tra được mọi id, kể cả ngoài trang đang xem. */
   materials: SlatMaterialResponse[]
   canEdit: boolean
-  loading: boolean
+  /** Báo trang cha nạp lại số liệu tổng hợp và danh mục vật tư sau khi bảng này thay đổi dữ liệu. */
   onChanged: () => void
 }
 
-export function InventoryBatchTable({ batches, materials, canEdit, loading, onChanged }: Props) {
+export function InventoryBatchTable({ materials, canEdit, onChanged }: Props) {
   const { message, modal } = App.useApp()
   const [keyword, setKeyword] = useState('')
   const [groupFilter, setGroupFilter] = useState<SlatGroup | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<InventoryBatchResponse | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+
+  const debouncedKeyword = useDebouncedValue(keyword)
+  const load = useCallback(
+    (params: PageParams) => listBatches({ ...params, keyword: debouncedKeyword, slatGroup: groupFilter }),
+    [debouncedKeyword, groupFilter],
+  )
+  const { data, loading, error, current, pageSize, handleTableChange, reload } = usePagedList(load, [debouncedKeyword, groupFilter], {
+    errorMessage: 'Không tải được danh sách lô tồn kho.',
+  })
 
   const groupByMaterialId = useMemo(() => {
     const map = new Map<number, SlatGroup>()
@@ -36,21 +49,11 @@ export function InventoryBatchTable({ batches, materials, canEdit, loading, onCh
     return map
   }, [materials])
 
-  const filtered = useMemo(() => {
-    const needle = keyword.trim().toLowerCase()
-    return batches.filter((batch) => {
-      if (groupFilter && groupByMaterialId.get(batch.slatMaterialId) !== groupFilter) {
-        return false
-      }
-      if (!needle) {
-        return true
-      }
-      const code = codeByMaterialId.get(batch.slatMaterialId)
-      return (
-        batch.slatMaterialName.toLowerCase().includes(needle) || (code !== undefined && String(code).includes(needle))
-      )
-    })
-  }, [batches, keyword, groupFilter, groupByMaterialId, codeByMaterialId])
+  /** Sau mỗi thay đổi: tải lại trang hiện tại VÀ báo trang cha cập nhật ô thống kê tổng tồn kho. */
+  const handleChanged = useCallback(() => {
+    reload()
+    onChanged()
+  }, [reload, onChanged])
 
   function confirmDelete(batch: InventoryBatchResponse) {
     modal.confirm({
@@ -63,7 +66,7 @@ export function InventoryBatchTable({ batches, materials, canEdit, loading, onCh
         try {
           await deleteBatch(batch.id)
           message.success('Đã xóa lô tồn kho.')
-          onChanged()
+          handleChanged()
         } catch (error) {
           message.error(extractErrorMessage(error, 'Không xóa được lô tồn kho.'))
           // Ném lại để AntD giữ hộp thoại mở — đóng lại sẽ khiến người dùng tưởng đã xóa xong.
@@ -113,11 +116,14 @@ export function InventoryBatchTable({ batches, materials, canEdit, loading, onCh
         )}
       </Space>
 
+      <ListLoadError message={error} onRetry={reload} />
+
       <Table
         rowKey="id"
         loading={loading}
-        dataSource={filtered}
-        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `${total} lô tồn kho` }}
+        dataSource={data.content}
+        pagination={tablePagination({ current, pageSize, total: data.totalElements }, (total) => `${total} lô tồn kho`)}
+        onChange={handleTableChange}
         columns={[
           {
             title: 'Mã vật tư',
@@ -138,7 +144,9 @@ export function InventoryBatchTable({ batches, materials, canEdit, loading, onCh
             dataIndex: 'doDaiThanhMm',
             width: 180,
             align: 'right',
-            sorter: (a, b) => a.doDaiThanhMm - b.doDaiThanhMm,
+            // sorter: true → backend sắp trên TOÀN BỘ tập kết quả; hàm so sánh tại chỗ chỉ sắp được
+            // 20 dòng của trang đang xem nên sẽ cho ra thứ tự sai.
+            sorter: true,
             render: (value: number) => value.toLocaleString('vi-VN'),
           },
           {
@@ -146,7 +154,7 @@ export function InventoryBatchTable({ batches, materials, canEdit, loading, onCh
             dataIndex: 'soThanh',
             width: 150,
             align: 'right',
-            sorter: (a, b) => a.soThanh - b.soThanh,
+            sorter: true,
             render: (value: number) => value.toLocaleString('vi-VN'),
           },
           ...(canEdit
@@ -181,9 +189,9 @@ export function InventoryBatchTable({ batches, materials, canEdit, loading, onCh
         batch={editing}
         materials={materials}
         onClose={() => setFormOpen(false)}
-        onSaved={onChanged}
+        onSaved={handleChanged}
       />
-      <ImportInventoryModal open={importOpen} onClose={() => setImportOpen(false)} onImported={onChanged} />
+      <ImportInventoryModal open={importOpen} onClose={() => setImportOpen(false)} onImported={handleChanged} />
     </>
   )
 }

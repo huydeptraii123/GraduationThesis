@@ -30,6 +30,13 @@ export interface InventoryBatchRequest {
   soThanh: number
 }
 
+export interface InventorySummaryResponse {
+  batchCount: number
+  totalSticks: number
+  /** Tổng chiều dài quy đổi sang mét, đã làm tròn ở backend. */
+  totalLengthM: number
+}
+
 export interface InventoryImportResult {
   totalRowsImported: number
   /** Số tổ hợp tồn kho có trong hệ thống nhưng không còn trong file, bị đưa về 0. */
