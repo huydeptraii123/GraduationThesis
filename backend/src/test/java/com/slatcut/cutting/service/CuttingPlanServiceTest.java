@@ -1,9 +1,11 @@
 package com.slatcut.cutting.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import com.slatcut.cutting.AbstractIntegrationTest;
+import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.domain.BomItem;
 import com.slatcut.cutting.domain.Customer;
 import com.slatcut.cutting.domain.CuttingPlan;
@@ -28,9 +30,12 @@ import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
 import com.slatcut.cutting.repository.ShortageRecordRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -68,6 +73,9 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
 
     @Autowired
     private ShortageRecordRepository shortageRecordRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private long counter = 0;
 
@@ -159,6 +167,266 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         inventoryBatchRepository.save(entity);
     }
 
+    // =============================================== Tách "tính" khỏi "duyệt" (Nhóm 3)
+
+    /**
+     * Bất biến quan trọng nhất của chức năng tính: bấm bao nhiêu lần cũng không làm đổi một dòng
+     * nào. Đo bằng chênh lệch trước/sau thay vì con số tuyệt đối, vì cả bộ test dùng chung một cơ
+     * sở dữ liệu.
+     *
+     * <p>Kiểm cả tồn kho lẫn trạng thái đơn: thuật toán bên trong vẫn "tiêu thụ" phôi và vẫn phân
+     * loại đơn y như lúc duyệt, chỉ khác ở chỗ kết quả không được ghi xuống — nên hai chỗ này đúng
+     * là nơi một thao tác ghi lọt lưới sẽ hiện ra.
+     */
+    @Test
+    void simulate_doesNotWriteAnythingToDatabase() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 5);
+        SalesOrder order = persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        long plansBefore = cuttingPlanRepository.count();
+        long detailsBefore = cuttingPlanDetailRepository.count();
+        long itemsBefore = cuttingPlanDetailItemRepository.count();
+        long shortagesBefore = shortageRecordRepository.count();
+        long sticksBefore = inventoryBatchRepository.sumAvailableSticks();
+
+        CuttingPlanPreview preview = service.simulate();
+
+        assertThat(preview.result().cuts()).isNotEmpty();
+        assertThat(cuttingPlanRepository.count()).isEqualTo(plansBefore);
+        assertThat(cuttingPlanDetailRepository.count()).isEqualTo(detailsBefore);
+        assertThat(cuttingPlanDetailItemRepository.count()).isEqualTo(itemsBefore);
+        assertThat(shortageRecordRepository.count()).isEqualTo(shortagesBefore);
+        assertThat(inventoryBatchRepository.sumAvailableSticks()).isEqualTo(sticksBefore);
+        assertThat(salesOrderRepository.findById(order.getId()).orElseThrow().getApprovedPlan())
+                .isNull();
+    }
+
+    /**
+     * Chức năng tính cố ý bỏ cả mốc t+3 lẫn hạn mức 70 đơn — đó chính là thứ làm nó trả lời được
+     * câu hỏi "toàn bộ đơn đang có thì còn thiếu vật tư gì", nên phải khóa bằng test chứ không để
+     * một lần tối ưu phạm vi sau này lặng lẽ lấy lại.
+     */
+    @Test
+    void simulate_coversOrdersBeyondDeliveryCutoffAndSeventyOrderLimit() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        for (int i = 0; i < 71; i++) {
+            persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        }
+        SalesOrder farFuture = persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now().plusDays(90));
+
+        CuttingPlanPreview preview = service.simulate();
+
+        assertThat(preview.scopeOrders()).hasSize(72);
+        assertThat(preview.scopeOrders()).extracting(SalesOrder::getId).contains(farFuture.getId());
+    }
+
+    /** Phạm vi của đợt duyệt thì ngược lại — vẫn bó đúng t+3 và 70 đơn như đặc tả cũ. */
+    @Test
+    void approvalPreview_keepsDeliveryCutoffAndSeventyOrderLimit() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        for (int i = 0; i < 71; i++) {
+            persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        }
+        SalesOrder farFuture = persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now().plusDays(90));
+
+        CuttingPlanApprovalPreview preview = service.approvalPreview();
+
+        assertThat(preview.scopeCutoffDate()).isEqualTo(LocalDate.now().plusDays(3));
+        assertThat(preview.plan().scopeOrders()).hasSize(70);
+        assertThat(preview.plan().scopeOrders())
+                .extracting(SalesOrder::getId)
+                .doesNotContain(farFuture.getId());
+    }
+
+    /** Đơn có mẫu cửa không sinh được nhu cầu cắt nào được đếm tách ra, không lẫn vào kết quả tính. */
+    @Test
+    void simulate_countsOrdersBlockedByMissingBomSeparately() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        SalesOrder blocked = persistSalesOrder(
+                "HY9" + (counter + 1), persistDoorProduct(), customer, new BigDecimal("2.000"), LocalDate.now());
+
+        CuttingPlanPreview preview = service.simulate();
+
+        assertThat(preview.scopeOrders()).extracting(SalesOrder::getId).doesNotContain(blocked.getId());
+        assertThat(preview.blockedOrderCount()).isEqualTo(1);
+    }
+
+    /**
+     * Tồn kho đổi trong lúc PLANNER xem xét: ghi xuống lúc này sẽ trừ những phôi mà phương án tưởng
+     * là còn. Dấu vân bắt đúng tình huống đó và chặn trước khi có dòng nào được ghi.
+     */
+    @Test
+    void approve_rejectsWhenInventoryChangedSincePreview() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        CuttingPlanApprovalPreview preview = service.approvalPreview();
+
+        persistInventoryBatch(slatMaterial, 3000, 4);
+        long plansBefore = cuttingPlanRepository.count();
+
+        assertThatThrownBy(() -> service.approve(preview.stateFingerprint()))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("đã thay đổi");
+        assertThat(cuttingPlanRepository.count()).isEqualTo(plansBefore);
+    }
+
+    /**
+     * Nửa còn lại của dấu vân: một đơn giao gấp vừa được nhập sẽ CHEN vào phạm vi chứ không nằm yên
+     * ngoài nó, nên duyệt tiếp phương án cũ là bỏ sót đúng đơn gấp nhất.
+     */
+    @Test
+    void approve_rejectsWhenNewOrderArrivedSincePreview() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 2);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        CuttingPlanApprovalPreview preview = service.approvalPreview();
+
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        assertThatThrownBy(() -> service.approve(preview.stateFingerprint()))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    /** Dấu vân còn khớp thì duyệt ghi đủ: phương án, tồn kho bị trừ, và trạng thái đã duyệt của đơn. */
+    @Test
+    void approve_writesPlanWhenFingerprintStillMatches() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 3);
+        SalesOrder order = persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        CuttingPlanApprovalPreview preview = service.approvalPreview();
+        long sticksBefore = inventoryBatchRepository.sumAvailableSticks();
+
+        CuttingPlan plan = service.approve(preview.stateFingerprint());
+
+        assertThat(plan.getId()).isNotNull();
+        assertThat(plan.getScopeOrderCount()).isEqualTo(1);
+        assertThat(inventoryBatchRepository.sumAvailableSticks()).isEqualTo(sticksBefore - 1);
+        assertThat(salesOrderRepository.findById(order.getId()).orElseThrow().getApprovedPlan())
+                .isNotNull();
+    }
+
+    /**
+     * Định mức là đầu vào của thuật toán ngang hàng với đơn hàng và tồn kho: thêm một dòng định mức
+     * kéo cả một mẫu cửa đang bị chặn vào phạm vi, nên phương án ghi xuống sẽ khác hẳn phương án
+     * vừa được duyệt nếu dấu vân bỏ qua phần này.
+     */
+    @Test
+    void approve_rejectsWhenBomChangedSincePreview() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 2);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        CuttingPlanApprovalPreview preview = service.approvalPreview();
+
+        persistBomItem(doorProduct, persistSlatMaterial());
+
+        assertThatThrownBy(() -> service.approve(preview.stateFingerprint()))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    /**
+     * Nhóm vật tư của thanh nan quyết định công thức cắt áp cho từng dòng định mức, nên danh mục
+     * thanh nan cũng là đầu vào — thành phần cuối cùng của dấu vân.
+     */
+    @Test
+    void approve_rejectsWhenSlatMaterialCatalogChangedSincePreview() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 2);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        CuttingPlanApprovalPreview preview = service.approvalPreview();
+
+        persistSlatMaterial();
+
+        assertThatThrownBy(() -> service.approve(preview.stateFingerprint()))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    /**
+     * Ngược lại, một đơn có ngày giao ngoài hạn t+3 KHÔNG được làm hỏng dấu vân: đơn như vậy không
+     * cách nào lọt vào đợt duyệt này, mà doanh nghiệp thì nhập đơn liên tục trong ngày — để chúng
+     * làm lệch dấu vân thì thao tác duyệt không bao giờ hoàn tất được.
+     */
+    @Test
+    void approve_toleratesNewOrderBeyondDeliveryCutoff() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 2);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        CuttingPlanApprovalPreview preview = service.approvalPreview();
+
+        persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now().plusDays(90));
+
+        assertThat(service.approve(preview.stateFingerprint()).getId()).isNotNull();
+    }
+
+    /**
+     * Phương án trình cho PLANNER được dựng thành báo cáo sau khi transaction đọc đã đóng, nên đơn
+     * hàng phải mang theo khách hàng và mẫu cửa chứ không phải proxy đã mất phiên.
+     *
+     * <p>Xóa persistence context trước khi gọi là bắt buộc để test có nghĩa: không xóa thì truy vấn
+     * trả về chính những entity vừa lưu trong test, vốn đã cầm sẵn đối tượng thật, và khẳng định
+     * dưới đây xanh kể cả khi truy vấn không hề nạp kèm. Chỉ kiểm khách hàng — mẫu cửa được thuật
+     * toán đọc ngay trong lúc dựng nhu cầu cắt nên khởi tạo dù có nạp kèm hay không, còn khách hàng
+     * thì chỉ được đọc lúc dựng báo cáo.
+     */
+    @Test
+    void approvalPreview_loadsCustomerTogetherWithTheOrder() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        entityManager.flush();
+        entityManager.clear();
+
+        CuttingPlanApprovalPreview preview = service.approvalPreview();
+
+        SalesOrder loaded = preview.plan().scopeOrders().get(0);
+        assertThat(Hibernate.isInitialized(loaded.getCustomer())).isTrue();
+    }
+    /** Dấu vân rỗng (client cũ, hoặc bấm duyệt mà chưa hề xem phương án) cũng bị từ chối, không rơi vào NPE. */
+    @Test
+    void approve_rejectsMissingFingerprint() {
+        assertThatThrownBy(() -> service.approve(null)).isInstanceOf(ConflictException.class);
+    }
     @Test
     void generate_sufficientInventory_persistsCuttingPlanDetailAndItem() {
         Customer customer = persistCustomer();

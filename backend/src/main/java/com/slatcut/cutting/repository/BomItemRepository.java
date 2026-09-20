@@ -45,6 +45,16 @@ public interface BomItemRepository extends JpaRepository<BomItem, Long>, JpaSpec
             """)
     BomTotals sumBomTotals();
 
+    /**
+     * Dấu vân trạng thái phía định mức. Định mức là đầu vào của thuật toán ngang hàng với đơn hàng
+     * và tồn kho: thêm một dòng định mức cho mẫu cửa đang bị chặn sẽ kéo cả đơn đó vào phạm vi, còn
+     * sửa hệ số tính số nan làm đổi luôn độ dài các đoạn phải cắt. Thiếu thành phần này thì một
+     * thay đổi định mức xảy ra trong lúc PLANNER xem xét sẽ khiến phương án ghi xuống khác hẳn
+     * phương án vừa được duyệt, mà dấu vân vẫn báo khớp.
+     */
+    @Query("SELECT COUNT(b) AS rowCount, MAX(b.updatedAt) AS lastUpdatedAt FROM BomItem b")
+    TableState readState();
+
     interface BomTotals {
         long getTotalItems();
 

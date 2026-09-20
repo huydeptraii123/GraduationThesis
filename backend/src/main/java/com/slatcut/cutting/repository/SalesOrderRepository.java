@@ -54,6 +54,11 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
      * <p>Đơn bị loại ở đây được đếm riêng (xem {@link #countUnprocessedInScopeIgnoringBom}) và cảnh
      * báo trên trang chủ, không bị bỏ quên âm thầm.
      *
+     * <p>JOIN FETCH customer/doorProduct vì phương án trình cho PLANNER được dựng thành báo cáo
+     * SAU khi transaction đọc đã đóng: thiếu nó thì mọi lần đọc tên khách hàng hay mẫu cửa đều là
+     * một proxy đã mất phiên. Cả hai quan hệ đều là nhiều-một nên JOIN FETCH không nhân bản dòng và
+     * hạn mức 70 đơn vẫn được CSDL áp đúng.
+     *
      * <p><b>DISTINCT là bắt buộc, không phải thừa:</b> MySQL có thể hiện thực EXISTS thành semi-join
      * và trả về đơn hàng lặp lại đúng bằng số dòng định mức khớp, tùy kế hoạch tối ưu nó chọn — nên
      * lỗi chỉ lộ ra khi thống kê bảng thay đổi (chạy cả bộ test thì hỏng, chạy riêng lớp test thì
@@ -62,6 +67,8 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
      */
     @Query("""
             SELECT DISTINCT so FROM SalesOrder so
+            JOIN FETCH so.customer
+            JOIN FETCH so.doorProduct
             WHERE so.reqdDeliveryDate <= :cutoffDate
               AND so.approvedPlan IS NULL
               AND EXISTS (
@@ -146,6 +153,40 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
                             AND b.heightOffsetM IS NOT NULL)))
             """)
     long countUnprocessedInScope(@Param("cutoffDate") LocalDate cutoffDate);
+
+    /**
+     * Tổng số đơn chưa duyệt trên toàn hệ thống, KHÔNG lọc theo ngày giao và KHÔNG lọc theo định
+     * mức — mẫu số để suy ra số đơn đang bị chặn trong phạm vi của chức năng tính, bằng đúng phép
+     * trừ đã dùng ở {@link #countUnprocessedInScopeIgnoringBom}: số này trừ đi số dòng
+     * {@link #findUnapproved()} trả về.
+     */
+    @Query("SELECT COUNT(so) FROM SalesOrder so WHERE so.approvedPlan IS NULL")
+    long countUnapprovedIgnoringBom();
+
+    /**
+     * Dấu vân trạng thái phía đơn hàng: số đơn chưa duyệt trong hạn giao và mốc sửa gần nhất của
+     * chúng. Hai con số này đổi khi có đơn được nhập thêm, bị xóa, được duyệt, hay bị sửa — tức
+     * mọi đường làm phạm vi duyệt lệch đi so với lúc PLANNER nhìn thấy phương án.
+     *
+     * <p>Đọc trên cả tập trong hạn giao chứ không chỉ 70 đơn đang hiển thị: một đơn giao gấp vừa
+     * được nhập sẽ CHEN vào phạm vi chứ không nằm yên ngoài nó, nên dấu vân chỉ phủ phần đang
+     * hiển thị thì bỏ lọt đúng tình huống nguy hiểm nhất.
+     *
+     * <p>Nhưng cũng KHÔNG phủ rộng hơn hạn giao. Doanh nghiệp nhập đơn hằng ngày và phần lớn đơn
+     * nhập vào có ngày giao còn xa; đơn như vậy không cách nào lọt vào đợt duyệt này, nên để chúng
+     * làm lệch dấu vân chỉ khiến PLANNER bị từ chối bởi một thay đổi không liên quan — lặp lại
+     * nhiều lần thì thao tác duyệt không bao giờ hoàn tất được. Một đơn được sửa ngày giao từ xa
+     * về gần vẫn bị bắt, vì khi đó nó bước vào đúng cửa sổ này và làm đổi số đếm.
+     *
+     * <p>Cố ý KHÔNG lọc theo định mức, khác {@link #countUnprocessedInScope}: thay đổi phía định
+     * mức đã có thành phần riêng trong dấu vân, tách ra để mỗi phần đo đúng một thứ.
+     */
+    @Query("""
+            SELECT COUNT(so) AS rowCount, MAX(so.updatedAt) AS lastUpdatedAt
+            FROM SalesOrder so
+            WHERE so.approvedPlan IS NULL AND so.reqdDeliveryDate <= :cutoffDate
+            """)
+    TableState readScopeState(@Param("cutoffDate") LocalDate cutoffDate);
 
     /**
      * Như {@link #countUnprocessedInScope} nhưng BỎ HẲN điều kiện về định mức. Số đơn bị loại vì
