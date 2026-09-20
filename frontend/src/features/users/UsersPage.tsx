@@ -1,18 +1,20 @@
 import { Alert, Card, Space, Statistic, Typography } from 'antd'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
 import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
 import { useAuth } from '../auth/AuthContext'
 import { canManageUsers } from '../auth/permissions'
 import { UserTable } from './UserTable'
 import { listUsers } from './usersApi'
-import type { UserResponse } from './types'
 
 export function UsersPage() {
   const { user } = useAuth()
   const canManage = canManageUsers(user)
 
-  const [users, setUsers] = useState<UserResponse[]>([])
+  // Hai con số này tính trên TOÀN BỘ tài khoản nên không lấy từ mảng của bảng được nữa — bảng giờ
+  // chỉ giữ một trang.
+  const [totalCount, setTotalCount] = useState(0)
+  const [activeCount, setActiveCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -28,11 +30,16 @@ export function UsersPage() {
     const loadId = ++latestLoadId.current
     setLoading(true)
     try {
-      const loaded = await listUsers()
+      // Xin đúng 1 dòng mỗi lượt: chỉ cần `totalElements`, không cần nội dung.
+      const [all, active] = await Promise.all([
+        listUsers({ page: 0, size: 1 }),
+        listUsers({ page: 0, size: 1, enabled: true }),
+      ])
       if (loadId !== latestLoadId.current) {
         return
       }
-      setUsers(loaded)
+      setTotalCount(all.totalElements)
+      setActiveCount(active.totalElements)
       setLoadError(null)
     } catch (error) {
       if (loadId !== latestLoadId.current) {
@@ -52,8 +59,6 @@ export function UsersPage() {
     void reload()
   }, [reload])
 
-  const activeCount = useMemo(() => users.filter((item) => item.enabled).length, [users])
-
   return (
     <div>
       <Typography.Title level={3} style={{ marginTop: 0 }}>
@@ -68,19 +73,14 @@ export function UsersPage() {
 
           <Space size={16} style={{ marginBottom: 16 }} wrap>
             <Card size="small" style={{ width: 220 }}>
-              <Statistic title="Tổng số tài khoản" value={users.length} loading={loading} />
+              <Statistic title="Tổng số tài khoản" value={totalCount} loading={loading} />
             </Card>
             <Card size="small" style={{ width: 220 }}>
               <Statistic title="Đang hoạt động" value={activeCount} loading={loading} />
             </Card>
           </Space>
 
-          <UserTable
-            users={users}
-            currentUsername={user?.username ?? ''}
-            loading={loading}
-            onChanged={() => void reload()}
-          />
+          <UserTable currentUsername={user?.username ?? ''} onChanged={() => void reload()} />
         </>
       )}
     </div>

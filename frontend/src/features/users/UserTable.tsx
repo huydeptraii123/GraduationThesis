@@ -1,11 +1,15 @@
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { App, Button, Input, Select, Space, Table, Tag, Tooltip } from 'antd'
-import { useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
+import { ListLoadError } from '../../components/ListLoadError'
+import { tablePagination, type PageParams } from '../../api/pagination'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { usePagedList } from '../../hooks/usePagedList'
 import { ROLE_COLOR, ROLE_LABEL, type Role } from '../auth/permissions'
 import { ResetPasswordModal } from './ResetPasswordModal'
 import { UserFormModal } from './UserFormModal'
-import { updateUser } from './usersApi'
+import { listUsers, updateUser } from './usersApi'
 import type { UserResponse } from './types'
 
 const ROLE_FILTER_OPTIONS = (['ADMIN', 'PLANNER'] as Role[]).map((role) => ({
@@ -19,14 +23,13 @@ const STATUS_FILTER_OPTIONS = [
 ]
 
 interface Props {
-  users: UserResponse[]
   /** Tên đăng nhập của người đang xem — dùng để chặn các thao tác tự hại trên chính dòng của mình. */
   currentUsername: string
-  loading: boolean
+  /** Báo trang cha nạp lại 2 ô thống kê (tổng số tài khoản, số đang hoạt động). */
   onChanged: () => void
 }
 
-export function UserTable({ users, currentUsername, loading, onChanged }: Props) {
+export function UserTable({ currentUsername, onChanged }: Props) {
   const { message, modal } = App.useApp()
   const [keyword, setKeyword] = useState('')
   const [roleFilter, setRoleFilter] = useState<Role | null>(null)
@@ -35,21 +38,25 @@ export function UserTable({ users, currentUsername, loading, onChanged }: Props)
   const [editing, setEditing] = useState<UserResponse | null>(null)
   const [resetting, setResetting] = useState<UserResponse | null>(null)
 
-  const filtered = useMemo(() => {
-    const needle = keyword.trim().toLowerCase()
-    return users.filter((user) => {
-      if (roleFilter && user.roleCode !== roleFilter) {
-        return false
-      }
-      if (statusFilter === 'enabled' && !user.enabled) {
-        return false
-      }
-      if (statusFilter === 'disabled' && user.enabled) {
-        return false
-      }
-      return !needle || user.username.toLowerCase().includes(needle)
-    })
-  }, [users, keyword, roleFilter, statusFilter])
+  const debouncedKeyword = useDebouncedValue(keyword)
+  // Bộ lọc trạng thái ở giao diện là chuỗi 'enabled'/'disabled'; backend nhận cờ boolean, bỏ trống
+  // nghĩa là không lọc.
+  const enabledFilter = statusFilter === null ? null : statusFilter === 'enabled'
+  const load = useCallback(
+    (params: PageParams) =>
+      listUsers({ ...params, keyword: debouncedKeyword, roleCode: roleFilter, enabled: enabledFilter }),
+    [debouncedKeyword, roleFilter, enabledFilter],
+  )
+  const { data, loading, error, current, pageSize, handleTableChange, reload } = usePagedList(
+    load,
+    [debouncedKeyword, roleFilter, enabledFilter],
+    { errorMessage: 'Không tải được danh sách tài khoản.' },
+  )
+
+  const handleChanged = useCallback(() => {
+    reload()
+    onChanged()
+  }, [reload, onChanged])
 
   function confirmToggleEnabled(user: UserResponse) {
     const locking = user.enabled
@@ -65,7 +72,7 @@ export function UserTable({ users, currentUsername, loading, onChanged }: Props)
         try {
           await updateUser(user.id, { roleCode: user.roleCode, enabled: !user.enabled })
           message.success(locking ? 'Đã khóa tài khoản.' : 'Đã mở khóa tài khoản.')
-          onChanged()
+          handleChanged()
         } catch (error) {
           message.error(extractErrorMessage(error, 'Không đổi được trạng thái tài khoản.'))
           // Ném lại để AntD giữ hộp thoại mở — đóng lại sẽ khiến người dùng tưởng đã xong.
@@ -116,16 +123,19 @@ export function UserTable({ users, currentUsername, loading, onChanged }: Props)
         </Button>
       </Space>
 
+      <ListLoadError message={error} onRetry={reload} />
+
       <Table
         rowKey="id"
         loading={loading}
-        dataSource={filtered}
-        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `${total} tài khoản` }}
+        dataSource={data.content}
+        pagination={tablePagination({ current, pageSize, total: data.totalElements }, (total) => `${total} tài khoản`)}
+        onChange={handleTableChange}
         columns={[
           {
             title: 'Tên đăng nhập',
             dataIndex: 'username',
-            sorter: (a, b) => a.username.localeCompare(b.username),
+            sorter: true,
             render: (username: string) =>
               username === currentUsername ? (
                 <Space size={6}>
@@ -157,7 +167,7 @@ export function UserTable({ users, currentUsername, loading, onChanged }: Props)
             title: 'Ngày tạo',
             dataIndex: 'createdAt',
             width: 160,
-            sorter: (a, b) => a.createdAt.localeCompare(b.createdAt),
+            sorter: true,
             render: (createdAt: string) => new Date(createdAt).toLocaleDateString('vi-VN'),
           },
           {
@@ -203,7 +213,7 @@ export function UserTable({ users, currentUsername, loading, onChanged }: Props)
         user={editing}
         editingSelf={editing?.username === currentUsername}
         onClose={() => setFormOpen(false)}
-        onSaved={onChanged}
+        onSaved={handleChanged}
       />
 
       <ResetPasswordModal open={resetting != null} user={resetting} onClose={() => setResetting(null)} />

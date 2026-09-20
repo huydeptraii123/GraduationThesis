@@ -1,23 +1,27 @@
 import { PlusOutlined, SearchOutlined, UploadOutlined, WarningOutlined } from '@ant-design/icons'
 import { App, Button, DatePicker, Input, Select, Space, Table, Tag } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
+import { ListLoadError } from '../../components/ListLoadError'
+import { tablePagination, type PageParams } from '../../api/pagination'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { usePagedList } from '../../hooks/usePagedList'
 import type { DoorProductResponse } from '../bom/types'
 import { ImportSalesOrdersModal } from './ImportSalesOrdersModal'
 import { SalesOrderFormDrawer } from './SalesOrderFormDrawer'
-import { deleteSalesOrder } from './salesOrdersApi'
+import { deleteSalesOrder, listSalesOrders } from './salesOrdersApi'
 import type { CustomerResponse, SalesOrderResponse } from './types'
 
 const { RangePicker } = DatePicker
 
 interface Props {
-  salesOrders: SalesOrderResponse[]
+  /** Danh sách khách hàng đầy đủ — nguồn cho dropdown lọc và form. */
   customers: CustomerResponse[]
   doorProducts: DoorProductResponse[]
   canEdit: boolean
   canImport: boolean
-  loading: boolean
+  /** Báo trang cha nạp lại tổng số đơn và danh mục sau khi bảng này thay đổi dữ liệu. */
   onChanged: () => void
 }
 
@@ -54,12 +58,10 @@ function DeliveryBadge({ date }: { date: string }) {
 }
 
 export function SalesOrderTable({
-  salesOrders,
   customers,
   doorProducts,
   canEdit,
   canImport,
-  loading,
   onChanged,
 }: Props) {
   const { message, modal } = App.useApp()
@@ -75,31 +77,33 @@ export function SalesOrderTable({
     [customers],
   )
 
-  const filtered = useMemo(() => {
-    const needle = keyword.trim().toLowerCase()
-    return salesOrders.filter((order) => {
-      if (customerFilter && order.customerId !== customerFilter) {
-        return false
-      }
-      if (dateRange) {
-        const [from, to] = dateRange
-        const delivery = dayjs(order.reqdDeliveryDate)
-        if (delivery.isBefore(from, 'day') || delivery.isAfter(to, 'day')) {
-          return false
-        }
-      }
-      if (!needle) {
-        return true
-      }
-      return order.ycsx.toLowerCase().includes(needle) || order.customerName.toLowerCase().includes(needle)
-    })
-  }, [salesOrders, keyword, customerFilter, dateRange])
+  const debouncedKeyword = useDebouncedValue(keyword)
+  const deliveryFrom = dateRange ? dateRange[0].format('YYYY-MM-DD') : null
+  const deliveryTo = dateRange ? dateRange[1].format('YYYY-MM-DD') : null
 
-  const sorted = useMemo(
-    () =>
-      [...filtered].sort((a, b) => a.reqdDeliveryDate.localeCompare(b.reqdDeliveryDate)),
-    [filtered],
+  // Không sắp lại ở trình duyệt nữa: backend đã trả sẵn theo đúng thứ tự ưu tiên nghiệp vụ
+  // (ngày giao → ycsx → bộ cửa), và sắp tại chỗ chỉ đụng được 20 dòng của trang đang xem.
+  const load = useCallback(
+    (params: PageParams) =>
+      listSalesOrders({
+        ...params,
+        keyword: debouncedKeyword,
+        customerId: customerFilter,
+        deliveryFrom,
+        deliveryTo,
+      }),
+    [debouncedKeyword, customerFilter, deliveryFrom, deliveryTo],
   )
+  const { data, loading, error, current, pageSize, handleTableChange, reload } = usePagedList(
+    load,
+    [debouncedKeyword, customerFilter, deliveryFrom, deliveryTo],
+    { errorMessage: 'Không tải được danh sách đơn hàng.' },
+  )
+
+  const handleChanged = useCallback(() => {
+    reload()
+    onChanged()
+  }, [reload, onChanged])
 
   function resetFilters() {
     setKeyword('')
@@ -118,7 +122,7 @@ export function SalesOrderTable({
         try {
           await deleteSalesOrder(order.id)
           message.success('Đã xóa đơn hàng.')
-          onChanged()
+          handleChanged()
         } catch (error) {
           message.error(extractErrorMessage(error, 'Không xóa được đơn hàng.'))
           // Ném lại để AntD giữ hộp thoại mở — đóng lại sẽ khiến người dùng tưởng đã xóa xong.
@@ -181,11 +185,14 @@ export function SalesOrderTable({
         </div>
       )}
 
+      <ListLoadError message={error} onRetry={reload} />
+
       <Table
         rowKey="id"
         loading={loading}
-        dataSource={sorted}
-        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `${total} đơn hàng` }}
+        dataSource={data.content}
+        pagination={tablePagination({ current, pageSize, total: data.totalElements }, (total) => `${total} đơn hàng`)}
+        onChange={handleTableChange}
         columns={[
           {
             title: 'Lệnh SX / Bộ cửa',
@@ -251,10 +258,10 @@ export function SalesOrderTable({
         customers={customers}
         doorProducts={doorProducts}
         onClose={() => setFormOpen(false)}
-        onSaved={onChanged}
+        onSaved={handleChanged}
       />
 
-      <ImportSalesOrdersModal open={importOpen} onClose={() => setImportOpen(false)} onImported={onChanged} />
+      <ImportSalesOrdersModal open={importOpen} onClose={() => setImportOpen(false)} onImported={handleChanged} />
     </>
   )
 }

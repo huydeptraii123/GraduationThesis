@@ -1,4 +1,6 @@
 import { httpClient } from '../../api/httpClient'
+import type { Page, PageParams } from '../../api/pagination'
+import type { Role } from '../auth/permissions'
 import type {
   ChangePasswordRequest,
   CreateUserRequest,
@@ -9,8 +11,15 @@ import type {
 
 const USERS_URL = '/api/v1/users'
 
-export function listUsers(): Promise<UserResponse[]> {
-  return httpClient.get<UserResponse[]>(USERS_URL).then((res) => res.data)
+export interface UserFilterParams extends PageParams {
+  keyword?: string
+  roleCode?: Role | null
+  /** Bỏ trống là không lọc; true là còn hiệu lực, false là đã khóa. */
+  enabled?: boolean | null
+}
+
+export function listUsers(params: UserFilterParams): Promise<Page<UserResponse>> {
+  return httpClient.get<Page<UserResponse>>(USERS_URL, { params }).then((res) => res.data)
 }
 
 export function getUser(id: number): Promise<UserResponse> {

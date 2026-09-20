@@ -1,4 +1,5 @@
 import { httpClient } from '../../api/httpClient'
+import type { Page, PageParams } from '../../api/pagination'
 import type { CustomerResponse, SalesOrderImportResult, SalesOrderRequest, SalesOrderResponse } from './types'
 
 // Tái dùng client GET /api/v1/door-products đã có ở màn BOM, không viết lại.
@@ -11,8 +12,16 @@ export function listCustomers(): Promise<CustomerResponse[]> {
   return httpClient.get<CustomerResponse[]>(CUSTOMERS_URL).then((res) => res.data)
 }
 
-export function listSalesOrders(): Promise<SalesOrderResponse[]> {
-  return httpClient.get<SalesOrderResponse[]>(SALES_ORDERS_URL).then((res) => res.data)
+export interface SalesOrderFilterParams extends PageParams {
+  keyword?: string
+  customerId?: number | null
+  /** Định dạng YYYY-MM-DD; backend nhận bằng @DateTimeFormat(iso = DATE). */
+  deliveryFrom?: string | null
+  deliveryTo?: string | null
+}
+
+export function listSalesOrders(params: SalesOrderFilterParams): Promise<Page<SalesOrderResponse>> {
+  return httpClient.get<Page<SalesOrderResponse>>(SALES_ORDERS_URL, { params }).then((res) => res.data)
 }
 
 export function createSalesOrder(payload: SalesOrderRequest): Promise<SalesOrderResponse> {

@@ -7,7 +7,7 @@ import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
 import { canEditSalesOrder, canImportSalesOrder } from '../auth/permissions'
 import { SalesOrderTable } from './SalesOrderTable'
 import { listCustomers, listDoorProducts, listSalesOrders } from './salesOrdersApi'
-import type { CustomerResponse, SalesOrderResponse } from './types'
+import type { CustomerResponse } from './types'
 
 export function SalesOrderPage() {
   const { user } = useAuth()
@@ -16,7 +16,9 @@ export function SalesOrderPage() {
   // Nhập Excel hàng loạt chỉ PLANNER, đúng SalesOrderImportController.
   const canImport = canImportSalesOrder(user)
 
-  const [salesOrders, setSalesOrders] = useState<SalesOrderResponse[]>([])
+  // Trang cha chỉ giữ 2 danh mục tra cứu và TỔNG số đơn. Dữ liệu bảng do chính bảng tự tải theo
+  // từng trang.
+  const [totalOrders, setTotalOrders] = useState(0)
   const [customers, setCustomers] = useState<CustomerResponse[]>([])
   const [doorProducts, setDoorProducts] = useState<DoorProductResponse[]>([])
   const [loading, setLoading] = useState(true)
@@ -28,15 +30,17 @@ export function SalesOrderPage() {
     const loadId = ++latestLoadId.current
     setLoading(true)
     try {
-      const [loadedSalesOrders, loadedCustomers, loadedDoorProducts] = await Promise.all([
-        listSalesOrders(),
+      // Xin đúng 1 dòng: chỉ cần `totalElements` để hiện tổng số đơn KHÔNG kèm bộ lọc nào — con số
+      // theo bộ lọc đã nằm sẵn dưới chân bảng.
+      const [countProbe, loadedCustomers, loadedDoorProducts] = await Promise.all([
+        listSalesOrders({ page: 0, size: 1 }),
         listCustomers(),
         listDoorProducts(),
       ])
       if (loadId !== latestLoadId.current) {
         return
       }
-      setSalesOrders(loadedSalesOrders)
+      setTotalOrders(countProbe.totalElements)
       setCustomers(loadedCustomers)
       setDoorProducts(loadedDoorProducts)
       setLoadError(null)
@@ -70,17 +74,15 @@ export function SalesOrderPage() {
 
       <Space size={16} style={{ margin: '16px 0' }} wrap>
         <Card size="small" style={{ width: 220 }}>
-          <Statistic title="Tổng số đơn hàng" value={salesOrders.length} loading={loading} />
+          <Statistic title="Tổng số đơn hàng" value={totalOrders} loading={loading} />
         </Card>
       </Space>
 
       <SalesOrderTable
-        salesOrders={salesOrders}
         customers={customers}
         doorProducts={doorProducts}
         canEdit={canEdit}
         canImport={canImport}
-        loading={loading}
         onChanged={() => void reload()}
       />
     </div>

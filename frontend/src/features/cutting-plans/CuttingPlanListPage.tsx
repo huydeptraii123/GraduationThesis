@@ -1,15 +1,20 @@
 import { ThunderboltOutlined } from '@ant-design/icons'
-import { Alert, Button, Input, Select, Space, Table, Tag, Typography } from 'antd'
-import dayjs from 'dayjs'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, Button, DatePicker, Input, Select, Space, Table, Tag, Typography } from 'antd'
+import dayjs, { type Dayjs } from 'dayjs'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { extractErrorMessage } from '../../api/apiError'
+import { tablePagination, type PageParams } from '../../api/pagination'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { usePagedList } from '../../hooks/usePagedList'
 import { useAuth } from '../auth/AuthContext'
 import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
 import { canGenerateCuttingPlan } from '../auth/permissions'
 import { GenerateCuttingPlanModal } from './GenerateCuttingPlanModal'
 import { listCuttingPlans } from './cuttingPlansApi'
-import type { CuttingPlanStatus, CuttingPlanSummaryResponse } from './types'
+import type { CuttingPlanStatus } from './types'
+
+/** Id không bao giờ tồn tại (khóa chính luôn dương) — dùng để ép bộ lọc trả về rỗng. */
+const NO_MATCH_PLAN_ID = -1
 
 const STATUS_LABEL: Record<CuttingPlanStatus, { text: string; color: string }> = {
   COMPLETED: { text: 'Hoàn tất', color: 'success' },
@@ -22,54 +27,43 @@ export function CuttingPlanListPage() {
   // Chỉ PLANNER chạy thuật toán sinh phương án cắt, khớp @PreAuthorize của POST /generate.
   const canGenerate = canGenerateCuttingPlan(user)
 
-  const [plans, setPlans] = useState<CuttingPlanSummaryResponse[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [keyword, setKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState<CuttingPlanStatus | null>(null)
+  const [runRange, setRunRange] = useState<[Dayjs, Dayjs] | null>(null)
   const [generateOpen, setGenerateOpen] = useState(false)
 
-  const latestLoadId = useRef(0)
-
-  const reload = useCallback(async () => {
-    const loadId = ++latestLoadId.current
-    setLoading(true)
-    try {
-      const loaded = await listCuttingPlans()
-      if (loadId !== latestLoadId.current) {
-        return
-      }
-      setPlans(loaded)
-      setLoadError(null)
-    } catch (error) {
-      if (loadId !== latestLoadId.current) {
-        return
-      }
-      setLoadError(extractErrorMessage(error, 'Không tải được danh sách phương án cắt.'))
-    } finally {
-      if (loadId === latestLoadId.current) {
-        setLoading(false)
-      }
+  const debouncedKeyword = useDebouncedValue(keyword)
+  // Ô tìm kiếm nay chỉ tra mã lần chạy: lấy phần số trong "#CP-12" / "cp-12" / "12". Việc lọc theo
+  // thời gian chuyển hẳn sang bộ chọn khoảng ngày bên cạnh — chuỗi ngày đã định dạng (DD/MM/YYYY)
+  // không phải thứ CSDL so khớp được.
+  const planIdFilter = (() => {
+    const typed = debouncedKeyword.trim()
+    if (!typed) {
+      return null
     }
-  }, [])
+    const digits = typed.replace(/\D/g, '')
+    // Không có chữ số nào, hoặc dài hơn mọi id có thật: đây là từ khóa không thể khớp mã nào. Trả
+    // NO_MATCH để bảng báo "không có dữ liệu" — bỏ lọc trong trường hợp này sẽ hiện ra TOÀN BỘ lần
+    // chạy, đúng cái người dùng vừa cố loại đi. (Id quá 15 chữ số còn làm backend trả 400 vì không
+    // ép được sang kiểu số của Java.)
+    if (!digits || digits.length > 15) {
+      return NO_MATCH_PLAN_ID
+    }
+    return Number(digits)
+  })()
+  const runFrom = runRange ? runRange[0].format('YYYY-MM-DD') : null
+  const runTo = runRange ? runRange[1].format('YYYY-MM-DD') : null
 
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect
-    void reload()
-  }, [reload])
-
-  const filtered = useMemo(() => {
-    const needle = keyword.trim().toLowerCase()
-    return plans.filter((plan) => {
-      if (statusFilter && plan.status !== statusFilter) {
-        return false
-      }
-      if (!needle) {
-        return true
-      }
-      return `cp-${plan.id}`.includes(needle) || dayjs(plan.runAt).format('DD/MM/YYYY HH:mm').includes(needle)
-    })
-  }, [plans, keyword, statusFilter])
+  const load = useCallback(
+    (params: PageParams) =>
+      listCuttingPlans({ ...params, planId: planIdFilter, status: statusFilter, runFrom, runTo }),
+    [planIdFilter, statusFilter, runFrom, runTo],
+  )
+  const { data, loading, error: loadError, current, pageSize, handleTableChange, reload } = usePagedList(
+    load,
+    [planIdFilter, statusFilter, runFrom, runTo],
+    { initialPageSize: 10, errorMessage: 'Không tải được danh sách phương án cắt.' },
+  )
 
   return (
     <div>
@@ -94,10 +88,15 @@ export function CuttingPlanListPage() {
       <Space style={{ margin: '16px 0' }} wrap>
         <Input
           allowClear
-          placeholder="Tìm theo mã phương án #CP-, ngày chạy"
-          style={{ width: 280 }}
+          placeholder="Tìm theo mã phương án #CP-"
+          style={{ width: 240 }}
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
+        />
+        <DatePicker.RangePicker
+          placeholder={['Chạy từ ngày', 'đến ngày']}
+          value={runRange}
+          onChange={(value) => setRunRange(value && value[0] && value[1] ? [value[0], value[1]] : null)}
         />
         <Select<CuttingPlanStatus | null>
           allowClear
@@ -115,8 +114,9 @@ export function CuttingPlanListPage() {
       <Table
         rowKey="id"
         loading={loading}
-        dataSource={filtered}
-        pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${total} lần chạy` }}
+        dataSource={data.content}
+        pagination={tablePagination({ current, pageSize, total: data.totalElements }, (total) => `${total} lần chạy`)}
+        onChange={handleTableChange}
         columns={[
           {
             title: 'Thời điểm chạy',
@@ -160,7 +160,7 @@ export function CuttingPlanListPage() {
         onClose={() => setGenerateOpen(false)}
         onGenerated={(newPlanId) => {
           setGenerateOpen(false)
-          void reload()
+          reload()
           navigate(`/cutting-plans/${newPlanId}`)
         }}
       />
