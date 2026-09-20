@@ -163,6 +163,8 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
       </Row>
 
       <Card size="small" title="Số bộ cửa theo mẫu cửa" style={{ marginTop: 16 }}>
+        {/* Cuộn trong khung thay vì kéo dài trang: một lần chạy có thể gồm hàng chục mẫu cửa. */}
+        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
         {byDoorProduct.map((row) => (
           <div key={row.name} style={{ marginBottom: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
@@ -174,6 +176,7 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
             </div>
           </div>
         ))}
+        </div>
       </Card>
 
       {shortagesByMaterial.length > 0 && (
@@ -181,7 +184,7 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
           <Table
             size="small"
             rowKey="slatMaterialId"
-            pagination={false}
+            pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${total} loại vật tư thiếu` }}
             dataSource={shortagesByMaterial}
             columns={[
               { title: 'Loại thanh nan', dataIndex: 'slatMaterialName' },
@@ -208,7 +211,7 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
         <Table
           size="small"
           rowKey="batchNumber"
-          pagination={false}
+          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${total} đợt cắt` }}
           dataSource={batches}
           columns={[
             { title: 'Đợt cắt', dataIndex: 'batchNumber', render: (value: number) => `Đợt ${value}` },
