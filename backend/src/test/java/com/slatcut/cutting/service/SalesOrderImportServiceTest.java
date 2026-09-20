@@ -224,7 +224,8 @@ class SalesOrderImportServiceTest extends AbstractIntegrationTest {
      * Đơn hàng được nhập lại từ hệ thống nguồn mỗi ngày. Nếu lượt nhập ghi đè trạng thái đã duyệt,
      * toàn bộ đơn đã chốt sẽ quay lại hàng chờ sau đúng một lần nhập định kỳ và bị cắt lần hai
      * trên tồn kho đã bị trừ. Bất biến này không có ràng buộc CSDL nào bảo vệ nên phải khóa bằng
-     * test.
+     * test — kể cả khi cách cài đặt thay đổi (nay lượt nhập bỏ qua hẳn đơn đã duyệt, nhưng khẳng
+     * định cần giữ vẫn là "trạng thái đã duyệt sống sót qua lượt nhập").
      */
     @Test
     void importFromExcel_doesNotResetApprovedPlanOfAlreadyApprovedOrder() {
@@ -247,9 +248,11 @@ class SalesOrderImportServiceTest extends AbstractIntegrationTest {
         service.importFromExcel(excel(HEADER, doorRow("HY10014", 1, 1000100014L, 9, 92000014L)));
 
         SalesOrder updated = salesOrderRepository.findById(existing.getId()).orElseThrow();
-        assertThat(updated.getSalesDocument()).isEqualTo(1000100014L);
         assertThat(updated.getApprovedPlan()).isNotNull();
         assertThat(updated.getApprovedPlan().getId()).isEqualTo(approvedPlanId);
+        // Bản ghi giữ nguyên hoàn toàn, không riêng gì cột trạng thái.
+        assertThat(updated.getSalesDocument()).isEqualTo(1L);
+        assertThat(updated.getChieuRongDh()).isEqualByComparingTo(new BigDecimal("1.000"));
     }
 
     private CuttingPlan persistCuttingPlan() {
@@ -261,6 +264,76 @@ class SalesOrderImportServiceTest extends AbstractIntegrationTest {
         plan.setTotalWasteM(BigDecimal.ZERO);
         plan.setTotalStockUsedM(BigDecimal.ZERO);
         return cuttingPlanRepository.save(plan);
+    }
+
+    /**
+     * Nan của bộ cửa đã duyệt đã cắt theo đúng kích thước đang lưu và đã ra khỏi kho. Ghi đè kích
+     * thước mới chỉ làm hồ sơ lệch với vật tư thực tế mà không khiến bộ cửa được cắt lại, vì trạng
+     * thái đã duyệt giữ nó ngoài mọi lần chạy sau.
+     */
+    @Test
+    void importFromExcel_doesNotOverwriteApprovedOrderAndReportsConflict() {
+        Customer customer = persistCustomer(92000015L, "Khách hàng đã cắt");
+        DoorProduct doorProduct = persistDoorProduct(85000012L, "#05", "Cửa đã cắt");
+        SalesOrder existing = new SalesOrder();
+        existing.setYcsx("HY10015");
+        existing.setItem(1);
+        existing.setSalesDocument(1000100015L);
+        existing.setSalesOrderItem(9);
+        existing.setCustomer(customer);
+        existing.setDoorProduct(doorProduct);
+        existing.setChieuCaoDh(new BigDecimal("2.500"));
+        existing.setChieuRongDh(new BigDecimal("4.870"));
+        existing.setReqdDeliveryDate(LocalDate.of(2026, 9, 28));
+        existing.setApprovedPlan(persistCuttingPlan());
+        existing = salesOrderRepository.save(existing);
+
+        // Cùng bộ cửa, nhưng chiều rộng trong file nguồn đã được đính chính 4.870 -> 3.500.
+        SalesOrderImportResult result =
+                service.importFromExcel(excel(HEADER, doorRow("HY10015", 1, 1000100015L, 9, 92000015L)));
+
+        SalesOrder unchanged = salesOrderRepository.findById(existing.getId()).orElseThrow();
+        assertThat(unchanged.getChieuRongDh()).isEqualByComparingTo(new BigDecimal("4.870"));
+        assertThat(result.approvedOrderConflicts()).hasSize(1);
+        assertThat(result.approvedOrderConflicts().get(0).ycsx()).isEqualTo("HY10015");
+        assertThat(result.approvedOrderConflicts().get(0).changedFields())
+                .anyMatch(field -> field.startsWith("chiều rộng"));
+    }
+
+    /**
+     * File nguồn xuất lại toàn bộ tồn đọng mỗi ngày nên phần lớn dòng đã duyệt đều trùng khớp —
+     * cảnh báo cho chúng chỉ tạo nhiễu và làm PLANNER bỏ qua cả những cảnh báo thật.
+     */
+    @Test
+    void importFromExcel_reportsNoConflictWhenApprovedOrderDataIsUnchanged() {
+        Customer customer = persistCustomer(92000016L, "Khách hàng 92000016");
+        DoorProduct doorProduct = persistDoorProduct(85000001L, "#05", "Cửa A48i dày 1.1-1.2mm (#05)");
+        SalesOrder existing = new SalesOrder();
+        existing.setYcsx("HY10016");
+        existing.setItem(1);
+        existing.setSalesDocument(1000100016L);
+        existing.setSalesOrderItem(9);
+        existing.setCustomer(customer);
+        existing.setDoorProduct(doorProduct);
+        existing.setChieuCaoDh(new BigDecimal("2.500"));
+        existing.setChieuRongDh(new BigDecimal("3.500"));
+        existing.setReqdDeliveryDate(LocalDate.of(2026, 9, 28));
+        existing.setApprovedPlan(persistCuttingPlan());
+        salesOrderRepository.save(existing);
+
+        SalesOrderImportResult result =
+                service.importFromExcel(excel(HEADER, doorRow("HY10016", 1, 1000100016L, 9, 92000016L)));
+
+        assertThat(result.approvedOrderConflicts()).isEmpty();
+    }
+
+    @Test
+    void importFromExcel_reportsNoConflictForOrdersNotYetApproved() {
+        SalesOrderImportResult result =
+                service.importFromExcel(excel(HEADER, doorRow("HY10017", 1, 1000100017L, 9, 92000017L)));
+
+        assertThat(result.totalRowsImported()).isEqualTo(1);
+        assertThat(result.approvedOrderConflicts()).isEmpty();
     }
 
     @Test

@@ -34,6 +34,8 @@ sequenceDiagram
     end
 ```
 
+Riêng với đơn hàng, vòng lặp upsert bỏ qua những bộ cửa đã thuộc một phương án cắt được duyệt: bản ghi cũ giữ nguyên, và nếu dữ liệu trong file nguồn khác với dữ liệu đã lưu thì lượt nhập trả thêm một danh sách cảnh báo nêu rõ bộ cửa nào và trường nào khác. Cảnh báo không hủy lượt nhập — các dòng còn lại vẫn được lưu bình thường.
+
 Kết quả của luồng luôn thuộc đúng một trong hai trường hợp: nếu phát hiện bất kỳ dòng lỗi nào, không bản ghi nào được lưu và người thực hiện (PLANNER với đơn hàng/tồn kho, ADMIN với định mức BOM) phải sửa lại file nguồn rồi nhập lại từ đầu; nếu toàn bộ dữ liệu hợp lệ, mọi bản ghi được lưu trong đúng một giao dịch và sẵn sàng phục vụ ngay cho các luồng tiếp theo — đơn hàng và định mức BOM phục vụ bước sinh nhu cầu cắt, tồn kho phục vụ `InventoryPool` ở luồng "2. Luồng tính và duyệt phương án cắt" bên dưới.
 
 ## 2. Luồng tính và duyệt phương án cắt (luồng lõi)

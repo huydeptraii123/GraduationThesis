@@ -41,10 +41,10 @@ Sơ đồ dưới đây thể hiện các ca sử dụng của hai tác nhân PL
 | Đăng nhập | PLANNER, ADMIN | Xác thực bằng tài khoản/mật khẩu, nhận JWT dùng cho các request tiếp theo trong phiên làm việc. |
 | Đăng xuất | PLANNER, ADMIN | Kết thúc phiên làm việc hiện tại. |
 | Đổi mật khẩu cá nhân | PLANNER, ADMIN | Tự thay đổi mật khẩu tài khoản của chính mình. |
-| Nhập đơn hàng từ Excel | PLANNER | Nhập hàng loạt đơn hàng khách từ file Excel xuất từ hệ thống nghiệp vụ hiện có, upsert theo khóa (`ycsx`, `z_item`); toàn bộ lượt nhập xử lý trong 1 giao dịch. |
+| Nhập đơn hàng từ Excel | PLANNER | Nhập hàng loạt đơn hàng khách từ file Excel xuất từ hệ thống nghiệp vụ hiện có, upsert theo khóa (`ycsx`, `z_item`); toàn bộ lượt nhập xử lý trong 1 giao dịch. Bộ cửa đã thuộc phương án cắt được duyệt thì giữ nguyên, không ghi đè, và được liệt kê thành cảnh báo để PLANNER tự xử lý. |
 | Xem / tìm / lọc đơn hàng | PLANNER, ADMIN | Xem danh sách, tìm kiếm và lọc đơn hàng theo ngày giao, khách hàng hoặc trạng thái xử lý. |
 | Thêm mới đơn hàng thủ công | PLANNER, ADMIN | Tạo thủ công 1 đơn hàng khi cần bổ sung bộ cửa phát sinh ngoài luồng nhập Excel. |
-| Chỉnh sửa đơn hàng thủ công | PLANNER, ADMIN | Sửa thủ công 1 đơn hàng khi cần điều chỉnh cục bộ, chưa kịp đồng bộ từ hệ thống nguồn. |
+| Chỉnh sửa đơn hàng thủ công | PLANNER, ADMIN | Sửa thủ công 1 đơn hàng khi cần điều chỉnh cục bộ, chưa kịp đồng bộ từ hệ thống nguồn; bị từ chối nếu đơn đã thuộc một phương án cắt được duyệt. |
 | Xóa đơn hàng | PLANNER, ADMIN | Xóa thủ công 1 đơn hàng; bị từ chối nếu đơn đã thuộc một phương án cắt được duyệt. |
 | Nhập tồn kho từ Excel | PLANNER | Nhập hàng loạt tồn kho thanh nan (loại thanh, độ dài chuẩn, số lượng) từ file Excel, theo dạng snapshot ghi đè tại thời điểm nhập. |
 | Xem tồn kho theo loại thanh | PLANNER, ADMIN | Xem tồn kho hiện có theo từng loại thanh nan và độ dài chuẩn. |

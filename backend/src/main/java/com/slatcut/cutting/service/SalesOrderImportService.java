@@ -4,6 +4,7 @@ import com.slatcut.cutting.config.ImportValidationException;
 import com.slatcut.cutting.domain.Customer;
 import com.slatcut.cutting.domain.DoorProduct;
 import com.slatcut.cutting.domain.SalesOrder;
+import com.slatcut.cutting.dto.ApprovedOrderConflict;
 import com.slatcut.cutting.dto.ImportRowError;
 import com.slatcut.cutting.dto.SalesOrderImportResult;
 import com.slatcut.cutting.repository.CustomerRepository;
@@ -19,6 +20,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
@@ -72,13 +75,14 @@ public class SalesOrderImportService {
 
         Map<Long, Customer> customersByCode = upsertCustomers(outcome.rows());
         Map<DoorProductKey, DoorProduct> doorProductsByKey = upsertDoorProducts(outcome.rows());
+        List<ApprovedOrderConflict> conflicts = new ArrayList<>();
         for (ParsedRow row : outcome.rows()) {
             Customer customer = customersByCode.get(row.customer());
             DoorProduct doorProduct = doorProductsByKey.get(new DoorProductKey(row.material(), row.mauSac()));
-            upsertSalesOrder(row, customer, doorProduct);
+            upsertSalesOrder(row, customer, doorProduct).ifPresent(conflicts::add);
         }
 
-        return new SalesOrderImportResult(outcome.rows().size(), outcome.skippedNonDoorRows());
+        return new SalesOrderImportResult(outcome.rows().size(), outcome.skippedNonDoorRows(), conflicts);
     }
 
     private ParseOutcome parseAndValidate(MultipartFile file) {
@@ -297,9 +301,32 @@ public class SalesOrderImportService {
         return result;
     }
 
-    private void upsertSalesOrder(ParsedRow row, Customer customer, DoorProduct doorProduct) {
+    /**
+     * Upsert 1 bộ cửa theo khóa nghiệp vụ (ycsx, z_item) — trừ khi bộ cửa đó đã thuộc một phương án
+     * cắt được duyệt, khi đó bản ghi cũ được giữ nguyên.
+     *
+     * <p>Lý do không ghi đè: nan của bộ cửa đã cắt theo đúng kích thước đang lưu và đã ra khỏi kho.
+     * Ghi đè kích thước mới chỉ làm hồ sơ lệch với vật tư thực tế mà không khiến bộ cửa được cắt
+     * lại, vì trạng thái đã duyệt giữ nó ngoài mọi lần chạy sau. Thực tế kích thước cửa của khách
+     * là cố định nên tình huống này gần như chỉ xảy ra khi nhân viên đo sai rồi số liệu được đính
+     * chính; quyết định tạo một bộ cửa mới để cắt lại thuộc về PLANNER, không phải về lượt nhập.
+     *
+     * @return dòng cảnh báo khi bộ cửa đã duyệt VÀ dữ liệu nguồn khác dữ liệu đã lưu; rỗng khi
+     *     không có gì bất thường — bộ cửa đã duyệt mà dữ liệu y hệt thì bỏ qua im lặng, vì file
+     *     nguồn xuất lại toàn bộ tồn đọng mỗi ngày nên phần lớn dòng đã duyệt đều trùng khớp và
+     *     cảnh báo cho chúng chỉ tạo nhiễu.
+     */
+    private Optional<ApprovedOrderConflict> upsertSalesOrder(
+            ParsedRow row, Customer customer, DoorProduct doorProduct) {
         SalesOrder entity =
                 salesOrderRepository.findByYcsxAndItem(row.ycsx(), row.item()).orElseGet(SalesOrder::new);
+        if (entity.getApprovedPlan() != null) {
+            List<String> changed = describeChanges(entity, row, customer, doorProduct);
+            return changed.isEmpty()
+                    ? Optional.empty()
+                    : Optional.of(new ApprovedOrderConflict(
+                            entity.getYcsx(), entity.getItem(), entity.getApprovedPlan().getId(), changed));
+        }
         entity.setYcsx(row.ycsx());
         entity.setItem(row.item());
         entity.setSalesDocument(row.salesDocument());
@@ -310,6 +337,43 @@ public class SalesOrderImportService {
         entity.setChieuRongDh(row.chieuRongDh());
         entity.setReqdDeliveryDate(row.reqdDeliveryDate());
         salesOrderRepository.save(entity);
+        return Optional.empty();
+    }
+
+    /**
+     * Liệt kê từng trường lệch giữa bản ghi đã lưu và dòng trong file nguồn, dạng "tên trường: cũ →
+     * mới". So khớp cả trường không ảnh hưởng tới việc cắt (khách hàng, ngày giao, số chứng từ) vì
+     * PLANNER cần thấy đủ mới quyết được: một bộ cửa đổi khách hàng là chuyện khác hẳn với một bộ
+     * cửa đổi kích thước, dù cả hai đều không được phép ghi đè.
+     *
+     * <p>So sánh kích thước bằng {@code compareTo} chứ không {@code equals}: BigDecimal đọc từ
+     * Excel và BigDecimal đọc từ cột DECIMAL(6,3) thường khác scale (2.5 với 2.500), equals sẽ báo
+     * lệch ở mọi dòng.
+     */
+    private List<String> describeChanges(
+            SalesOrder entity, ParsedRow row, Customer customer, DoorProduct doorProduct) {
+        List<String> changed = new ArrayList<>();
+        addIfChanged(changed, "chiều cao", entity.getChieuCaoDh(), row.chieuCaoDh());
+        addIfChanged(changed, "chiều rộng", entity.getChieuRongDh(), row.chieuRongDh());
+        if (!Objects.equals(entity.getDoorProduct().getId(), doorProduct.getId())) {
+            changed.add("mẫu cửa: %d → %d".formatted(entity.getDoorProduct().getId(), doorProduct.getId()));
+        }
+        if (!Objects.equals(entity.getCustomer().getId(), customer.getId())) {
+            changed.add("khách hàng: %d → %d".formatted(entity.getCustomer().getId(), customer.getId()));
+        }
+        if (!Objects.equals(entity.getReqdDeliveryDate(), row.reqdDeliveryDate())) {
+            changed.add("ngày giao: %s → %s".formatted(entity.getReqdDeliveryDate(), row.reqdDeliveryDate()));
+        }
+        if (!Objects.equals(entity.getSalesDocument(), row.salesDocument())) {
+            changed.add("số chứng từ: %s → %s".formatted(entity.getSalesDocument(), row.salesDocument()));
+        }
+        return changed;
+    }
+
+    private static void addIfChanged(List<String> changed, String label, BigDecimal stored, BigDecimal incoming) {
+        if (stored == null ? incoming != null : incoming == null || stored.compareTo(incoming) != 0) {
+            changed.add("%s: %s → %s".formatted(label, stored, incoming));
+        }
     }
 
     private Map<String, Integer> readHeader(Row headerRow) {
