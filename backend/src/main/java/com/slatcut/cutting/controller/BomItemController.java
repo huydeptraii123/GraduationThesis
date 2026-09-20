@@ -1,10 +1,15 @@
 package com.slatcut.cutting.controller;
 
+import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.dto.BomItemRequest;
 import com.slatcut.cutting.dto.BomItemResponse;
+import com.slatcut.cutting.dto.BomSummaryResponse;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.service.BomItemService;
 import jakarta.validation.Valid;
-import java.util.List;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -28,8 +34,17 @@ public class BomItemController {
     }
 
     @GetMapping
-    public List<BomItemResponse> getAll() {
-        return service.getAll();
+    public PageResponse<BomItemResponse> getAll(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) SlatGroup slatGroup,
+            @PageableDefault(size = 20, sort = {"doorProduct.doorMaterialName", "slatMaterial.slatMaterialName"},
+                    direction = Sort.Direction.ASC) Pageable pageable) {
+        return service.getPage(keyword, slatGroup, pageable);
+    }
+
+    @GetMapping("/summary")
+    public BomSummaryResponse getSummary() {
+        return service.getSummary();
     }
 
     @GetMapping("/{id}")

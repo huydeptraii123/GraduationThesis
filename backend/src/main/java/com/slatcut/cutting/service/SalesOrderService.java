@@ -5,6 +5,7 @@ import com.slatcut.cutting.config.ResourceNotFoundException;
 import com.slatcut.cutting.domain.Customer;
 import com.slatcut.cutting.domain.DoorProduct;
 import com.slatcut.cutting.domain.SalesOrder;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.SalesOrderRequest;
 import com.slatcut.cutting.dto.SalesOrderResponse;
 import com.slatcut.cutting.mapper.SalesOrderMapper;
@@ -13,7 +14,9 @@ import com.slatcut.cutting.repository.CustomerRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
 import com.slatcut.cutting.repository.ShortageRecordRepository;
-import java.util.List;
+import com.slatcut.cutting.repository.spec.SalesOrderSpecifications;
+import java.time.LocalDate;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,8 +46,12 @@ public class SalesOrderService {
     }
 
     @Transactional(readOnly = true)
-    public List<SalesOrderResponse> getAll() {
-        return salesOrderRepository.findAll().stream().map(mapper::toResponse).toList();
+    public PageResponse<SalesOrderResponse> getPage(
+            String keyword, Long customerId, LocalDate deliveryFrom, LocalDate deliveryTo, Pageable pageable) {
+        return PageResponse.of(
+                salesOrderRepository.findAll(
+                        SalesOrderSpecifications.filter(keyword, customerId, deliveryFrom, deliveryTo), pageable),
+                mapper::toResponse);
     }
 
     @Transactional(readOnly = true)

@@ -12,12 +12,17 @@ import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
 import com.slatcut.cutting.dto.BomItemRequest;
 import com.slatcut.cutting.dto.BomItemResponse;
+import com.slatcut.cutting.dto.BomSummaryResponse;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.repository.BomItemRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 class BomItemServiceTest extends AbstractIntegrationTest {
 
@@ -42,10 +47,14 @@ class BomItemServiceTest extends AbstractIntegrationTest {
     }
 
     private SlatMaterial persistMaterial(long code, String name) {
+        return persistMaterial(code, name, SlatGroup.MAIN_SLAT);
+    }
+
+    private SlatMaterial persistMaterial(long code, String name, SlatGroup group) {
         SlatMaterial entity = new SlatMaterial();
         entity.setSlatMaterial(code);
         entity.setSlatMaterialName(name);
-        entity.setSlatGroup(SlatGroup.MAIN_SLAT);
+        entity.setSlatGroup(group);
         return slatMaterialRepository.save(entity);
     }
 
@@ -152,14 +161,65 @@ class BomItemServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void getAll_returnsEveryPersistedBomItem() {
+    void getSummary_countsDistinctDoorProductsAndGroupsAcrossAllRows() {
+        // Đo bằng phần CHÊNH LỆCH: lớp test khác có thể để lại dữ liệu khi chạy cả bộ.
+        BomSummaryResponse before = service.getSummary();
+        DoorProduct doorProduct = persistProduct(82300000L, "#11");
+        persistBomItem(doorProduct, persistMaterial(73300001L, "Nan tổng hợp chính"));
+        persistBomItem(doorProduct, persistMaterial(73300002L, "Nan tổng hợp ray", SlatGroup.RAIL));
+
+        BomSummaryResponse after = service.getSummary();
+
+        assertThat(after.totalItems() - before.totalItems()).isEqualTo(2);
+        assertThat(after.doorProductCount() - before.doorProductCount()).isEqualTo(1);
+        assertThat(after.groupCount()).isGreaterThanOrEqualTo(2);
+    }
+
+    @Test
+    void getPage_returnsEveryPersistedBomItem() {
         DoorProduct doorProduct = persistProduct(82000006L, "#02");
         persistBomItem(doorProduct, persistMaterial(73000007L, "Nan A"));
         persistBomItem(doorProduct, persistMaterial(73000008L, "Nan B"));
 
-        assertThat(service.getAll())
+        assertThat(service.getPage("Cửa cuốn 82000006", null, PageRequest.of(0, 20)).content())
                 .extracting(BomItemResponse::slatMaterialName)
                 .contains("Nan A", "Nan B");
+    }
+
+    @Test
+    void getPage_splitsResultAcrossPagesInStableOrder() {
+        DoorProduct doorProduct = persistProduct(82100000L, "#09");
+        for (int index = 0; index < 25; index++) {
+            persistBomItem(doorProduct, persistMaterial(73100000L + index, "Nan phân trang BOM " + index));
+        }
+        Pageable byMaterialName = PageRequest.of(0, 10, Sort.by("slatMaterial.slatMaterial"));
+
+        PageResponse<BomItemResponse> first = service.getPage("Cửa cuốn 82100000", null, byMaterialName);
+        PageResponse<BomItemResponse> second = service.getPage("Cửa cuốn 82100000", null, byMaterialName.withPage(1));
+        PageResponse<BomItemResponse> last = service.getPage("Cửa cuốn 82100000", null, byMaterialName.withPage(2));
+
+        assertThat(first.totalElements()).isEqualTo(25);
+        assertThat(first.totalPages()).isEqualTo(3);
+        assertThat(first.content()).hasSize(10);
+        assertThat(last.content()).hasSize(5);
+        assertThat(first.content())
+                .extracting(BomItemResponse::slatMaterialId)
+                .doesNotContainAnyElementsOf(second.content().stream().map(BomItemResponse::slatMaterialId).toList());
+    }
+
+    @Test
+    void getPage_filtersBySlatGroupOfLinkedMaterial() {
+        DoorProduct doorProduct = persistProduct(82200000L, "#10");
+        SlatMaterial mainSlat = persistMaterial(73200001L, "Nan lọc BOM chính");
+        SlatMaterial rail = persistMaterial(73200002L, "Nan lọc BOM ray", SlatGroup.RAIL);
+        persistBomItem(doorProduct, mainSlat);
+        persistBomItem(doorProduct, rail);
+
+        PageResponse<BomItemResponse> railOnly =
+                service.getPage("Cửa cuốn 82200000", SlatGroup.RAIL, PageRequest.of(0, 20));
+
+        assertThat(railOnly.totalElements()).isEqualTo(1);
+        assertThat(railOnly.content().getFirst().slatMaterialName()).isEqualTo("Nan lọc BOM ray");
     }
 
     @Test
