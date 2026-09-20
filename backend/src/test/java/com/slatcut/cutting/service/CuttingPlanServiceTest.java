@@ -245,6 +245,141 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void generate_marksEveryOrderInScopeAsApproved() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        SalesOrder order =
+                persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        CuttingPlan plan = service.generate();
+
+        assertThat(salesOrderRepository.findById(order.getId()))
+                .get()
+                .extracting(saved -> saved.getApprovedPlan().getId())
+                .isEqualTo(plan.getId());
+    }
+
+    /**
+     * Đơn không cắt được thanh nào vẫn phải bị đánh dấu đã duyệt. Nếu chỉ đánh dấu những đơn có
+     * kết quả cắt, đơn thiếu vật tư sẽ quay lại hàng chờ và bị đưa vào lần duyệt kế tiếp trong khi
+     * tồn kho đã bị trừ cho các đơn khác ở lần này.
+     */
+    @Test
+    void generate_marksShortageOnlyOrderAsApprovedToo() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        SalesOrder order =
+                persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        CuttingPlan plan = service.generate();
+
+        assertThat(shortageRecordRepository.findByCuttingPlan_Id(plan.getId())).isNotEmpty();
+        assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
+        assertThat(salesOrderRepository.findById(order.getId()))
+                .get()
+                .extracting(saved -> saved.getApprovedPlan().getId())
+                .isEqualTo(plan.getId());
+    }
+
+    /**
+     * Điều kiện lọc định mức ở truy vấn phạm vi viết bằng SQL nên chỉ kiểm được rằng hệ số tính số
+     * nan có tồn tại, không kiểm được giá trị tính ra. Hệ số cho ra 0 nan vẫn lọt vào phạm vi, rồi
+     * không sinh ra lát cắt lẫn dòng thiếu vật tư nào. Nếu đơn đó vẫn bị đánh dấu đã duyệt, nó biến
+     * mất khỏi mọi hàng chờ và mọi báo cáo mà không ai biết — phải giữ lại để còn nhìn thấy.
+     */
+    @Test
+    void generate_doesNotApproveOrderThatProducedNothing() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial mainSlat = persistSlatMaterial(SlatGroup.MAIN_SLAT);
+        BomItem bomItem = new BomItem();
+        bomItem.setDoorProduct(doorProduct);
+        bomItem.setSlatMaterial(mainSlat);
+        bomItem.setWidthOffsetM(BigDecimal.ZERO);
+        bomItem.setSlatCountSlope(BigDecimal.ZERO);
+        bomItem.setSlatCountIntercept(BigDecimal.ZERO);
+        bomItemRepository.save(bomItem);
+        persistInventoryBatch(mainSlat, 2000, 1);
+        SalesOrder order =
+                persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        CuttingPlan plan = service.generate();
+
+        assertThat(plan.getScopeOrderCount()).isEqualTo(1);
+        assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
+        assertThat(shortageRecordRepository.findByCuttingPlan_Id(plan.getId())).isEmpty();
+        assertThat(salesOrderRepository.findById(order.getId()))
+                .get()
+                .extracting(SalesOrder::getApprovedPlan)
+                .isNull();
+    }
+
+    /**
+     * Phạm vi của chức năng TÍNH: đúng hai giới hạn của chức năng duyệt bị bỏ. Đơn giao xa hơn
+     * t+3 và đơn vượt hạn mức 70 đều phải có mặt — đây chính là điều làm bức tranh thiếu hụt vật
+     * tư của toàn bộ đơn tồn nhìn thấy được.
+     */
+    @Test
+    void findUnapproved_ignoresDeliveryCutoffAndSeventyOrderLimit() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        for (int i = 0; i < 71; i++) {
+            persistSalesOrder(
+                    "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        }
+        SalesOrder farFuture = persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now().plusDays(90));
+
+        List<SalesOrder> unapproved = salesOrderRepository.findUnapproved();
+
+        assertThat(unapproved).hasSize(72);
+        assertThat(unapproved).extracting(SalesOrder::getId).contains(farFuture.getId());
+        assertThat(salesOrderRepository.findUnprocessedInScope(
+                        LocalDate.now().plusDays(3), org.springframework.data.domain.PageRequest.of(0, 70)))
+                .hasSize(70);
+    }
+
+    @Test
+    void findUnapproved_excludesOrdersAlreadyApproved() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        SalesOrder order =
+                persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        assertThat(salesOrderRepository.findUnapproved()).extracting(SalesOrder::getId).contains(order.getId());
+        service.generate();
+
+        assertThat(salesOrderRepository.findUnapproved()).extracting(SalesOrder::getId).doesNotContain(order.getId());
+    }
+
+    /**
+     * Đơn có mẫu cửa không sinh được nhu cầu cắt nào bị loại khỏi phạm vi của CẢ hai chức năng —
+     * đó là đơn đang bị chặn chờ khai báo định mức, không phải đơn chờ tới lượt. Nếu lọt vào phạm
+     * vi, nó sẽ bị gán approvedPlan dù không sản xuất được gì.
+     */
+    @Test
+    void findUnapproved_excludesOrdersBlockedByMissingBom() {
+        Customer customer = persistCustomer();
+        DoorProduct withoutBom = persistDoorProduct();
+        SalesOrder blocked =
+                persistSalesOrder("HY9" + (counter + 1), withoutBom, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        assertThat(salesOrderRepository.findUnapproved())
+                .extracting(SalesOrder::getId)
+                .doesNotContain(blocked.getId());
+    }
+
+    @Test
     void generate_limitsScopeToSeventyOrders_excludesLowestPriorityOrder() {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();

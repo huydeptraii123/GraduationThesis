@@ -9,11 +9,9 @@ import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.SalesOrderRequest;
 import com.slatcut.cutting.dto.SalesOrderResponse;
 import com.slatcut.cutting.mapper.SalesOrderMapper;
-import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
 import com.slatcut.cutting.repository.CustomerRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
-import com.slatcut.cutting.repository.ShortageRecordRepository;
 import com.slatcut.cutting.repository.spec.SalesOrderSpecifications;
 import java.time.LocalDate;
 import org.springframework.data.domain.Pageable;
@@ -26,22 +24,16 @@ public class SalesOrderService {
     private final SalesOrderRepository salesOrderRepository;
     private final CustomerRepository customerRepository;
     private final DoorProductRepository doorProductRepository;
-    private final CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository;
-    private final ShortageRecordRepository shortageRecordRepository;
     private final SalesOrderMapper mapper;
 
     public SalesOrderService(
             SalesOrderRepository salesOrderRepository,
             CustomerRepository customerRepository,
             DoorProductRepository doorProductRepository,
-            CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository,
-            ShortageRecordRepository shortageRecordRepository,
             SalesOrderMapper mapper) {
         this.salesOrderRepository = salesOrderRepository;
         this.customerRepository = customerRepository;
         this.doorProductRepository = doorProductRepository;
-        this.cuttingPlanDetailItemRepository = cuttingPlanDetailItemRepository;
-        this.shortageRecordRepository = shortageRecordRepository;
         this.mapper = mapper;
     }
 
@@ -90,11 +82,13 @@ public class SalesOrderService {
     @Transactional
     public void delete(Long id) {
         SalesOrder entity = findEntityById(id);
-        if (cuttingPlanDetailItemRepository.existsBySalesOrder_Id(id)) {
-            throw new ConflictException("Không thể xóa: đơn hàng đã có kết quả trong ít nhất 1 lần chạy phương án cắt");
-        }
-        if (shortageRecordRepository.existsBySalesOrder_Id(id)) {
-            throw new ConflictException("Không thể xóa: đơn hàng đã bị đánh dấu thiếu vật tư trong ít nhất 1 lần chạy phương án cắt");
+        // Một câu hỏi duy nhất thay cho việc dò hai bảng con: đơn đã thuộc phương án nào chưa.
+        // Bao phủ rộng hơn cách cũ — đơn được duyệt nhưng không sinh ra dòng kết quả nào (mẫu cửa
+        // hết dòng định mức dùng được sau khi ADMIN sửa) trước đây lọt qua guard và xóa được, làm
+        // mất dấu vết một đơn đã nằm trong phương án đã chốt.
+        if (entity.getApprovedPlan() != null) {
+            throw new ConflictException("Không thể xóa: đơn hàng đã thuộc phương án cắt #"
+                    + entity.getApprovedPlan().getId() + " đã được duyệt");
         }
         salesOrderRepository.delete(entity);
     }

@@ -7,7 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ShortageRecordRepository extends JpaRepository<ShortageRecord, Long> {
 
-    boolean existsBySalesOrder_Id(Long salesOrderId);
 
     @EntityGraph(attributePaths = {"salesOrder.customer", "salesOrder.doorProduct", "slatMaterial"})
     List<ShortageRecord> findByCuttingPlan_Id(Long cuttingPlanId);

@@ -35,10 +35,15 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -46,13 +51,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Nối CuttingDemandService (7.3) và CuttingStrategy (8.1-8.4) thành 1 luồng thật, đúng phạm vi đợt
- * xử lý đã chốt ở docs/requirements-functional.md Nhóm 3: chỉ SalesOrder chưa từng có kết quả cắt
- * nào (chưa có CuttingPlanDetailItem lẫn ShortageRecord tham chiếu tới — "nhóm 99" không cần cột
- * trạng thái riêng, suy ra động qua SalesOrderRepository.findUnprocessedInScope), reqdDeliveryDate
- * &lt;= t+3, tối đa 70 đơn.
+ * duyệt đã chốt ở docs/requirements-functional.md Nhóm 3: chỉ SalesOrder chưa được duyệt
+ * (sales_order.approved_plan_id còn rỗng) và sinh được ít nhất 1 nhu cầu cắt, reqdDeliveryDate
+ * &lt;= t+3, tối đa 70 đơn. Đơn ngoài phạm vi thuộc "nhóm 99" — vẫn suy ra động, không cần cột
+ * riêng; còn trạng thái "đã duyệt" thì có cột tường minh, ghi ở {@link #markScopeApproved}.
  */
 @Service
 public class CuttingPlanService {
+
+    private static final Logger log = LoggerFactory.getLogger(CuttingPlanService.class);
 
     private static final int SCOPE_CUTOFF_DAYS = 3;
     private static final int SCOPE_MAX_ORDERS = 70;
@@ -112,7 +119,55 @@ public class CuttingPlanService {
         persistCuts(plan, result.cuts(), orderIndex);
         persistShortages(plan, result.shortages(), orderIndex);
         applyInventoryChanges(result.cuts());
+        markScopeApproved(plan, scopeOrders, result);
         return plan;
+    }
+
+    /**
+     * Đánh dấu đơn trong phạm vi là đã thuộc phương án này. Bao gồm cả đơn CHỈ sinh ra
+     * ShortageRecord: gán thiếu đơn đó thì nó quay lại hàng chờ và bị đưa vào lần chạy kế tiếp
+     * trong khi tồn kho đã bị trừ cho các đơn khác từ lần này.
+     *
+     * <p>Nhưng KHÔNG đánh dấu đơn không để lại bất kỳ kết quả nào — không một lát cắt, không một
+     * dòng thiếu vật tư. Đơn như vậy về lý thuyết không lọt được vào phạm vi (điều kiện lọc định
+     * mức ở {@link SalesOrderRepository#findUnprocessedInScope} đã loại), nhưng điều kiện đó viết
+     * bằng SQL nên chỉ kiểm được sự tồn tại của tham số định mức, không kiểm được giá trị tính ra
+     * — ví dụ hệ số cho ra số nan bằng 0 vẫn qua được cửa. Nếu vẫn đánh dấu, đơn đó biến mất khỏi
+     * mọi hàng chờ và mọi báo cáo mà không ai biết; để nguyên thì nó ở lại hàng chờ y như trước,
+     * nhìn thấy được, và log dưới đây chỉ ra ngay đơn nào cần xem lại định mức.
+     *
+     * <p>Gọi sau cùng vì {@code markApproved} xóa persistence context (xem javadoc của nó): mọi
+     * thao tác ghi khác phải xong trước, nếu không các entity đang dở sẽ bị gỡ khỏi context giữa
+     * chừng.
+     */
+    private void markScopeApproved(CuttingPlan plan, List<SalesOrder> scopeOrders, CuttingPlanResult result) {
+        Set<OrderKey> produced = new HashSet<>();
+        for (CutRecord cut : result.cuts()) {
+            for (CuttingDemand piece : cut.pieces()) {
+                produced.add(new OrderKey(piece.ycsx(), piece.item()));
+            }
+        }
+        for (ShortageEntry shortage : result.shortages()) {
+            produced.add(new OrderKey(shortage.demand().ycsx(), shortage.demand().item()));
+        }
+
+        List<Long> approvedIds = new ArrayList<>();
+        for (SalesOrder order : scopeOrders) {
+            if (produced.contains(new OrderKey(order.getYcsx(), order.getItem()))) {
+                approvedIds.add(order.getId());
+            } else {
+                log.warn(
+                        "Đơn ycsx={} item={} nằm trong phạm vi nhưng không sinh ra kết quả nào — giữ lại ở"
+                                + " hàng chờ, cần kiểm tra lại định mức của mẫu cửa id={}",
+                        order.getYcsx(),
+                        order.getItem(),
+                        order.getDoorProduct().getId());
+            }
+        }
+        if (approvedIds.isEmpty()) {
+            return;
+        }
+        salesOrderRepository.markApproved(plan, approvedIds);
     }
 
     /**
