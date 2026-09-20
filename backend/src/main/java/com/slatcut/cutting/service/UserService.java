@@ -5,6 +5,7 @@ import com.slatcut.cutting.config.ResourceNotFoundException;
 import com.slatcut.cutting.domain.Role;
 import com.slatcut.cutting.domain.User;
 import com.slatcut.cutting.dto.CreateUserRequest;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.PasswordRules;
 import com.slatcut.cutting.dto.ResetPasswordRequest;
 import com.slatcut.cutting.dto.UpdateUserRequest;
@@ -12,8 +13,8 @@ import com.slatcut.cutting.dto.UserResponse;
 import com.slatcut.cutting.mapper.UserMapper;
 import com.slatcut.cutting.repository.RoleRepository;
 import com.slatcut.cutting.repository.UserRepository;
-import java.util.Comparator;
-import java.util.List;
+import com.slatcut.cutting.repository.spec.UserSpecifications;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,13 +52,15 @@ public class UserService {
         this.mapper = mapper;
     }
 
-    /** Sắp theo tên đăng nhập để thứ tự bảng ổn định giữa các lần tải, không phụ thuộc thứ tự chèn. */
+    /**
+     * Sắp theo tên đăng nhập để thứ tự bảng ổn định giữa các lần tải, không phụ thuộc thứ tự chèn —
+     * nay do {@code Pageable} đảm nhiệm, vì sắp xếp trong Java chỉ sắp được đúng trang đang tải.
+     */
     @Transactional(readOnly = true)
-    public List<UserResponse> getAll() {
-        return userRepository.findAll().stream()
-                .sorted(Comparator.comparing(User::getUsername))
-                .map(mapper::toResponse)
-                .toList();
+    public PageResponse<UserResponse> getPage(String keyword, String roleCode, Boolean enabled, Pageable pageable) {
+        return PageResponse.of(
+                userRepository.findAll(UserSpecifications.filter(keyword, roleCode, enabled), pageable),
+                mapper::toResponse);
     }
 
     @Transactional(readOnly = true)

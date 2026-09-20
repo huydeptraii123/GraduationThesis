@@ -15,6 +15,7 @@ import com.slatcut.cutting.dto.CuttingPlanDetailResponse;
 import com.slatcut.cutting.dto.CuttingPlanResponse;
 import com.slatcut.cutting.dto.CuttingPlanScopePreviewResponse;
 import com.slatcut.cutting.dto.CuttingPlanSummaryResponse;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.ShortageRecordResponse;
 import com.slatcut.cutting.mapper.CuttingPlanMapper;
 import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
@@ -23,6 +24,7 @@ import com.slatcut.cutting.repository.CuttingPlanRepository;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
 import com.slatcut.cutting.repository.ShortageRecordRepository;
+import com.slatcut.cutting.repository.spec.CuttingPlanSpecifications;
 import com.slatcut.cutting.service.optimizer.CutRecord;
 import com.slatcut.cutting.service.optimizer.CuttingPlanResult;
 import com.slatcut.cutting.service.optimizer.CuttingStrategy;
@@ -38,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -211,10 +214,12 @@ public class CuttingPlanService {
     }
 
     @Transactional(readOnly = true)
-    public List<CuttingPlanSummaryResponse> getSummaries() {
-        return cuttingPlanRepository.findAllByOrderByRunAtDesc().stream()
-                .map(mapper::toSummaryResponse)
-                .toList();
+    public PageResponse<CuttingPlanSummaryResponse> getSummaryPage(
+            Long planId, CuttingPlanStatus status, LocalDate runFrom, LocalDate runTo, Pageable pageable) {
+        return PageResponse.of(
+                cuttingPlanRepository.findAll(
+                        CuttingPlanSpecifications.filter(planId, status, runFrom, runTo), pageable),
+                mapper::toSummaryResponse);
     }
 
     @Transactional(readOnly = true)

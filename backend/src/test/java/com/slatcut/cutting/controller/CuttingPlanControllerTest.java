@@ -267,8 +267,38 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
 
         mockMvc.perform(get("/api/v1/cutting-plans").header("Authorization", "Bearer " + plannerToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(newer.getId()))
-                .andExpect(jsonPath("$[1].id").value(older.getId()));
+                .andExpect(jsonPath("$.content[0].id").value(newer.getId()))
+                .andExpect(jsonPath("$.content[1].id").value(older.getId()))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.totalElements").isNumber());
+    }
+
+    @Test
+    void getAll_appliesPageSizeAndStatusFilter() throws Exception {
+        newEmptyPlan(LocalDateTime.now().minusHours(2));
+        CuttingPlan newer = newEmptyPlan(LocalDateTime.now().minusHours(1));
+
+        mockMvc.perform(get("/api/v1/cutting-plans")
+                        .param("size", "1")
+                        .param("status", "COMPLETED")
+                        .header("Authorization", "Bearer " + plannerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(newer.getId()))
+                .andExpect(jsonPath("$.size").value(1));
+    }
+
+    @Test
+    void getAll_filtersByPlanId() throws Exception {
+        newEmptyPlan(LocalDateTime.now().minusHours(3));
+        CuttingPlan target = newEmptyPlan(LocalDateTime.now());
+
+        mockMvc.perform(get("/api/v1/cutting-plans")
+                        .param("planId", String.valueOf(target.getId()))
+                        .header("Authorization", "Bearer " + plannerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(target.getId()));
     }
 
     private CuttingPlan newEmptyPlan(LocalDateTime runAt) {

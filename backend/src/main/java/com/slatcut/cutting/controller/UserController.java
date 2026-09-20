@@ -1,13 +1,16 @@
 package com.slatcut.cutting.controller;
 
 import com.slatcut.cutting.dto.CreateUserRequest;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.ResetPasswordRequest;
 import com.slatcut.cutting.dto.UpdateUserRequest;
 import com.slatcut.cutting.dto.UserResponse;
 import com.slatcut.cutting.service.UserService;
 import jakarta.validation.Valid;
 import java.security.Principal;
-import java.util.List;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -42,8 +46,12 @@ public class UserController {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public List<UserResponse> getAll() {
-        return service.getAll();
+    public PageResponse<UserResponse> getAll(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String roleCode,
+            @RequestParam(required = false) Boolean enabled,
+            @PageableDefault(size = 20, sort = "username", direction = Sort.Direction.ASC) Pageable pageable) {
+        return service.getPage(keyword, roleCode, enabled, pageable);
     }
 
     @GetMapping("/{id}")
