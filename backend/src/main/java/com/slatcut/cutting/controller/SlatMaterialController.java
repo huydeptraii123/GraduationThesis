@@ -1,10 +1,15 @@
 package com.slatcut.cutting.controller;
 
+import com.slatcut.cutting.domain.SlatGroup;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.SlatMaterialRequest;
 import com.slatcut.cutting.dto.SlatMaterialResponse;
 import com.slatcut.cutting.service.SlatMaterialService;
 import jakarta.validation.Valid;
 import java.util.List;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -34,8 +40,20 @@ public class SlatMaterialController {
     }
 
     @GetMapping
-    public List<SlatMaterialResponse> getAll() {
-        return service.getAll();
+    public PageResponse<SlatMaterialResponse> getAll(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) SlatGroup slatGroup,
+            @PageableDefault(size = 20, sort = "slatMaterial", direction = Sort.Direction.ASC) Pageable pageable) {
+        return service.getPage(keyword, slatGroup, pageable);
+    }
+
+    /**
+     * Danh mục đầy đủ cho dropdown và tra cứu mã/nhóm vật tư ở màn hình khác. Tách khỏi
+     * {@link #getAll} vì danh sách phân trang không dùng làm nguồn lựa chọn được.
+     */
+    @GetMapping("/options")
+    public List<SlatMaterialResponse> getOptions() {
+        return service.getAllOptions();
     }
 
     @GetMapping("/{id}")

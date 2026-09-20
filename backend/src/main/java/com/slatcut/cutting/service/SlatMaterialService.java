@@ -2,14 +2,19 @@ package com.slatcut.cutting.service;
 
 import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.config.ResourceNotFoundException;
+import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.SlatMaterialRequest;
 import com.slatcut.cutting.dto.SlatMaterialResponse;
 import com.slatcut.cutting.mapper.SlatMaterialMapper;
 import com.slatcut.cutting.repository.BomItemRepository;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
+import com.slatcut.cutting.repository.spec.SlatMaterialSpecifications;
 import java.util.List;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,8 +38,22 @@ public class SlatMaterialService {
     }
 
     @Transactional(readOnly = true)
-    public List<SlatMaterialResponse> getAll() {
-        return slatMaterialRepository.findAll().stream().map(mapper::toResponse).toList();
+    public PageResponse<SlatMaterialResponse> getPage(String keyword, SlatGroup slatGroup, Pageable pageable) {
+        return PageResponse.of(
+                slatMaterialRepository.findAll(SlatMaterialSpecifications.filter(keyword, slatGroup), pageable),
+                mapper::toResponse);
+    }
+
+    /**
+     * Danh mục đầy đủ, không phân trang — dành riêng cho dropdown và cho việc tra cứu
+     * mã/nhóm vật tư ở các bảng khác (lô tồn kho, định mức BOM). Phân trang chỗ này sẽ làm mất lựa
+     * chọn trong form và làm sai nhãn nhóm ở những dòng không nằm trong trang đầu.
+     */
+    @Transactional(readOnly = true)
+    public List<SlatMaterialResponse> getAllOptions() {
+        return slatMaterialRepository.findAll(Sort.by("slatMaterial")).stream()
+                .map(mapper::toResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)

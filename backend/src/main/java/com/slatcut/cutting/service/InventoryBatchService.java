@@ -3,13 +3,19 @@ package com.slatcut.cutting.service;
 import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.config.ResourceNotFoundException;
 import com.slatcut.cutting.domain.InventoryBatch;
+import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
 import com.slatcut.cutting.dto.InventoryBatchRequest;
 import com.slatcut.cutting.dto.InventoryBatchResponse;
+import com.slatcut.cutting.dto.InventorySummaryResponse;
+import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.mapper.InventoryBatchMapper;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
-import java.util.List;
+import com.slatcut.cutting.repository.spec.InventoryBatchSpecifications;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,8 +36,20 @@ public class InventoryBatchService {
     }
 
     @Transactional(readOnly = true)
-    public List<InventoryBatchResponse> getAll() {
-        return inventoryBatchRepository.findAll().stream().map(mapper::toResponse).toList();
+    public PageResponse<InventoryBatchResponse> getPage(String keyword, SlatGroup slatGroup, Pageable pageable) {
+        return PageResponse.of(
+                inventoryBatchRepository.findAll(InventoryBatchSpecifications.filter(keyword, slatGroup), pageable),
+                mapper::toResponse);
+    }
+
+    /** Quy đổi mm → mét ngay ở backend để mọi nơi hiển thị cùng một con số đã làm tròn như nhau. */
+    @Transactional(readOnly = true)
+    public InventorySummaryResponse getSummary() {
+        InventoryBatchRepository.InventoryTotals totals = inventoryBatchRepository.sumInventoryTotals();
+        return new InventorySummaryResponse(
+                totals.getBatchCount(),
+                totals.getTotalSticks(),
+                BigDecimal.valueOf(totals.getTotalLengthMm()).divide(BigDecimal.valueOf(1000), 3, RoundingMode.HALF_UP));
     }
 
     @Transactional(readOnly = true)

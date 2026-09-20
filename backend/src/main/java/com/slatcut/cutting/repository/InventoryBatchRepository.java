@@ -3,17 +3,31 @@ package com.slatcut.cutting.repository;
 import com.slatcut.cutting.domain.InventoryBatch;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface InventoryBatchRepository extends JpaRepository<InventoryBatch, Long> {
+public interface InventoryBatchRepository
+        extends JpaRepository<InventoryBatch, Long>, JpaSpecificationExecutor<InventoryBatch> {
 
     @Override
     @EntityGraph(attributePaths = "slatMaterial")
     List<InventoryBatch> findAll();
+
+    /**
+     * Bản phân trang dùng cho màn hình danh sách. Override lại chỉ để gắn {@code @EntityGraph} —
+     * thiếu nó thì mỗi dòng trong trang lại bắn thêm một truy vấn nạp {@code slatMaterial} (N+1),
+     * đúng lỗi mà bản {@link #findAll()} không phân trang ở trên đã xử lý.
+     */
+    @Override
+    @EntityGraph(attributePaths = "slatMaterial")
+    Page<InventoryBatch> findAll(Specification<InventoryBatch> spec, Pageable pageable);
 
     Optional<InventoryBatch> findBySlatMaterial_IdAndDoDaiThanhMm(Long slatMaterialId, Integer doDaiThanhMm);
 
@@ -24,6 +38,26 @@ public interface InventoryBatchRepository extends JpaRepository<InventoryBatch, 
 
     @Query("SELECT COALESCE(SUM(b.soThanh), 0) FROM InventoryBatch b WHERE b.soThanh > 0")
     long sumAvailableSticks();
+
+    /**
+     * Tổng hợp toàn kho cho 2 ô thống kê đầu màn hình tồn kho. Phải gộp ở CSDL: từ khi danh sách
+     * phân trang, frontend chỉ còn giữ 20 dòng nên không tự cộng ra tổng thật được nữa.
+     */
+    @Query("""
+            SELECT COUNT(b) AS batchCount,
+                   COALESCE(SUM(b.soThanh), 0) AS totalSticks,
+                   COALESCE(SUM(b.soThanh * b.doDaiThanhMm), 0) AS totalLengthMm
+            FROM InventoryBatch b
+            """)
+    InventoryTotals sumInventoryTotals();
+
+    interface InventoryTotals {
+        long getBatchCount();
+
+        long getTotalSticks();
+
+        long getTotalLengthMm();
+    }
 
     /**
      * Cộng delta thẳng ở CSDL thay vì đọc-sửa-ghi trong Java. Trả về số dòng bị ảnh hưởng: 0 nghĩa
