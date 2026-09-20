@@ -127,7 +127,7 @@ sequenceDiagram
     U->>FE: Mở màn hình "Duyệt phương án cắt"
     FE->>C: GET /api/v1/cutting-plans/approval-preview
     C->>SVC: approvalPreview()
-    SVC->>DB: trong CÙNG một lượt đọc — lấy SalesOrder có approved_plan_id rỗng và sinh được ít nhất 1 nhu cầu cắt, reqd_delivery_date <= t+3, giới hạn dưới 70 đơn (ngoài phạm vi -> "nhóm 99", chờ lần duyệt sau), đồng thời đọc dấu vân trạng thái (số đơn chưa duyệt + mốc sửa gần nhất, số lô và tổng số thanh tồn kho)
+    SVC->>DB: trong CÙNG một lượt đọc — lấy SalesOrder có approved_plan_id rỗng và sinh được ít nhất 1 nhu cầu cắt, reqd_delivery_date <= t+3, giới hạn dưới 70 đơn (ngoài phạm vi -> "nhóm 99", chờ lần duyệt sau), đồng thời đọc dấu vân trạng thái của bốn nguồn dữ liệu thuật toán sẽ đọc (đơn chưa duyệt trong hạn giao, tồn kho, định mức, danh mục thanh nan)
     DB-->>SVC: rows + stateFingerprint
     SVC->>CS: computePlan(demands, pool) — 4 mức ưu tiên, chi tiết xem sơ đồ 2a
     CS-->>SVC: CuttingPlanResult
@@ -158,7 +158,7 @@ sequenceDiagram
     end
 ```
 
-Thuật toán được chạy **hai lần** trong luồng duyệt: một lần lúc trình phương án cho PLANNER xem, một lần nữa bên trong transaction duyệt. Đây không phải lãng phí mà là điều kiện để phương án ghi xuống luôn khớp tồn kho thật: nếu chỉ lưu lại kết quả đã tính ở bước xem, hệ thống phải tin rằng trạng thái không đổi giữa hai thời điểm — mà đó đúng là điều dấu vân trạng thái đang kiểm. Dấu vân chặn trường hợp dữ liệu đã đổi; chạy lại trong transaction chặn nốt khoảng thời gian rất ngắn giữa lúc kiểm dấu vân và lúc ghi.
+Thuật toán được chạy **hai lần** trong luồng duyệt: một lần lúc trình phương án cho PLANNER xem, một lần nữa bên trong transaction duyệt. Đây không phải lãng phí mà là điều kiện để phương án ghi xuống luôn khớp dữ liệu thật: nhận lại một kết quả đã tính sẵn từ phía người dùng là tin vào đúng thứ đang phải kiểm. Chạy lại bên trong transaction duyệt thì phương án được tính từ chính dữ liệu mà transaction đó đọc được, còn dấu vân đảm bảo dữ liệu đó vẫn là dữ liệu PLANNER đã nhìn thấy. Hai cơ chế này bổ sung cho nhau chứ không thay nhau, và cũng không thay được khóa dòng: hai lượt duyệt chạy song song cùng đọc được dấu vân cũ thì cả hai đều vượt qua được ô kiểm (xem `docs/activity-diagrams.md` mục 3.1).
 
 Bốn thứ được ghi trong cùng một transaction, không tách rời được: kết quả cắt (`CuttingPlan` + 3 bảng con), ảnh chụp tồn kho tại thời điểm bắt đầu lần chạy, số thanh tồn kho bị trừ và phần dư trên 3m được nhập lại, và `approved_plan_id` của **mọi** đơn trong phạm vi. Nếu tách, hệ thống có thể rơi vào trạng thái nửa vời nguy hiểm — ví dụ tồn kho đã bị trừ nhưng đơn vẫn nằm trong hàng chờ, khiến lần duyệt sau cắt lại chính những đơn đó trên một kho đã cạn.
 
