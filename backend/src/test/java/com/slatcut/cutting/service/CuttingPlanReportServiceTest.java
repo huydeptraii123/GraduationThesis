@@ -289,6 +289,8 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
                         CuttingPlanDemandView::quantityNeeded,
                         CuttingPlanDemandView::quantityMissing,
                         CuttingPlanDemandView::statusText,
+                        CuttingPlanDemandView::cutDetailText,
+                        CuttingPlanDemandView::stockSnapshotText,
                         CuttingPlanDemandView::doorSetStatus)
                 .containsExactlyElementsOf(beforeApproval.stream()
                         .map(row -> tuple(
@@ -299,11 +301,124 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
                                 row.quantityNeeded(),
                                 row.quantityMissing(),
                                 row.statusText(),
+                                row.cutDetailText(),
+                                row.stockSnapshotText(),
                                 row.doorSetStatus()))
                         .toList());
         assertThat(beforeApproval)
                 .extracting(CuttingPlanDemandView::cutLengthMm, CuttingPlanDemandView::statusText)
                 .containsExactlyInAnyOrder(tuple(2000, "✔Đủ"), tuple(2345, "Thiếu 1 nan 2.35m (2.3m)"));
+    }
+
+    @Test
+    void buildFromPreview_describesANearFitCutAsPa1() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial bottomBar = persistSlatMaterial(SlatGroup.BOTTOM_BAR);
+        persistBomItem(doorProduct, bottomBar);
+        persistInventoryBatch(bottomBar, 2200, 1);
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("2.000"), LocalDate.now());
+
+        List<CuttingPlanDemandView> rows = reportService.buildFromPreview(cuttingPlanService.simulate());
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).cutDetailText())
+                .isEqualTo("[TP] 2200mm: 1 phôi → 1 nan [Cắt phế 0.20m, PA1] (còn lại 0 phôi)");
+        assertThat(rows.get(0).stockSnapshotText()).isEqualTo("2.20m 1 thanh");
+    }
+
+    /** Hai bộ cửa dùng chung một phôi ở Mức 3 — mỗi dòng chỉ kể phần nan của chính bộ cửa nó. */
+    @Test
+    void buildFromPreview_describesAPairedCutAsPa3() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial bottomBar = persistSlatMaterial(SlatGroup.BOTTOM_BAR);
+        persistBomItem(doorProduct, bottomBar);
+        persistInventoryBatch(bottomBar, 5100, 1);
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("2.000"), LocalDate.now());
+        persistSalesOrder(
+                doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("3.000"), LocalDate.now().plusDays(1));
+
+        List<CuttingPlanDemandView> rows = reportService.buildFromPreview(cuttingPlanService.simulate());
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows)
+                .allSatisfy(row -> assertThat(row.cutDetailText())
+                        .isEqualTo("[TP] 5100mm: 1 phôi → 1 nan [Cắt phế 0.10m, PA3] (còn lại 0 phôi)"));
+    }
+
+    /**
+     * Một kịch bản dựng đủ ba thứ khó nhất của cột mô tả cách cắt cùng lúc: phôi cắt ở Mức 4 để lại
+     * phần dư nhập lại kho, phần dư đó được đoạn sau dùng tiếp nên phải mang dấu tái sử dụng, và
+     * lát cắt theo bội số ở Mức 2 không phát sinh phần dư nào.
+     *
+     * <p>Ba đoạn 3.000m / 1.700m / 1.700m trên một phôi 6400mm là cách duy nhất chạm được cả ba:
+     * Mức 3 cố ý trượt (6400 − 3000 − 1700 = 1700mm, vượt xa ngưỡng 30cm) nên đoạn đầu rơi xuống
+     * Mức 4, và phần dư 3400mm nó để lại vừa đúng hai lần 1700mm cho hai đoạn sau.
+     */
+    @Test
+    void buildFromPreview_marksTheRestockedStickReusedLaterInTheSameRun() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial bottomBar = persistSlatMaterial(SlatGroup.BOTTOM_BAR);
+        persistBomItem(doorProduct, bottomBar);
+        persistInventoryBatch(bottomBar, 6400, 1);
+        SalesOrder first =
+                persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("3.000"), LocalDate.now());
+        persistSalesOrder(
+                doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("1.700"), LocalDate.now().plusDays(1));
+        persistSalesOrder(
+                doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("1.700"), LocalDate.now().plusDays(2));
+
+        List<CuttingPlanDemandView> rows = reportService.buildFromPreview(cuttingPlanService.simulate());
+
+        assertThat(rows).hasSize(3);
+        assertThat(rows)
+                .extracting(CuttingPlanDemandView::ycsx, CuttingPlanDemandView::cutDetailText)
+                .containsExactlyInAnyOrder(
+                        tuple(first.getYcsx(), "[TP] 6400mm: 1 phôi → 1 nan [Cắt để lại ♻️3400mm, PA4] (còn lại 0 phôi)"),
+                        tuple(
+                                rows.get(1).ycsx(),
+                                "[TP] ♻️3400mm: 1 phôi → 1 nan [Cắt phế 0.00m, PA2] (còn lại 0 phôi)"),
+                        tuple(
+                                rows.get(2).ycsx(),
+                                "[TP] ♻️3400mm: 1 phôi → 1 nan [Cắt phế 0.00m, PA2] (còn lại 0 phôi)"));
+        // Ảnh chụp là tồn kho ĐẦU lần chạy nên chỉ có phôi nguyên, không có phần dư sinh ra giữa chừng.
+        assertThat(rows).allSatisfy(row -> assertThat(row.stockSnapshotText()).isEqualTo("6.40m 1 thanh"));
+    }
+
+    /** Ảnh chụp tồn kho liệt kê mọi độ dài của loại vật tư đó, sắp tăng dần như khuôn mẫu. */
+    @Test
+    void buildFromPreview_listsEveryStockLengthOfTheMaterialInAscendingOrder() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial bottomBar = persistSlatMaterial(SlatGroup.BOTTOM_BAR);
+        persistBomItem(doorProduct, bottomBar);
+        persistInventoryBatch(bottomBar, 6000, 3);
+        persistInventoryBatch(bottomBar, 2200, 1);
+        persistInventoryBatch(bottomBar, 4200, 13);
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("2.000"), LocalDate.now());
+
+        List<CuttingPlanDemandView> rows = reportService.buildFromPreview(cuttingPlanService.simulate());
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).stockSnapshotText())
+                .isEqualTo("2.20m 1 thanh, 4.20m 13 thanh, 6.00m 3 thanh");
+    }
+
+    /** Bộ cửa thiếu toàn bộ một loại thanh nan thì không có phôi nào để mô tả — ô để trống. */
+    @Test
+    void buildFromPreview_leavesTheCutDetailEmptyWhenNothingCouldBeCut() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial missing = persistSlatMaterial(SlatGroup.BOTTOM_BAR);
+        persistBomItem(doorProduct, missing);
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("2.000"), LocalDate.now());
+
+        List<CuttingPlanDemandView> rows = reportService.buildFromPreview(cuttingPlanService.simulate());
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).cutDetailText()).isNull();
     }
 
     /** Model cửa đi thẳng từ mẫu cửa ra báo cáo — đây là trục của biểu đồ "số bộ cửa theo model". */
