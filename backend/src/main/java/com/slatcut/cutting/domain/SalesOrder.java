@@ -40,6 +40,17 @@ public class SalesOrder {
 
     private Integer salesOrderItem;
 
+    /**
+     * Lệnh sản xuất của bộ cửa. Chỉ để in ra báo cáo cho khớp chứng từ xưởng đang dùng — không tham
+     * gia khóa nghiệp vụ, không tham gia thứ tự ưu tiên, không ảnh hưởng tới cách cắt.
+     *
+     * <p>Khác {@code ycsx} (lô sản xuất gộp nhiều bộ cửa) và khác hẳn "lệnh sản xuất thanh nan" nói
+     * tới ở báo cáo thiếu vật tư. Cột nguồn tên là {@code order}, trùng từ khóa dự trữ của MySQL
+     * nên đổi tên khi ánh xạ.
+     */
+    @Column(name = "lenh_sx")
+    private Long lenhSx;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id", nullable = false)
     private Customer customer;
