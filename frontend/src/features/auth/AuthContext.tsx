@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import * as authApi from './authApi'
 import { parseRole, type Role } from './permissions'
 import { clearStoredAuth, getStoredAuth, setStoredAuth } from './authStorage'
+import { clearLastSimulation } from '../dashboard/simulationStore'
 
 interface AuthUser {
   username: string
@@ -37,6 +38,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     clearTimeout(logoutTimer.current)
     clearStoredAuth()
+    // Đăng xuất chỉ đổi trạng thái trong cùng một trang, không tải lại trình duyệt — nên mọi bộ
+    // nhớ cấp module vẫn nguyên vẹn. Không xóa ở đây thì người đăng nhập kế tiếp mở trang chủ sẽ
+    // thấy nguyên số liệu đơn hàng của phiên trước.
+    clearLastSimulation()
     setUser(null)
   }, [])
 
