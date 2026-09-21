@@ -31,10 +31,11 @@ import java.time.LocalDate;
  * @param materialGroup model cửa, trục của biểu đồ "theo model". Rỗng với mẫu cửa chỉ mới biết tới
  *     qua luồng nhập định mức, vì hồ sơ định mức không có cột này — ô trống được lấp ở lượt nhập
  *     đơn hàng kế tiếp có mặt mẫu cửa đó
- * @param cutDetailText mô tả cách cắt thực tế; <b>còn rỗng</b> cho tới khi mức ưu tiên PA1–PA4 được
- *     thuật toán ghi lại cùng từng phôi — không suy ngược được từ kết quả
- * @param stockSnapshotText ảnh chụp tồn kho của loại vật tư đó đầu lần chạy; <b>còn rỗng</b> cho
- *     tới khi ảnh chụp được lưu cùng phương án lúc duyệt
+ * @param cutDetailText mô tả cách cắt thực tế — mỗi nhóm phôi giống hệt nhau một mệnh đề. Rỗng khi
+ *     bộ cửa thiếu toàn bộ loại thanh nan đó, vì khi ấy không có phôi nào để mô tả
+ * @param stockSnapshotText ảnh chụp tồn kho của loại vật tư đó đầu lần chạy, không phải tồn kho
+ *     hiện hành: tồn kho đổi hằng ngày nên đọc lại thì cùng một phương án xuất ra ở hai thời điểm
+ *     cho hai con số khác nhau, không còn đối chiếu được với chứng từ đã phát hành
  */
 public record CuttingPlanDemandView(
         int priorityRank,

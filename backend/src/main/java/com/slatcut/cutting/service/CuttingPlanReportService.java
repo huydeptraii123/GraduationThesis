@@ -3,6 +3,8 @@ package com.slatcut.cutting.service;
 import com.slatcut.cutting.config.ResourceNotFoundException;
 import com.slatcut.cutting.domain.CuttingPlanDetail;
 import com.slatcut.cutting.domain.CuttingPlanDetailItem;
+import com.slatcut.cutting.domain.CuttingPlanStockSnapshot;
+import com.slatcut.cutting.domain.RemainderType;
 import com.slatcut.cutting.domain.SalesOrder;
 import com.slatcut.cutting.domain.ShortageRecord;
 import com.slatcut.cutting.domain.SlatGroup;
@@ -11,9 +13,13 @@ import com.slatcut.cutting.dto.CuttingPlanDemandView;
 import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailRepository;
 import com.slatcut.cutting.repository.CuttingPlanRepository;
+import com.slatcut.cutting.repository.CuttingPlanStockSnapshotRepository;
 import com.slatcut.cutting.repository.ShortageRecordRepository;
-import com.slatcut.cutting.service.optimizer.CutRecord;
+import com.slatcut.cutting.service.CuttingResultGrouping.CutGroup;
+import com.slatcut.cutting.service.CuttingResultGrouping.CutItem;
+import com.slatcut.cutting.service.optimizer.RemainderCategory;
 import com.slatcut.cutting.service.optimizer.ShortageEntry;
+import com.slatcut.cutting.service.optimizer.StockLine;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -24,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,20 +62,26 @@ public class CuttingPlanReportService {
     /** Tổng độ dài chỉ dùng để ước lượng khối lượng vật tư bù nên làm tròn thưa hơn. */
     private static final int TOTAL_SCALE = 1;
 
+    /** Dấu thanh tái sử dụng — giữ nguyên ký tự của khuôn mẫu doanh nghiệp đang đối chiếu hằng ngày. */
+    private static final String RECYCLED_MARK = "♻️";
+
     private final CuttingPlanRepository cuttingPlanRepository;
     private final CuttingPlanDetailRepository cuttingPlanDetailRepository;
     private final CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository;
     private final ShortageRecordRepository shortageRecordRepository;
+    private final CuttingPlanStockSnapshotRepository stockSnapshotRepository;
 
     public CuttingPlanReportService(
             CuttingPlanRepository cuttingPlanRepository,
             CuttingPlanDetailRepository cuttingPlanDetailRepository,
             CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository,
-            ShortageRecordRepository shortageRecordRepository) {
+            ShortageRecordRepository shortageRecordRepository,
+            CuttingPlanStockSnapshotRepository stockSnapshotRepository) {
         this.cuttingPlanRepository = cuttingPlanRepository;
         this.cuttingPlanDetailRepository = cuttingPlanDetailRepository;
         this.cuttingPlanDetailItemRepository = cuttingPlanDetailItemRepository;
         this.shortageRecordRepository = shortageRecordRepository;
+        this.stockSnapshotRepository = stockSnapshotRepository;
     }
 
     /**
@@ -83,18 +96,44 @@ public class CuttingPlanReportService {
     public List<CuttingPlanDemandView> buildFromPreview(CuttingPlanPreview preview) {
         Map<OrderKey, SalesOrder> orderIndex = preview.scopeOrders().stream()
                 .collect(Collectors.toMap(so -> new OrderKey(so.getYcsx(), so.getItem()), so -> so));
+        StockSnapshot snapshot = StockSnapshot.ofStockLines(preview.stockAtStart());
+        Map<Long, Map<Integer, Integer>> remainingByMaterial = indexByMaterial(preview.stockAfterRun());
         Map<DemandKey, Accumulator> rows = new LinkedHashMap<>();
 
-        for (CutRecord cut : preview.result().cuts()) {
-            for (CuttingDemand piece : cut.pieces()) {
-                add(rows, order(orderIndex, piece), piece.slatMaterial(), piece.cutLengthMm(), true, 1, 0);
+        for (CutGroup group : CuttingResultGrouping.groupCuts(preview.result().cuts())) {
+            Long materialId = group.slatMaterial().getId();
+            // Độ dài đã bị cắt hết sạch không còn dòng nào trong kho tạm — đó là 0 thanh còn lại,
+            // không phải "không biết"; phân biệt với null của phương án duyệt trước khi hệ thống
+            // bắt đầu lưu con số này, nơi mệnh đề "còn lại" bị bỏ hẳn thay vì bịa ra số 0.
+            int remainingAfter = remainingByMaterial
+                    .getOrDefault(materialId, Map.of())
+                    .getOrDefault(group.sourceLengthMm(), 0);
+            StickKey stick = new StickKey(
+                    group.sourceLengthMm(),
+                    group.remainderMm(),
+                    group.remainderCategory() == RemainderCategory.RESTOCK,
+                    group.cutLevel().name(),
+                    snapshot.isRecycled(materialId, group.sourceLengthMm()));
+
+            Map<Accumulator, Integer> nanByRow = new LinkedHashMap<>();
+            for (CutItem item : group.items()) {
+                Accumulator row = add(
+                        rows,
+                        order(orderIndex, item.ycsx(), item.item()),
+                        group.slatMaterial(),
+                        item.cutLengthMm(),
+                        true,
+                        item.cutQuantity(),
+                        0);
+                nanByRow.merge(row, item.cutQuantity(), Integer::sum);
             }
+            nanByRow.forEach((row, nanCount) -> row.addStickUse(stick, group.stickCount(), nanCount, remainingAfter));
         }
         for (ShortageEntry shortage : preview.result().shortages()) {
             CuttingDemand demand = shortage.demand();
-            add(rows, order(orderIndex, demand), shortage.slatMaterial(), demand.cutLengthMm(), true, 1, 1);
+            add(rows, order(orderIndex, demand.ycsx(), demand.item()), shortage.slatMaterial(), demand.cutLengthMm(), true, 1, 1);
         }
-        return assemble(rows.values());
+        return assemble(rows.values(), snapshot);
     }
 
     /**
@@ -112,15 +151,39 @@ public class CuttingPlanReportService {
         if (!cuttingPlanRepository.existsById(planId)) {
             throw new ResourceNotFoundException("Không tìm thấy phương án cắt với id=" + planId);
         }
-        List<CuttingPlanDetail> details = cuttingPlanDetailRepository.findByCuttingPlan_Id(planId);
-        Map<Long, SlatMaterial> materialByDetailId =
-                details.stream().collect(Collectors.toMap(CuttingPlanDetail::getId, CuttingPlanDetail::getSlatMaterial));
+        // Duyệt theo id tăng dần, tức đúng thứ tự các phôi đã được ghi xuống, tức đúng thứ tự thuật
+        // toán dùng tới chúng. Cả hai truy vấn dưới đây đều không có ORDER BY nên thứ tự cơ sở dữ
+        // liệu trả về không hứa hẹn gì; bám thứ tự trả về ấy thì một dòng cắt từ nhiều độ dài phôi
+        // khác nhau có thể in ra các mệnh đề theo thứ tự khác với thứ tự người duyệt đã xem.
+        List<CuttingPlanDetail> details = new ArrayList<>(cuttingPlanDetailRepository.findByCuttingPlan_Id(planId));
+        details.sort(Comparator.comparing(CuttingPlanDetail::getId));
+        StockSnapshot snapshot = StockSnapshot.ofSnapshotRows(stockSnapshotRepository.findByCuttingPlan_Id(planId));
 
         Map<DemandKey, Accumulator> rows = new LinkedHashMap<>();
         List<Long> detailIds = details.stream().map(CuttingPlanDetail::getId).toList();
-        for (CuttingPlanDetailItem item : cuttingPlanDetailItemRepository.findByCuttingPlanDetail_IdIn(detailIds)) {
-            SlatMaterial material = materialByDetailId.get(item.getCuttingPlanDetail().getId());
-            add(rows, item.getSalesOrder(), material, item.getCutLengthMm(), true, item.getCutQuantity(), 0);
+        Map<Long, List<CuttingPlanDetailItem>> itemsByDetailId =
+                cuttingPlanDetailItemRepository.findByCuttingPlanDetail_IdIn(detailIds).stream()
+                        .collect(Collectors.groupingBy(
+                                item -> item.getCuttingPlanDetail().getId(),
+                                LinkedHashMap::new,
+                                Collectors.toList()));
+        for (CuttingPlanDetail detail : details) {
+            SlatMaterial material = detail.getSlatMaterial();
+            StickKey stick = new StickKey(
+                    detail.getSourceLengthMm(),
+                    detail.getRemainderMm(),
+                    detail.getRemainderType() == RemainderType.RESTOCK,
+                    detail.getCutLevel() == null ? null : detail.getCutLevel().name(),
+                    snapshot.isRecycled(material.getId(), detail.getSourceLengthMm()));
+
+            Map<Accumulator, Integer> nanByRow = new LinkedHashMap<>();
+            for (CuttingPlanDetailItem item : itemsByDetailId.getOrDefault(detail.getId(), List.of())) {
+                Accumulator row = add(
+                        rows, item.getSalesOrder(), material, item.getCutLengthMm(), true, item.getCutQuantity(), 0);
+                nanByRow.merge(row, item.getCutQuantity(), Integer::sum);
+            }
+            nanByRow.forEach((row, nanCount) ->
+                    row.addStickUse(stick, detail.getStickCount(), nanCount, detail.getRemainingSticksAfter()));
         }
         for (ShortageRecord shortage : shortageRecordRepository.findByCuttingPlan_Id(planId)) {
             int quantity = shortage.getMissingQuantity();
@@ -133,7 +196,7 @@ public class CuttingPlanReportService {
                     quantity,
                     quantity);
         }
-        return assemble(rows.values());
+        return assemble(rows.values(), snapshot);
     }
 
     private static int averageCutLengthMm(ShortageRecord shortage) {
@@ -144,8 +207,19 @@ public class CuttingPlanReportService {
                 .intValueExact();
     }
 
-    private static SalesOrder order(Map<OrderKey, SalesOrder> orderIndex, CuttingDemand demand) {
-        return orderIndex.get(new OrderKey(demand.ycsx(), demand.item()));
+    private static SalesOrder order(Map<OrderKey, SalesOrder> orderIndex, String ycsx, Integer item) {
+        return orderIndex.get(new OrderKey(ycsx, item));
+    }
+
+    /** Gom danh sách dòng tồn kho phẳng thành tra cứu 2 tầng (loại vật tư → độ dài → số thanh). */
+    private static Map<Long, Map<Integer, Integer>> indexByMaterial(List<StockLine> lines) {
+        Map<Long, Map<Integer, Integer>> byMaterial = new HashMap<>();
+        for (StockLine line : lines) {
+            byMaterial
+                    .computeIfAbsent(line.slatMaterialId(), id -> new HashMap<>())
+                    .merge(line.lengthMm(), line.stickCount(), Integer::sum);
+        }
+        return byMaterial;
     }
 
     /**
@@ -154,8 +228,9 @@ public class CuttingPlanReportService {
      * @param exactLength {@code true} khi độ dài đoạn lấy được chính xác tới milimet. Độ dài chính
      *     xác luôn thắng độ dài suy ngược, bất kể phần nào được cộng vào trước — không dựa vào thứ
      *     tự gọi, vì một ngày nào đó thứ tự ấy sẽ đổi mà không ai nhớ ra đã có luật ngầm ở đây
+     * @return dòng vừa được cộng vào, để người gọi ghi tiếp phần đóng góp của phôi vào cùng dòng đó
      */
-    private static void add(
+    private static Accumulator add(
             Map<DemandKey, Accumulator> rows,
             SalesOrder order,
             SlatMaterial material,
@@ -172,6 +247,7 @@ public class CuttingPlanReportService {
             row.cutLengthMm = cutLengthMm;
             row.exactLength = true;
         }
+        return row;
     }
 
     /**
@@ -181,7 +257,8 @@ public class CuttingPlanReportService {
      * toán đã xử lý. Đây là thứ tự mà thợ cắt đọc file — làm hết một loại thanh nan rồi mới sang
      * loại khác — và cũng làm cột hạng ưu tiên chạy liền 1, 2, 3 trong từng khối thay vì nhảy cóc.
      */
-    private static List<CuttingPlanDemandView> assemble(Iterable<Accumulator> accumulators) {
+    private static List<CuttingPlanDemandView> assemble(
+            Iterable<Accumulator> accumulators, StockSnapshot snapshot) {
         List<Accumulator> rows = new ArrayList<>();
         Set<OrderKey> shortDoorSets = new HashSet<>();
         for (Accumulator row : accumulators) {
@@ -200,12 +277,13 @@ public class CuttingPlanReportService {
         List<CuttingPlanDemandView> views = new ArrayList<>(rows.size());
         for (Accumulator row : rows) {
             int rank = rankByMaterial.merge(row.material.getId(), 1, Integer::sum);
-            views.add(toView(row, rank, shortDoorSets));
+            views.add(toView(row, rank, shortDoorSets, snapshot));
         }
         return views;
     }
 
-    private static CuttingPlanDemandView toView(Accumulator row, int rank, Set<OrderKey> shortDoorSets) {
+    private static CuttingPlanDemandView toView(
+            Accumulator row, int rank, Set<OrderKey> shortDoorSets, StockSnapshot snapshot) {
         SalesOrder order = row.order;
         boolean doorSetShort = shortDoorSets.contains(new OrderKey(order.getYcsx(), order.getItem()));
         return new CuttingPlanDemandView(
@@ -226,8 +304,8 @@ public class CuttingPlanReportService {
                 row.needed,
                 row.missing,
                 statusText(row),
-                null,
-                null,
+                cutDetailText(row),
+                snapshot.textFor(row.material.getId()),
                 doorSetShort ? CuttingPlanDemandView.DOOR_SET_SHORT : CuttingPlanDemandView.DOOR_SET_SUFFICIENT);
     }
 
@@ -252,8 +330,170 @@ public class CuttingPlanReportService {
                 : "Thiếu %d nan %sm (%sm)".formatted(row.missing, pieceM, totalM);
     }
 
+    /**
+     * Mô tả cách cắt thực tế — khuôn mẫu ở docs/sequence-diagrams.md mục "Cách sinh hai cột mô tả
+     * của báo cáo". Mỗi nhóm phôi giống hệt nhau góp một mệnh đề, nối nhau bằng dấu chấm phẩy theo
+     * đúng thứ tự thuật toán đã dùng tới chúng.
+     *
+     * <p>Trả về {@code null} khi dòng không có phôi nào — bộ cửa thiếu toàn bộ loại thanh nan đó.
+     * Để trống chứ không viết một câu kiểu "không cắt được": cột trạng thái đáp ứng ngay bên cạnh
+     * đã nói rõ thiếu bao nhiêu, và khuôn mẫu của doanh nghiệp cũng để trống ô này.
+     */
+    private static String cutDetailText(Accumulator row) {
+        if (row.stickUses.isEmpty()) {
+            return null;
+        }
+        StringBuilder text = new StringBuilder();
+        for (Map.Entry<StickKey, StickUse> entry : row.stickUses.entrySet()) {
+            if (!text.isEmpty()) {
+                text.append("; ");
+            }
+            text.append(clause(entry.getKey(), entry.getValue()));
+        }
+        return text.toString();
+    }
+
+    private static String clause(StickKey stick, StickUse use) {
+        StringBuilder clause = new StringBuilder("[TP] ");
+        if (stick.recycledSource()) {
+            clause.append(RECYCLED_MARK);
+        }
+        clause.append(stick.sourceLengthMm())
+                .append("mm: ")
+                .append(use.stickCount)
+                .append(" phôi → ")
+                .append(use.nanCount)
+                .append(" nan [")
+                .append(remainderText(stick));
+        if (stick.cutLevel() != null) {
+            clause.append(", ").append(stick.cutLevel());
+        }
+        clause.append(']');
+        if (use.remainingAfter != null) {
+            clause.append(" (còn lại ").append(use.remainingAfter).append(" phôi)");
+        }
+        return clause.toString();
+    }
+
+    /**
+     * Phần dư trên 3m quay lại kho nên ghi nguyên độ dài milimet — đó là con số thủ kho dùng để
+     * dán nhãn thanh tái sử dụng. Mọi phần dư còn lại là phế, ghi theo mét như khuôn mẫu, kể cả khi
+     * bằng đúng 0 ở phôi cắt theo bội số: mỗi mệnh đề đều nêu tường minh phần dư của nó thay vì bắt
+     * người đọc suy ra từ sự vắng mặt của một con số.
+     */
+    private static String remainderText(StickKey stick) {
+        return stick.restock()
+                ? "Cắt để lại %s%dmm".formatted(RECYCLED_MARK, stick.remainderMm())
+                : "Cắt phế %sm".formatted(toMeters(stick.remainderMm(), PIECE_SCALE));
+    }
+
     private static BigDecimal toMeters(long lengthMm, int scale) {
         return BigDecimal.valueOf(lengthMm).divide(MM_PER_M, scale, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Một nhóm phôi giống hệt nhau đã đóng góp cho một dòng báo cáo. Mức cắt nằm trong khóa vì hai
+     * phôi cùng độ dài và cùng phần dư vẫn có thể đến từ hai mức khác nhau — gộp lại thì mệnh đề
+     * nói sai phương án đã áp dụng cho một phần số phôi.
+     *
+     * <p>Mức cắt mang theo dạng tên (`PA1`…`PA4`) chứ không phải kiểu liệt kê: hai đường vào của
+     * lớp này đọc hai kiểu khác nhau — kiểu của tầng thuật toán và kiểu của tầng domain — và báo
+     * cáo chỉ cần đúng cái tên in ra. Quy về chuỗi ngay tại đây thì phần dựng câu chữ bên dưới
+     * không phải biết tới cả hai.
+     *
+     * @param recycledSource phôi nguồn vốn là một phần dư đã nhập lại kho trong chính lần chạy này
+     */
+    private record StickKey(
+            int sourceLengthMm, int remainderMm, boolean restock, String cutLevel, boolean recycledSource) {}
+
+    /** Số phôi và số nan mà một {@link StickKey} đóng góp cho đúng một dòng báo cáo. */
+    private static final class StickUse {
+        private int stickCount;
+        private int nanCount;
+        private Integer remainingAfter;
+    }
+
+    /**
+     * Tồn kho của từng loại thanh nan ngay TRƯỚC khi thuật toán tiêu thụ — nguồn của cột ảnh chụp
+     * tồn kho, và cũng là thứ cho biết một phôi có phải thanh tái sử dụng hay không.
+     *
+     * <p>Đọc ảnh chụp thay vì đọc tồn kho hiện hành là yêu cầu nghiệp vụ: tồn kho đổi hằng ngày
+     * nên tính lại thì cùng một phương án xuất ra ở hai thời điểm cho hai con số khác nhau, không
+     * còn đối chiếu được với chứng từ đã phát hành.
+     */
+    private static final class StockSnapshot {
+
+        private final Map<Long, NavigableLengths> byMaterialId;
+
+        private StockSnapshot(Map<Long, NavigableLengths> byMaterialId) {
+            this.byMaterialId = byMaterialId;
+        }
+
+        static StockSnapshot ofStockLines(List<StockLine> lines) {
+            Map<Long, NavigableLengths> byMaterialId = new HashMap<>();
+            for (StockLine line : lines) {
+                byMaterialId
+                        .computeIfAbsent(line.slatMaterialId(), id -> new NavigableLengths())
+                        .add(line.lengthMm(), line.stickCount());
+            }
+            return new StockSnapshot(byMaterialId);
+        }
+
+        static StockSnapshot ofSnapshotRows(List<CuttingPlanStockSnapshot> rows) {
+            Map<Long, NavigableLengths> byMaterialId = new HashMap<>();
+            for (CuttingPlanStockSnapshot row : rows) {
+                byMaterialId
+                        .computeIfAbsent(row.getSlatMaterial().getId(), id -> new NavigableLengths())
+                        .add(row.getDoDaiThanhMm(), row.getSoThanh());
+            }
+            return new StockSnapshot(byMaterialId);
+        }
+
+        /**
+         * Một độ dài không có mặt trong tồn kho đầu lần chạy chỉ có thể đến từ phần dư vừa được
+         * nhập lại kho giữa chừng — đó là dấu hiệu duy nhất phân biệt được thanh tái sử dụng mà
+         * không cần thêm cột dữ liệu nào.
+         *
+         * <p>Hạn chế đã biết và chấp nhận: nếu phần dư trùng đúng một độ dài vốn đã có trong kho
+         * thì hai loại thanh lẫn vào nhau và phôi không được đánh dấu. Phân biệt triệt để đòi hỏi
+         * theo vết từng thanh vật lý, thứ nằm ngoài phạm vi của mô hình tồn kho theo lô.
+         *
+         * <p>Phương án được duyệt từ TRƯỚC khi hệ thống bắt đầu lưu ảnh chụp tồn kho không có dòng
+         * nào để đối chiếu. Khi đó câu trả lời đúng là "không biết", và hàm này cố ý trả về "không
+         * phải thanh tái sử dụng": thà bỏ sót một dấu hiệu còn hơn dán nhãn tái sử dụng lên những
+         * phôi chưa hề được kiểm chứng. Người đọc vẫn nhận ra ngay tình huống này vì cột ảnh chụp
+         * tồn kho của chính những dòng đó để trống.
+         */
+        boolean isRecycled(Long slatMaterialId, int lengthMm) {
+            NavigableLengths lengths = byMaterialId.get(slatMaterialId);
+            return lengths != null && !lengths.contains(lengthMm);
+        }
+
+        /** {@code "4.00m 7 thanh, 4.20m 13 thanh"} — sắp theo độ dài tăng dần như khuôn mẫu. */
+        String textFor(Long slatMaterialId) {
+            NavigableLengths lengths = byMaterialId.get(slatMaterialId);
+            return lengths == null ? null : lengths.text();
+        }
+    }
+
+    /** Các độ dài của một loại thanh nan, giữ thứ tự tăng dần để in ra đúng khuôn mẫu. */
+    private static final class NavigableLengths {
+
+        private final TreeMap<Integer, Integer> countByLength = new TreeMap<>();
+
+        void add(int lengthMm, int stickCount) {
+            countByLength.merge(lengthMm, stickCount, Integer::sum);
+        }
+
+        boolean contains(int lengthMm) {
+            return countByLength.containsKey(lengthMm);
+        }
+
+        String text() {
+            return countByLength.entrySet().stream()
+                    .map(entry -> "%sm %d thanh".formatted(toMeters(entry.getKey(), PIECE_SCALE), entry.getValue()))
+                    .collect(Collectors.joining(", "));
+        }
     }
 
     /**
@@ -273,6 +513,10 @@ public class CuttingPlanReportService {
     private static final class Accumulator {
         private final SalesOrder order;
         private final SlatMaterial material;
+
+        /** Giữ thứ tự thuật toán dùng tới từng nhóm phôi — đó là thứ tự các mệnh đề in ra. */
+        private final Map<StickKey, StickUse> stickUses = new LinkedHashMap<>();
+
         private int cutLengthMm;
         private boolean exactLength;
         private int needed;
@@ -283,6 +527,22 @@ public class CuttingPlanReportService {
             this.material = material;
             this.cutLengthMm = cutLengthMm;
             this.exactLength = exactLength;
+        }
+
+        /**
+         * Ghi phần đóng góp của một nhóm phôi vào dòng này.
+         *
+         * @param remainingAfter số thanh còn lại của đúng cặp (loại vật tư, độ dài) sau lần chạy;
+         *     {@code null} với phương án được duyệt từ trước khi hệ thống bắt đầu lưu con số này —
+         *     khi đó mệnh đề "còn lại" bị bỏ hẳn thay vì in ra một số 0 không có thật
+         */
+        private void addStickUse(StickKey key, int stickCount, int nanCount, Integer remainingAfter) {
+            StickUse use = stickUses.computeIfAbsent(key, k -> new StickUse());
+            use.stickCount += stickCount;
+            use.nanCount += nanCount;
+            if (use.remainingAfter == null) {
+                use.remainingAfter = remainingAfter;
+            }
         }
     }
 }
