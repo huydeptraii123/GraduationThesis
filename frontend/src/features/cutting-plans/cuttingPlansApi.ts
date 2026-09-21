@@ -1,8 +1,8 @@
 import { httpClient } from '../../api/httpClient'
 import type { Page, PageParams } from '../../api/pagination'
 import type {
+  CuttingPlanApprovalPreviewResponse,
   CuttingPlanResponse,
-  CuttingPlanScopePreviewResponse,
   CuttingPlanStatus,
   CuttingPlanSummaryResponse,
 } from './types'
@@ -26,12 +26,21 @@ export function getCuttingPlan(id: number): Promise<CuttingPlanResponse> {
   return httpClient.get<CuttingPlanResponse>(`${CUTTING_PLANS_URL}/${id}`).then((res) => res.data)
 }
 
-export function generateCuttingPlan(): Promise<CuttingPlanResponse> {
-  return httpClient.post<CuttingPlanResponse>(`${CUTTING_PLANS_URL}/generate`).then((res) => res.data)
+/** Phương án đề xuất cho đợt duyệt kế tiếp. Không ghi gì — chỉ khi bấm duyệt dữ liệu mới đổi. */
+export function getApprovalPreview(): Promise<CuttingPlanApprovalPreviewResponse> {
+  return httpClient
+    .get<CuttingPlanApprovalPreviewResponse>(`${CUTTING_PLANS_URL}/approval-preview`)
+    .then((res) => res.data)
 }
 
-export function getScopePreview(): Promise<CuttingPlanScopePreviewResponse> {
-  return httpClient.get<CuttingPlanScopePreviewResponse>(`${CUTTING_PLANS_URL}/scope-preview`).then((res) => res.data)
+/**
+ * Duyệt phương án cắt. Gửi lại đúng dấu vân trạng thái đi kèm phương án đang xem; nếu đơn hàng
+ * hoặc tồn kho đã đổi trong lúc xem xét, backend trả 409 và không ghi dòng nào.
+ */
+export function approveCuttingPlan(stateFingerprint: string): Promise<CuttingPlanResponse> {
+  return httpClient
+    .post<CuttingPlanResponse>(`${CUTTING_PLANS_URL}/approve`, { stateFingerprint })
+    .then((res) => res.data)
 }
 
 export function exportCuttingPlan(id: number): Promise<Blob> {

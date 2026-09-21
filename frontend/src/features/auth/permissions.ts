@@ -78,8 +78,14 @@ export function canImportSalesOrder(user: RoleHolder | null | undefined): boolea
   return hasRole(user, 'PLANNER')
 }
 
-/** Chạy thuật toán sinh phương án cắt: `@PreAuthorize("hasRole('PLANNER')")`. */
-export function canGenerateCuttingPlan(user: RoleHolder | null | undefined): boolean {
+/**
+ * Duyệt phương án cắt: `@PreAuthorize("hasRole('PLANNER')")`.
+ *
+ * Đây là thao tác vận hành duy nhất của nhóm chức năng phương án cắt có ghi dữ liệu — trừ tồn kho
+ * và đưa đơn ra khỏi hàng chờ. Việc TÍNH phương án thì mở cho cả hai vai trò vì nó chỉ đọc, nên
+ * không có vị từ riêng: mọi vai trò đã đăng nhập đều gọi được.
+ */
+export function canApproveCuttingPlan(user: RoleHolder | null | undefined): boolean {
   return hasRole(user, 'PLANNER')
 }
 

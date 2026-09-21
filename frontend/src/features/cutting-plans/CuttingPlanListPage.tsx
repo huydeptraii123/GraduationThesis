@@ -1,4 +1,4 @@
-import { ThunderboltOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined } from '@ant-design/icons'
 import { Alert, Button, DatePicker, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useState } from 'react'
@@ -8,8 +8,7 @@ import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { usePagedList } from '../../hooks/usePagedList'
 import { useAuth } from '../auth/AuthContext'
 import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
-import { canGenerateCuttingPlan } from '../auth/permissions'
-import { GenerateCuttingPlanModal } from './GenerateCuttingPlanModal'
+import { canApproveCuttingPlan } from '../auth/permissions'
 import { listCuttingPlans } from './cuttingPlansApi'
 import type { CuttingPlanStatus } from './types'
 
@@ -24,13 +23,12 @@ const STATUS_LABEL: Record<CuttingPlanStatus, { text: string; color: string }> =
 export function CuttingPlanListPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  // Chỉ PLANNER chạy thuật toán sinh phương án cắt, khớp @PreAuthorize của POST /generate.
-  const canGenerate = canGenerateCuttingPlan(user)
+  // Chỉ PLANNER duyệt được phương án cắt, khớp @PreAuthorize của POST /cutting-plans/approve.
+  const canApprove = canApproveCuttingPlan(user)
 
   const [keyword, setKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState<CuttingPlanStatus | null>(null)
   const [runRange, setRunRange] = useState<[Dayjs, Dayjs] | null>(null)
-  const [generateOpen, setGenerateOpen] = useState(false)
 
   const debouncedKeyword = useDebouncedValue(keyword)
   // Ô tìm kiếm nay chỉ tra mã lần chạy: lấy phần số trong "#CP-12" / "cp-12" / "12". Việc lọc theo
@@ -59,7 +57,7 @@ export function CuttingPlanListPage() {
       listCuttingPlans({ ...params, planId: planIdFilter, status: statusFilter, runFrom, runTo }),
     [planIdFilter, statusFilter, runFrom, runTo],
   )
-  const { data, loading, error: loadError, current, pageSize, handleTableChange, reload } = usePagedList(
+  const { data, loading, error: loadError, current, pageSize, handleTableChange } = usePagedList(
     load,
     [planIdFilter, statusFilter, runFrom, runTo],
     { initialPageSize: 10, errorMessage: 'Không tải được danh sách phương án cắt.' },
@@ -70,18 +68,20 @@ export function CuttingPlanListPage() {
       <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
         <div>
           <Typography.Title level={3} style={{ margin: 0 }}>
-            Phương án cắt
+            Phương án đã duyệt
           </Typography.Title>
-          <Typography.Text type="secondary">Lịch sử các lần chạy thuật toán sinh phương án cắt.</Typography.Text>
+          <Typography.Text type="secondary">
+            Lịch sử các đợt duyệt phương án cắt. Mỗi dòng ở đây là một lần tồn kho đã bị trừ thật.
+          </Typography.Text>
         </div>
-        {canGenerate && (
-          <Button type="primary" icon={<ThunderboltOutlined />} onClick={() => setGenerateOpen(true)}>
-            Sinh phương án cắt mới
+        {canApprove && (
+          <Button type="primary" icon={<CheckCircleOutlined />} onClick={() => navigate('/cutting-plans/approval')}>
+            Duyệt phương án cắt
           </Button>
         )}
       </Space>
 
-      {!canGenerate && <RoleRestrictionNotice requiredRole="PLANNER" action="sinh phương án cắt mới" />}
+      {!canApprove && <RoleRestrictionNotice requiredRole="PLANNER" action="duyệt phương án cắt" />}
 
       {loadError && <Alert type="error" showIcon style={{ margin: '16px 0' }} title={loadError} />}
 
@@ -153,16 +153,6 @@ export function CuttingPlanListPage() {
             render: (_, plan) => <a onClick={() => navigate(`/cutting-plans/${plan.id}`)}>Xem chi tiết →</a>,
           },
         ]}
-      />
-
-      <GenerateCuttingPlanModal
-        open={generateOpen}
-        onClose={() => setGenerateOpen(false)}
-        onGenerated={(newPlanId) => {
-          setGenerateOpen(false)
-          reload()
-          navigate(`/cutting-plans/${newPlanId}`)
-        }}
       />
     </div>
   )
