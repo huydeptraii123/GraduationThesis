@@ -28,8 +28,9 @@ import java.time.LocalDate;
  *     vì bộ cửa không lắp được khi còn thiếu bất kỳ thành phần nào
  * @param lenhSx lệnh sản xuất của bộ cửa; <b>còn rỗng</b> cho tới khi trường này được nhập vào hệ
  *     thống cùng lượt nhập đơn hàng
- * @param materialGroup model cửa, trục của biểu đồ "theo model"; <b>còn rỗng</b> cho tới khi trường
- *     này được lưu vào mẫu cửa
+ * @param materialGroup model cửa, trục của biểu đồ "theo model". Rỗng với mẫu cửa chỉ mới biết tới
+ *     qua luồng nhập định mức, vì hồ sơ định mức không có cột này — ô trống được lấp ở lượt nhập
+ *     đơn hàng kế tiếp có mặt mẫu cửa đó
  * @param cutDetailText mô tả cách cắt thực tế; <b>còn rỗng</b> cho tới khi mức ưu tiên PA1–PA4 được
  *     thuật toán ghi lại cùng từng phôi — không suy ngược được từ kết quả
  * @param stockSnapshotText ảnh chụp tồn kho của loại vật tư đó đầu lần chạy; <b>còn rỗng</b> cho

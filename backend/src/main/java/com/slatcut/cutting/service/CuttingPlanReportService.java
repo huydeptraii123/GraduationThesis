@@ -217,7 +217,7 @@ public class CuttingPlanReportService {
                 order.getCustomer().getCustomerName(),
                 order.getReqdDeliveryDate(),
                 order.getDoorProduct().getDoorMaterialName(),
-                null,
+                order.getDoorProduct().getMaterialGroup(),
                 row.material.getSlatMaterial(),
                 row.material.getSlatMaterialName(),
                 row.material.getSlatGroup(),

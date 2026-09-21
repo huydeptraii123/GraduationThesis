@@ -336,6 +336,46 @@ class SalesOrderImportServiceTest extends AbstractIntegrationTest {
         assertThat(result.approvedOrderConflicts()).isEmpty();
     }
 
+    // ============================================ Model cửa (trục của biểu đồ "theo model")
+
+    @Test
+    void importFromExcel_storesMaterialGroupOnNewlyCreatedDoorProduct() {
+        service.importFromExcel(excel(HEADER, doorRow("HY10030", 1, 1000100030L, 1, 92000030L)));
+
+        assertThat(doorProductRepository.findByMaterialAndMauSac(85000001L, "#05").orElseThrow().getMaterialGroup())
+                .isEqualTo("CA-A48I");
+    }
+
+    /**
+     * Mẫu cửa được tạo ra từ CẢ luồng nhập định mức, mà hồ sơ định mức không có cột model — nên
+     * những mẫu cửa biết tới qua đường đó bỏ trống ô này. Lượt nhập đơn hàng là nơi duy nhất biết
+     * model, và phải lấp được chỗ trống đó, nếu không biểu đồ "theo model" sẽ mất hẳn một phần dữ
+     * liệu mà không ai biết vì sao.
+     */
+    @Test
+    void importFromExcel_fillsMaterialGroupOfDoorProductThatHasNoneYet() {
+        DoorProduct fromBomImport = persistDoorProduct(85000001L, "#05", "Cửa A48i dày 1.1-1.2mm (#05)");
+        assertThat(fromBomImport.getMaterialGroup()).isNull();
+
+        service.importFromExcel(excel(HEADER, doorRow("HY10031", 1, 1000100031L, 1, 92000031L)));
+
+        assertThat(doorProductRepository.findById(fromBomImport.getId()).orElseThrow().getMaterialGroup())
+                .isEqualTo("CA-A48I");
+    }
+
+    /** Điền chỗ trống thì được, ghi đè thì không — đúng nguyên tắc chung của mọi luồng nhập. */
+    @Test
+    void importFromExcel_doesNotOverwriteMaterialGroupAlreadySet() {
+        DoorProduct existing = persistDoorProduct(85000001L, "#05", "Cửa A48i dày 1.1-1.2mm (#05)");
+        existing.setMaterialGroup("CA-DA-DUOC-PHAN-LOAI");
+        doorProductRepository.saveAndFlush(existing);
+
+        service.importFromExcel(excel(HEADER, doorRow("HY10032", 1, 1000100032L, 1, 92000032L)));
+
+        assertThat(doorProductRepository.findById(existing.getId()).orElseThrow().getMaterialGroup())
+                .isEqualTo("CA-DA-DUOC-PHAN-LOAI");
+    }
+
     @Test
     void importFromExcel_skipsRowsWhoseMaterialGroupIsNotADoorWithoutError() {
         SalesOrderImportResult result =

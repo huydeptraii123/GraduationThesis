@@ -306,6 +306,24 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
                 .containsExactlyInAnyOrder(tuple(2000, "✔Đủ"), tuple(2345, "Thiếu 1 nan 2.35m (2.3m)"));
     }
 
+    /** Model cửa đi thẳng từ mẫu cửa ra báo cáo — đây là trục của biểu đồ "số bộ cửa theo model". */
+    @Test
+    void buildFromPreview_carriesTheDoorModelOfEachRow() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        doorProduct.setMaterialGroup("CA-A48I");
+        doorProductRepository.saveAndFlush(doorProduct);
+        SlatMaterial bottomBar = persistSlatMaterial(SlatGroup.BOTTOM_BAR);
+        persistBomItem(doorProduct, bottomBar);
+        persistInventoryBatch(bottomBar, 2000, 1);
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("2.000"), LocalDate.now());
+
+        List<CuttingPlanDemandView> rows = reportService.buildFromPreview(cuttingPlanService.simulate());
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).materialGroup()).isEqualTo("CA-A48I");
+    }
+
     @Test
     void buildFromApprovedPlan_throwsWhenPlanDoesNotExist() {
         assertThatThrownBy(() -> reportService.buildFromApprovedPlan(-1L))
