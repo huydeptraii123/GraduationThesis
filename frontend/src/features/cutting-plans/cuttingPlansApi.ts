@@ -2,6 +2,7 @@ import { httpClient } from '../../api/httpClient'
 import type { Page, PageParams } from '../../api/pagination'
 import type {
   CuttingPlanApprovalPreviewResponse,
+  CuttingPlanPreviewResponse,
   CuttingPlanResponse,
   CuttingPlanStatus,
   CuttingPlanSummaryResponse,
@@ -24,6 +25,27 @@ export function listCuttingPlans(params: CuttingPlanFilterParams): Promise<Page<
 
 export function getCuttingPlan(id: number): Promise<CuttingPlanResponse> {
   return httpClient.get<CuttingPlanResponse>(`${CUTTING_PLANS_URL}/${id}`).then((res) => res.data)
+}
+
+/**
+ * Tính phương án cắt trên TOÀN BỘ đơn chưa duyệt và tồn kho tại thời điểm bấm. Không ghi dòng nào.
+ *
+ * Là POST dù chỉ đọc: mỗi lần gọi chạy trọn thuật toán nên kết quả không được nằm lại ở bộ nhớ đệm
+ * của trình duyệt hay proxy — người dùng bấm tính lại chính là để lấy con số của trạng thái lúc này.
+ */
+export function simulateCuttingPlan(): Promise<CuttingPlanPreviewResponse> {
+  return httpClient.post<CuttingPlanPreviewResponse>(`${CUTTING_PLANS_URL}/simulate`).then((res) => res.data)
+}
+
+/**
+ * Xuất Excel cho một lần tính. Máy chủ CHẠY LẠI thuật toán để dựng file, vì phương án đang xem
+ * không được lưu ở đâu để mà đọc lại bằng id — nên file tải về là ảnh chụp tại thời điểm bấm xuất,
+ * không phải tại thời điểm bấm tính. Màn hình gọi hàm này phải nói rõ điều đó với người dùng.
+ */
+export function exportSimulation(): Promise<Blob> {
+  return httpClient
+    .post(`${CUTTING_PLANS_URL}/simulate/export`, undefined, { responseType: 'blob' })
+    .then((res) => res.data)
 }
 
 /** Phương án đề xuất cho đợt duyệt kế tiếp. Không ghi gì — chỉ khi bấm duyệt dữ liệu mới đổi. */

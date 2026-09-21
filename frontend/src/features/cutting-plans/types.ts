@@ -68,8 +68,9 @@ export interface CuttingPlanResponse extends CuttingPlanSummaryResponse {
  * Một dòng ở mức chi tiết theo đơn hàng: một loại vật tư của một bộ cửa. Nguồn dữ liệu chung của
  * cả các khối biểu đồ lẫn file Excel, nên số liệu hai nơi không thể lệch nhau.
  *
- * Bốn trường `lenhSx`, `materialGroup`, `cutDetailText`, `stockSnapshotText` hiện luôn rỗng — hệ
- * thống chưa có nguồn dữ liệu cho chúng.
+ * `materialGroup` rỗng với mẫu cửa mới chỉ biết tới qua luồng nhập định mức (hồ sơ định mức không
+ * có cột này); `lenhSx` rỗng với đơn tạo thủ công. `cutDetailText` rỗng khi bộ cửa thiếu toàn bộ
+ * loại thanh nan đó — không có phôi nào để mô tả.
  */
 export interface CuttingPlanDemandView {
   priorityRank: number
