@@ -93,15 +93,26 @@ public final class CuttingResultGrouping {
     }
 
     /**
-     * mức cắt + patternCode + danh sách TUẦN TỰ (ycsx,item,cutLengthMm) — 2 phôi chỉ gộp khi giống
-     * hệt cả thứ tự (đơn gốc trùng nhau).
+     * loại thanh nan + mức cắt + patternCode + danh sách TUẦN TỰ (ycsx,item,cutLengthMm) — 2 phôi
+     * chỉ gộp khi giống hệt cả thứ tự (đơn gốc trùng nhau).
      *
-     * <p>Mức cắt bắt buộc nằm trong khóa: hai phôi cùng hình dạng cắt vẫn có thể đến từ hai mức
-     * khác nhau, và gộp chúng lại thì dòng kết quả mang mức của phôi đầu tiên — báo cáo gửi xuống
-     * xưởng khi đó nói sai phương án đã áp dụng cho nửa số phôi.
+     * <p>Loại thanh nan bắt buộc nằm trong khóa dù {@code patternCode} đã mô tả hình dạng cắt:
+     * hình dạng chỉ nói độ dài, không nói vật tư. Một bộ cửa hoàn toàn có thể cần thanh đáy và nan
+     * phụ cùng cắt một độ dài từ cùng một độ dài phôi — thiếu vật tư trong khóa thì hai lát cắt ấy
+     * gộp làm một, dòng kết quả mang vật tư của phôi đầu tiên và vật tư kia <b>biến mất khỏi
+     * phương án</b> trong khi số phôi của vật tư còn lại bị nhân đôi.
+     *
+     * <p>Mức cắt cũng bắt buộc nằm trong khóa: hai phôi cùng hình dạng cắt vẫn có thể đến từ hai
+     * mức khác nhau, và gộp chúng lại thì dòng kết quả mang mức của phôi đầu tiên — báo cáo gửi
+     * xuống xưởng khi đó nói sai phương án đã áp dụng cho nửa số phôi.
      */
     private static String buildGroupKey(String patternCode, CutRecord cut) {
-        StringBuilder key = new StringBuilder(cut.cutLevel().name()).append('|').append(patternCode);
+        StringBuilder key = new StringBuilder()
+                .append(cut.slatMaterial().getId())
+                .append('|')
+                .append(cut.cutLevel().name())
+                .append('|')
+                .append(patternCode);
         for (CuttingDemand piece : cut.pieces()) {
             key.append('|').append(piece.ycsx()).append('#').append(piece.item()).append('#').append(piece.cutLengthMm());
         }

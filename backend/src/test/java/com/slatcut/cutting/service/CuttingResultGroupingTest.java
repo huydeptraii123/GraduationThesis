@@ -15,17 +15,25 @@ import org.junit.jupiter.api.Test;
 class CuttingResultGroupingTest {
 
     private static SlatMaterial material() {
+        return material(1L, 70_000_001L, SlatGroup.BOTTOM_BAR);
+    }
+
+    private static SlatMaterial material(long id, long code, SlatGroup slatGroup) {
         SlatMaterial entity = new SlatMaterial();
-        entity.setId(1L);
-        entity.setSlatMaterial(70_000_001L);
-        entity.setSlatMaterialName("Thanh nan kiểm thử");
-        entity.setSlatGroup(SlatGroup.BOTTOM_BAR);
+        entity.setId(id);
+        entity.setSlatMaterial(code);
+        entity.setSlatMaterialName("Thanh nan kiểm thử " + code);
+        entity.setSlatGroup(slatGroup);
         return entity;
     }
 
     private static CutRecord cut(CutLevel cutLevel) {
-        CuttingDemand piece = new CuttingDemand(material(), 3000, 1, LocalDate.of(2026, 9, 28), "HY9001", 1);
-        return new CutRecord(material(), 3000, List.of(piece), 0, RemainderCategory.DISCARDED, cutLevel);
+        return cut(material(), cutLevel);
+    }
+
+    private static CutRecord cut(SlatMaterial material, CutLevel cutLevel) {
+        CuttingDemand piece = new CuttingDemand(material, 3000, 1, LocalDate.of(2026, 9, 28), "HY9001", 1);
+        return new CutRecord(material, 3000, List.of(piece), 0, RemainderCategory.DISCARDED, cutLevel);
     }
 
     @Test
@@ -57,5 +65,30 @@ class CuttingResultGroupingTest {
                 .containsExactlyInAnyOrder(
                         org.assertj.core.api.Assertions.tuple(CutLevel.PA1, 1),
                         org.assertj.core.api.Assertions.tuple(CutLevel.PA3, 1));
+    }
+
+    /**
+     * Hai loại thanh nan khác nhau cắt cùng một độ dài từ cùng một độ dài phôi thì KHÔNG được gộp.
+     * Hình dạng cắt chỉ nói độ dài, không nói vật tư — mà một bộ cửa hoàn toàn có thể cần thanh đáy
+     * và nan phụ cùng cắt đúng chiều rộng cửa từ cùng loại phôi.
+     *
+     * <p>Gộp nhầm ở đây không chỉ làm sai một con số: vật tư thứ hai <b>biến mất khỏi phương án đã
+     * duyệt</b> (mất hẳn dòng {@code cutting_plan_detail} của nó) còn số phôi của vật tư thứ nhất
+     * bị nhân đôi, nên xưởng nhận được chỉ dẫn cắt thiếu hẳn một loại thanh.
+     */
+    @Test
+    void groupCuts_keepsSticksOfDifferentMaterialsApart() {
+        SlatMaterial bottomBar = material(1L, 70_000_001L, SlatGroup.BOTTOM_BAR);
+        SlatMaterial subSlat = material(2L, 70_000_002L, SlatGroup.SUB_SLAT);
+
+        List<CuttingResultGrouping.CutGroup> groups =
+                CuttingResultGrouping.groupCuts(List.of(cut(bottomBar, CutLevel.PA1), cut(subSlat, CutLevel.PA1)));
+
+        assertThat(groups).hasSize(2);
+        assertThat(groups)
+                .extracting(group -> group.slatMaterial().getId(), CuttingResultGrouping.CutGroup::stickCount)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.api.Assertions.tuple(1L, 1),
+                        org.assertj.core.api.Assertions.tuple(2L, 1));
     }
 }
