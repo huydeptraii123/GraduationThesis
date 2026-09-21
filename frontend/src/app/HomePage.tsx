@@ -13,8 +13,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { extractErrorMessage } from '../api/apiError'
 import { useAuth } from '../features/auth/AuthContext'
 import { RoleRestrictionNotice } from '../components/RoleRestrictionNotice'
-import { canGenerateCuttingPlan } from '../features/auth/permissions'
-import { GenerateCuttingPlanModal } from '../features/cutting-plans/GenerateCuttingPlanModal'
+import { canApproveCuttingPlan } from '../features/auth/permissions'
 import type { CuttingPlanStatus } from '../features/cutting-plans/types'
 import { WasteStatsSection } from '../features/dashboard/WasteStatsSection'
 import { getDashboard } from '../features/dashboard/dashboardApi'
@@ -44,7 +43,7 @@ const SHORTCUTS = [
     path: '/cutting-plans',
     icon: <ScissorOutlined />,
     title: 'Phương án cắt',
-    description: 'Sinh phương án cắt tối ưu và xem sơ đồ phôi thanh nan chi tiết.',
+    description: 'Duyệt phương án cắt tối ưu và xem sơ đồ phôi thanh nan chi tiết.',
     action: 'Xem các phương án',
   },
 ]
@@ -52,13 +51,12 @@ const SHORTCUTS = [
 export function HomePage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  // Chỉ PLANNER chạy được thuật toán, khớp @PreAuthorize của POST /cutting-plans/generate.
-  const canGenerate = canGenerateCuttingPlan(user)
+  // Chỉ PLANNER duyệt được phương án cắt, khớp @PreAuthorize của POST /cutting-plans/approve.
+  const canApprove = canApproveCuttingPlan(user)
 
   const [data, setData] = useState<DashboardResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [generateOpen, setGenerateOpen] = useState(false)
 
   const latestLoadId = useRef(0)
 
@@ -104,9 +102,9 @@ export function HomePage() {
               Điều độ sản xuất &amp; tối ưu cắt phôi thanh nan nhôm cửa cuốn
             </Typography.Text>
           </div>
-          {canGenerate && (
-            <Button type="primary" icon={<ThunderboltOutlined />} onClick={() => setGenerateOpen(true)}>
-              Sinh phương án cắt mới
+          {canApprove && (
+            <Button type="primary" icon={<ThunderboltOutlined />} onClick={() => navigate('/cutting-plans/approval')}>
+              Duyệt phương án cắt
             </Button>
           )}
         </Space>
@@ -127,9 +125,9 @@ export function HomePage() {
         />
       )}
 
-      {!canGenerate && (
+      {!canApprove && (
         <div style={{ marginTop: 16 }}>
-          <RoleRestrictionNotice requiredRole="PLANNER" action="sinh phương án cắt mới" />
+          <RoleRestrictionNotice requiredRole="PLANNER" action="duyệt phương án cắt" />
         </div>
       )}
 
@@ -268,16 +266,6 @@ export function HomePage() {
           />
         </Card>
       </Spin>
-
-      <GenerateCuttingPlanModal
-        open={generateOpen}
-        onClose={() => setGenerateOpen(false)}
-        onGenerated={(newPlanId) => {
-          setGenerateOpen(false)
-          void reload()
-          navigate(`/cutting-plans/${newPlanId}`)
-        }}
-      />
     </div>
   )
 }

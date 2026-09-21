@@ -30,6 +30,18 @@ function isImportRowErrorList(data: unknown): data is ImportRowError[] {
   )
 }
 
+/**
+ * Lỗi này có đúng mã trạng thái đó không.
+ *
+ * Dùng khi một mã cụ thể mang ý nghĩa nghiệp vụ riêng và màn hình phải xử lý khác hẳn các lỗi còn
+ * lại — ví dụ 409 ở luồng duyệt phương án cắt nghĩa là dữ liệu đã đổi nên phải tính lại, trong khi
+ * 403 hay mất mạng thì tính lại cũng vô ích. Gộp tất cả vào một nhánh sẽ hiện lời giải thích sai
+ * cho phần lớn tình huống.
+ */
+export function hasStatus(error: unknown, status: number): boolean {
+  return error instanceof AxiosError && error.response?.status === status
+}
+
 /** Trả về danh sách lỗi theo dòng của luồng import, hoặc null nếu lỗi không thuộc dạng đó. */
 export function extractImportRowErrors(error: unknown): ImportRowError[] | null {
   if (error instanceof AxiosError && isImportRowErrorList(error.response?.data)) {

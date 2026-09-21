@@ -1,5 +1,6 @@
 import {
   CalculatorOutlined,
+  CheckCircleOutlined,
   DatabaseOutlined,
   FileTextOutlined,
   HomeOutlined,
@@ -50,12 +51,14 @@ const MENU_ITEMS: {
   },
   { key: '/bom', icon: <CalculatorOutlined />, label: 'Định mức BOM', editorRole: 'ADMIN' },
   {
-    key: '/cutting-plans',
-    icon: <ScissorOutlined />,
-    label: 'Phương án cắt',
+    key: '/cutting-plans/approval',
+    icon: <CheckCircleOutlined />,
+    label: 'Duyệt phương án cắt',
     editorRole: 'PLANNER',
-    editorHint: 'Chỉ PLANNER sinh được phương án cắt mới; cả hai vai trò đều xem và xuất Excel được.',
+    editorHint: 'Chỉ PLANNER duyệt được phương án cắt — đây là thao tác làm thay đổi tồn kho.',
   },
+  // Không gắn nhãn vai trò: lịch sử là màn chỉ-đọc, cả hai vai trò đều xem và xuất Excel được.
+  { key: '/cutting-plans', icon: <ScissorOutlined />, label: 'Phương án đã duyệt' },
   // Mục duy nhất bị ẩn hẳn theo vai trò, không chỉ khóa nút ghi: endpoint danh sách tài khoản là
   // ADMIN-only nên PLANNER vào cũng chỉ nhận về một trang trống kèm lỗi quyền.
   {
@@ -91,6 +94,19 @@ function isActive(pathname: string, key: string): boolean {
   return key === '/' ? pathname === '/' : pathname === key || pathname.startsWith(`${key}/`)
 }
 
+/**
+ * Chỉ sáng đúng MỘT mục menu. Từ khi có màn duyệt phương án, hai mục cùng khớp một đường dẫn:
+ * `/cutting-plans/approval` khớp chính mục đó, đồng thời khớp `/cutting-plans` theo luật tiền tố.
+ * Mục có khóa dài hơn là mục cụ thể hơn, và là nơi người dùng thật sự đang đứng.
+ */
+function selectedMenuKeys(pathname: string, items: { key: string }[]): string[] {
+  const matched = items.filter((item) => isActive(pathname, item.key))
+  if (matched.length === 0) {
+    return []
+  }
+  return [matched.reduce((best, item) => (item.key.length > best.key.length ? item : best)).key]
+}
+
 export function AppLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -122,9 +138,7 @@ export function AppLayout() {
           <Menu
             mode="inline"
             style={{ height: '100%', borderInlineEnd: 0 }}
-            selectedKeys={visibleMenuItems
-              .filter((item) => isActive(location.pathname, item.key))
-              .map((item) => item.key)}
+            selectedKeys={selectedMenuKeys(location.pathname, visibleMenuItems)}
             items={visibleMenuItems.map((item) => ({ key: item.key, icon: item.icon, label: menuLabel(item) }))}
             onClick={({ key }) => navigate(key)}
           />
