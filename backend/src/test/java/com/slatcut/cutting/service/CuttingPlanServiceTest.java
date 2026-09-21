@@ -19,7 +19,6 @@ import com.slatcut.cutting.domain.SalesOrder;
 import com.slatcut.cutting.domain.ShortageRecord;
 import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
-import com.slatcut.cutting.dto.CuttingPlanScopePreviewResponse;
 import com.slatcut.cutting.repository.BomItemRepository;
 import com.slatcut.cutting.repository.CustomerRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
@@ -78,6 +77,14 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
     private EntityManager entityManager;
 
     private long counter = 0;
+
+    /**
+     * Duyệt phương án cho phạm vi hiện tại — thay cho đường ghi một bước đã gỡ. Đi qua đúng luồng
+     * thật: xem trước để lấy dấu vân trạng thái, rồi duyệt bằng chính dấu vân đó.
+     */
+    private CuttingPlan approvePlan() {
+        return service.approve(service.approvalPreview().stateFingerprint());
+    }
 
     private Customer persistCustomer() {
         Customer entity = new Customer();
@@ -190,6 +197,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
      * loại đơn y như lúc duyệt, chỉ khác ở chỗ kết quả không được ghi xuống — nên hai chỗ này đúng
      * là nơi một thao tác ghi lọt lưới sẽ hiện ra.
      */
+
     @Test
     void simulate_doesNotWriteAnythingToDatabase() {
         Customer customer = persistCustomer();
@@ -486,7 +494,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         SalesOrder order = persistSalesOrder(
                 "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         assertThat(plan.getId()).isNotNull();
         assertThat(plan.getStatus()).isEqualTo(CuttingPlanStatus.COMPLETED);
@@ -518,7 +526,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         SalesOrder order = persistSalesOrder(
                 "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("5.000"), LocalDate.now());
 
-        service.generate();
+        approvePlan();
 
         assertThat(cuttingPlanDetailRepository.findAll()).isEmpty();
         List<ShortageRecord> shortages = shortageRecordRepository.findAll();
@@ -538,7 +546,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistSalesOrder(
                 "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now().plusDays(10));
 
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         assertThat(plan.getScopeOrderCount()).isEqualTo(0);
         assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
@@ -554,8 +562,8 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistInventoryBatch(slatMaterial, 2000, 1);
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        service.generate();
-        CuttingPlan second = service.generate();
+        approvePlan();
+        CuttingPlan second = approvePlan();
 
         assertThat(second.getScopeOrderCount()).isEqualTo(0);
         assertThat(cuttingPlanDetailItemRepository.findAll()).hasSize(1);
@@ -571,7 +579,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         SalesOrder order =
                 persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         assertThat(salesOrderRepository.findById(order.getId()))
                 .get()
@@ -593,7 +601,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         SalesOrder order =
                 persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         assertThat(shortageRecordRepository.findByCuttingPlan_Id(plan.getId())).isNotEmpty();
         assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
@@ -625,7 +633,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         SalesOrder order =
                 persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         assertThat(plan.getScopeOrderCount()).isEqualTo(1);
         assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
@@ -674,7 +682,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
                 persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
         assertThat(salesOrderRepository.findUnapproved()).extracting(SalesOrder::getId).contains(order.getId());
-        service.generate();
+        approvePlan();
 
         assertThat(salesOrderRepository.findUnapproved()).extracting(SalesOrder::getId).doesNotContain(order.getId());
     }
@@ -714,7 +722,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
             }
         }
 
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         assertThat(plan.getScopeOrderCount()).isEqualTo(70);
         assertThat(shortageRecordRepository.findAll()).hasSize(70);
@@ -737,7 +745,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         SalesOrder orderB = persistSalesOrder(
                 "B" + (counter + 1), doorProduct, customerB, new BigDecimal("3.000"), LocalDate.now());
 
-        service.generate();
+        approvePlan();
 
         List<CuttingPlanDetail> details = cuttingPlanDetailRepository.findAll();
         assertThat(details).hasSize(1);
@@ -768,7 +776,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         SalesOrder order = persistRailSalesOrder(
                 "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        service.generate();
+        approvePlan();
 
         List<CuttingPlanDetail> details = cuttingPlanDetailRepository.findAll();
         assertThat(details).hasSize(1);
@@ -790,24 +798,6 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
                 .isZero();
     }
 
-    @Test
-    void getScopePreview_countsEligibleOrdersWithoutPersistingAnything() {
-        Customer customer = persistCustomer();
-        DoorProduct doorProduct = persistDoorProduct();
-        SlatMaterial slatMaterial = persistSlatMaterial();
-        persistBomItem(doorProduct, slatMaterial);
-        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
-        persistSalesOrder(
-                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now().plusDays(10));
-
-        CuttingPlanScopePreviewResponse preview = service.getScopePreview();
-
-        assertThat(preview.eligibleOrderCount()).isEqualTo(1);
-        assertThat(preview.scopeCutoffDate()).isEqualTo(LocalDate.now().plusDays(3));
-        assertThat(cuttingPlanRepository.findAll()).isEmpty();
-        assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
-        assertThat(shortageRecordRepository.findAll()).isEmpty();
-    }
 
     @Test
     void generate_decrementsConsumedInventory() {
@@ -818,7 +808,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistInventoryBatch(slatMaterial, 2000, 3);
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        service.generate();
+        approvePlan();
 
         InventoryBatch batch = inventoryBatchRepository
                 .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 2000)
@@ -837,7 +827,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistInventoryBatch(slatMaterial, 6000, 1);
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        service.generate();
+        approvePlan();
 
         assertThat(inventoryBatchRepository
                         .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 6000)
@@ -867,7 +857,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        service.generate();
+        approvePlan();
 
         assertThat(inventoryBatchRepository
                         .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 8000)
@@ -898,13 +888,13 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistInventoryBatch(slatMaterial, 2000, 1);
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        service.generate();
+        approvePlan();
         assertThat(cuttingPlanDetailRepository.findAll()).hasSize(1);
 
         SalesOrder secondOrder = persistSalesOrder(
                 "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        service.generate();
+        approvePlan();
 
         assertThat(cuttingPlanDetailRepository.findAll()).hasSize(1);
         List<ShortageRecord> shortages = shortageRecordRepository.findAll();
@@ -936,7 +926,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
                 .as("đơn của mẫu cửa chưa có định mức phải đếm được riêng")
                 .isEqualTo(1);
 
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         assertThat(plan.getScopeOrderCount())
                 .as("chỉ đơn của mẫu cửa đã có định mức mới vào phạm vi xử lý")
@@ -984,7 +974,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
                 .as("cả 3 đơn đều không sinh được nhu cầu cắt nên phải đếm là đang bị chặn")
                 .isEqualTo(3);
 
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         assertThat(plan.getScopeOrderCount())
                 .as("không đơn nào trong 3 kịch bản được đưa vào phạm vi xử lý")
@@ -1009,7 +999,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistInventoryBatch(slatMaterial, 2000, 3);
 
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
-        service.generate();
+        approvePlan();
         assertThat(inventoryBatchRepository
                         .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 2000)
                         .orElseThrow()
@@ -1017,7 +1007,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
                 .isEqualTo(2);
 
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
-        service.generate();
+        approvePlan();
         assertThat(inventoryBatchRepository
                         .findBySlatMaterial_IdAndDoDaiThanhMm(slatMaterial.getId(), 2000)
                         .orElseThrow()
@@ -1042,7 +1032,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         assertThat(plan.getTotalStockUsedM())
                 .as("8m ra kho, 4m nhập lại → chỉ 4m thực tiêu hao")
@@ -1069,7 +1059,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistInventoryBatch(restockMaterial, 6000, 1);
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         int recomputedMm = cuttingPlanDetailRepository.findByCuttingPlan_Id(plan.getId()).stream()
                 .mapToInt(detail -> detail.getStickCount()

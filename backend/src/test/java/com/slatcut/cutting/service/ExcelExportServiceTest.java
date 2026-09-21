@@ -3,6 +3,7 @@ package com.slatcut.cutting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.slatcut.cutting.AbstractIntegrationTest;
+import com.slatcut.cutting.domain.CuttingPlan;
 import com.slatcut.cutting.domain.BomItem;
 import com.slatcut.cutting.domain.Customer;
 import com.slatcut.cutting.domain.DoorProduct;
@@ -133,6 +134,14 @@ class ExcelExportServiceTest extends AbstractIntegrationTest {
         };
     }
 
+    /**
+     * Duyệt phương án cho phạm vi hiện tại — thay cho đường ghi một bước đã gỡ. Đi qua đúng luồng
+     * thật: xem trước để lấy dấu vân trạng thái, rồi duyệt bằng chính dấu vân đó.
+     */
+    private CuttingPlan approvePlan() {
+        return cuttingPlanService.approve(cuttingPlanService.approvalPreview().stateFingerprint());
+    }
+
     @Test
     void exportCuttingPlan_mergedOrdersOnOneStick_showsOriginalAndMergedColumns() throws IOException {
         Customer customerA = persistCustomer();
@@ -145,7 +154,7 @@ class ExcelExportServiceTest extends AbstractIntegrationTest {
                 persistSalesOrder("A" + (counter + 1), doorProduct, customerA, new BigDecimal("3.000"), LocalDate.now());
         persistSalesOrder("B" + (counter + 1), doorProduct, customerB, new BigDecimal("3.000"), LocalDate.now());
 
-        var plan = cuttingPlanService.generate();
+        var plan = approvePlan();
         byte[] file = excelExportService.exportCuttingPlan(plan.getId());
 
         try (Workbook workbook = toWorkbook(file)) {
@@ -183,7 +192,7 @@ class ExcelExportServiceTest extends AbstractIntegrationTest {
             orders.add(order);
         }
 
-        var plan = cuttingPlanService.generate();
+        var plan = approvePlan();
         byte[] file = excelExportService.exportCuttingPlan(plan.getId());
 
         try (Workbook workbook = toWorkbook(file)) {
@@ -213,7 +222,7 @@ class ExcelExportServiceTest extends AbstractIntegrationTest {
         persistSalesOrder("A" + (counter + 1), doorProduct, customerA, new BigDecimal("5.000"), deliveryDateA);
         persistSalesOrder("B" + (counter + 1), doorProduct, customerB, new BigDecimal("6.000"), deliveryDateB);
 
-        var plan = cuttingPlanService.generate();
+        var plan = approvePlan();
         byte[] file = excelExportService.exportShortageReport(plan.getId());
 
         try (Workbook workbook = toWorkbook(file)) {

@@ -14,7 +14,6 @@ import com.slatcut.cutting.domain.SlatMaterial;
 import com.slatcut.cutting.dto.CuttingPlanDetailItemResponse;
 import com.slatcut.cutting.dto.CuttingPlanDetailResponse;
 import com.slatcut.cutting.dto.CuttingPlanResponse;
-import com.slatcut.cutting.dto.CuttingPlanScopePreviewResponse;
 import com.slatcut.cutting.dto.CuttingPlanSummaryResponse;
 import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.ShortageRecordResponse;
@@ -190,17 +189,6 @@ public class CuttingPlanService {
                     + " Hãy xem lại phương án tính trên trạng thái mới rồi duyệt lại.");
         }
         return persistApprovedPlan(snapshot);
-    }
-
-    /**
-     * Đường ghi cũ: duyệt ngay phương án vừa tính, không qua bước PLANNER xem xét nên cũng không có
-     * dấu vân trạng thái để kiểm. Giữ lại cho endpoint {@code POST /cutting-plans/generate} chạy
-     * được cho tới khi màn hình duyệt thay thế nó; mọi thao tác ghi vẫn đi qua đúng
-     * {@link #persistApprovedPlan} như {@link #approve(String)}.
-     */
-    @Transactional
-    public CuttingPlan generate() {
-        return persistApprovedPlan(readApprovalScope());
     }
 
     /**
@@ -427,18 +415,10 @@ public class CuttingPlanService {
         return batch;
     }
 
-    /** Không lưu gì — chỉ đếm trước theo đúng quy tắc phạm vi của {@link #generate()}, phục vụ modal xác nhận ở FE. */
-    @Transactional(readOnly = true)
-    public CuttingPlanScopePreviewResponse getScopePreview() {
-        LocalDate cutoffDate = scopeCutoffDate();
-        int eligibleOrderCount = findScopeOrders(cutoffDate).size();
-        return new CuttingPlanScopePreviewResponse(eligibleOrderCount, cutoffDate);
-    }
-
     /**
      * Số đơn đang tồn đọng trong hạn giao, KHÔNG cắt ở hạn mức {@value #SCOPE_MAX_ORDERS} đơn mỗi
-     * lần chạy — khác {@link #getScopePreview()} ở đúng điểm đó: modal xác nhận cần biết lần chạy
-     * này lấy được bao nhiêu đơn, còn KPI trang chủ cần biết còn bao nhiêu đơn phải xử lý.
+     * lần chạy — khác phạm vi của một đợt duyệt ở đúng điểm đó: đợt duyệt cần biết lần này lấy được
+     * bao nhiêu đơn, còn KPI trang chủ cần biết còn bao nhiêu đơn phải xử lý.
      */
     @Transactional(readOnly = true)
     public long countPendingInScope() {

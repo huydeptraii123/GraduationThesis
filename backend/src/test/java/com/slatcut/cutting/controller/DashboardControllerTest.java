@@ -61,6 +61,14 @@ class DashboardControllerTest extends AbstractIntegrationTest {
 
     private long counter = 0;
 
+    /**
+     * Duyệt phương án cho phạm vi hiện tại — thay cho đường ghi một bước đã gỡ. Đi qua đúng luồng
+     * thật: xem trước để lấy dấu vân trạng thái, rồi duyệt bằng chính dấu vân đó.
+     */
+    private CuttingPlan approvePlan() {
+        return cuttingPlanService.approve(cuttingPlanService.approvalPreview().stateFingerprint());
+    }
+
     private String plannerToken() {
         return jwtService.generateToken("planner", "PLANNER");
     }
@@ -154,7 +162,7 @@ class DashboardControllerTest extends AbstractIntegrationTest {
         persistBomItem(doorProduct, slatMaterial);
         persistInventoryBatch(slatMaterial, 2500, 1);
         persistSalesOrder(doorProduct, customer, new BigDecimal("2.250"));
-        return cuttingPlanService.generate();
+        return approvePlan();
     }
 
     /**
@@ -162,6 +170,7 @@ class DashboardControllerTest extends AbstractIntegrationTest {
      * toán — nếu dùng lại query có LIMIT 70 thì con số đứng im ở 70 và PLANNER không thấy được
      * lượng việc thật sự dồn lại.
      */
+
     @Test
     void getDashboard_pendingOrderCount_isNotCappedByPerRunOrderLimit() throws Exception {
         Customer customer = persistCustomer();
@@ -245,7 +254,7 @@ class DashboardControllerTest extends AbstractIntegrationTest {
         persistInventoryBatch(rail, 2200, 2);
         persistRailSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
 
-        cuttingPlanService.generate();
+        approvePlan();
 
         mockMvc.perform(get("/api/v1/dashboard").header("Authorization", "Bearer " + plannerToken()))
                 .andExpect(status().isOk())
