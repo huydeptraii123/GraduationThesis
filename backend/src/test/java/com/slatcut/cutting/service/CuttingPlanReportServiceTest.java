@@ -421,6 +421,37 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
         assertThat(rows.get(0).cutDetailText()).isNull();
     }
 
+    /**
+     * Dòng thiếu TOÀN BỘ cũng phải cho cùng con số ở hai đường vào.
+     *
+     * <p>Ca này khác hẳn ca thiếu một phần ở trên: dòng thiếu một phần còn giữ được độ dài milimet
+     * nhờ chính những đoạn đã cắt được của nó, còn dòng thiếu toàn bộ thì không cắt được đoạn nào —
+     * khi duyệt nó chỉ tồn tại ở bảng thiếu vật tư, nơi lưu tổng độ dài theo centimet. Bài kiểm thử
+     * đối chiếu hai nguồn ở trên không chạm tới nhánh này nên từng bỏ lọt chênh lệch.
+     *
+     * <p>Kích thước 2.345m cố ý lẻ tới milimet: mọi kích thước tròn đều che mất đúng sai số này.
+     */
+    @Test
+    void approvedPlanAndPreview_agreeOnARowMissingEveryStick() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial missingAll = persistSlatMaterial(SlatGroup.BOTTOM_BAR);
+        persistBomItem(doorProduct, missingAll);
+        // Không nhập tồn kho: bộ cửa thiếu trọn vẹn loại thanh nan duy nhất của nó.
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("2.345"), LocalDate.now());
+
+        CuttingPlanApprovalPreview preview = cuttingPlanService.approvalPreview();
+        List<CuttingPlanDemandView> beforeApproval = reportService.buildFromPreview(preview.plan());
+        CuttingPlan plan = cuttingPlanService.approve(preview.stateFingerprint());
+        List<CuttingPlanDemandView> afterApproval = reportService.buildFromApprovedPlan(plan.getId());
+
+        assertThat(beforeApproval).hasSize(1);
+        assertThat(afterApproval)
+                .extracting(CuttingPlanDemandView::cutLengthMm, CuttingPlanDemandView::statusText)
+                .containsExactly(
+                        tuple(beforeApproval.get(0).cutLengthMm(), beforeApproval.get(0).statusText()));
+    }
+
     /** Model cửa đi thẳng từ mẫu cửa ra báo cáo — đây là trục của biểu đồ "số bộ cửa theo model". */
     @Test
     void buildFromPreview_carriesTheDoorModelOfEachRow() {

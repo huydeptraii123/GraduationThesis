@@ -29,6 +29,16 @@ let lastSimulation: CuttingPlanPreviewResponse | null = null
  */
 let pending: Promise<CuttingPlanPreviewResponse> | null = null
 
+/**
+ * Đếm số lần bộ nhớ bị xóa. Một lượt tính đang chạy dở giữ lại số đếm của lúc nó bắt đầu và chỉ
+ * được ghi kết quả nếu số đếm chưa đổi.
+ *
+ * Không có nó thì xóa bộ nhớ lúc đang tính là vô nghĩa: lời hứa vẫn chạy tiếp và ghi đè lại vài
+ * giây sau. Đúng kịch bản đăng xuất giữa chừng — người đăng nhập kế tiếp thấy số liệu của phiên
+ * trước hiện ra, dù đăng xuất đã xóa một lần rồi.
+ */
+let generation = 0
+
 export function getLastSimulation(): CuttingPlanPreviewResponse | null {
   return lastSimulation
 }
@@ -45,18 +55,29 @@ export function getPendingSimulation(): Promise<CuttingPlanPreviewResponse> | nu
  * chừng, đều không làm thuật toán chạy thêm lần nào trên máy chủ.
  */
 export function runSimulation(): Promise<CuttingPlanPreviewResponse> {
-  pending ??= simulateCuttingPlan()
-    .then((result) => {
-      lastSimulation = result
-      return result
-    })
-    .finally(() => {
-      pending = null
-    })
+  if (pending == null) {
+    const startedAt = generation
+    pending = simulateCuttingPlan()
+      .then((result) => {
+        if (startedAt === generation) {
+          lastSimulation = result
+        }
+        return result
+      })
+      .finally(() => {
+        pending = null
+      })
+  }
   return pending
 }
 
-/** Xóa kết quả đang giữ — dùng khi một lần tính thất bại và khi đăng xuất. */
+/**
+ * Xóa kết quả đang giữ — dùng khi một lần tính thất bại và khi đăng xuất.
+ *
+ * Vô hiệu hóa luôn lượt tính đang chạy dở: hủy một lời gọi HTTP đang bay là việc không làm được,
+ * nhưng chặn nó ghi kết quả thì được, và đó mới là thứ quan trọng.
+ */
 export function clearLastSimulation(): void {
   lastSimulation = null
+  generation += 1
 }

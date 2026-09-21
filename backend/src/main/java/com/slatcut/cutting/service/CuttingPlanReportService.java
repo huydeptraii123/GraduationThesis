@@ -199,6 +199,31 @@ public class CuttingPlanReportService {
         return assemble(rows.values(), snapshot);
     }
 
+    /**
+     * Độ dài đoạn của một dòng thiếu TOÀN BỘ, quy về đúng con số mà phương án đã duyệt đọc lại được.
+     *
+     * <p>Dòng thiếu toàn bộ không có đoạn nào cắt được để giữ độ dài milimet, nên khi duyệt nó chỉ
+     * còn tồn tại ở bảng thiếu vật tư — nơi lưu TỔNG độ dài ở đơn vị centimet ({@code DECIMAL(10,2)}).
+     * Milimet lẻ mất hẳn tại thời điểm ghi và không cách nào lấy lại.
+     *
+     * <p>Vì vậy nhánh chưa lưu phải tự làm tròn y như vậy thay vì giữ con số chính xác của mình:
+     * giữ lại thì cùng một phương án, xem trước khi duyệt và xuất Excel sau khi duyệt, in ra hai độ
+     * dài khác nhau (2.345m và 2.350m) và hai tổng khác nhau (2.3m và 2.4m) — đúng thứ mà lớp này
+     * cam kết là không thể xảy ra. Thà cùng thô còn hơn lệch nhau.
+     *
+     * <p>Phép quy đổi này <b>lũy đẳng</b>, nên gọi thêm một lần trên con số đã đọc từ cơ sở dữ liệu
+     * cũng không làm nó đổi.
+     */
+    private static int storedShortageCutLengthMm(int cutLengthMm, int quantity) {
+        if (quantity <= 0) {
+            return cutLengthMm;
+        }
+        BigDecimal totalM = toMeters((long) cutLengthMm * quantity, PIECE_SCALE);
+        return totalM.multiply(MM_PER_M)
+                .divide(BigDecimal.valueOf(quantity), 0, RoundingMode.HALF_UP)
+                .intValueExact();
+    }
+
     private static int averageCutLengthMm(ShortageRecord shortage) {
         return shortage
                 .getMissingLengthM()
@@ -262,6 +287,9 @@ public class CuttingPlanReportService {
         List<Accumulator> rows = new ArrayList<>();
         Set<OrderKey> shortDoorSets = new HashSet<>();
         for (Accumulator row : accumulators) {
+            if (row.missing >= row.needed) {
+                row.cutLengthMm = storedShortageCutLengthMm(row.cutLengthMm, row.needed);
+            }
             rows.add(row);
             if (row.missing > 0) {
                 shortDoorSets.add(new OrderKey(row.order.getYcsx(), row.order.getItem()));
