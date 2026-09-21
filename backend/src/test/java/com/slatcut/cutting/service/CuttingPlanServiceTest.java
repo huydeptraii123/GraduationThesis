@@ -8,10 +8,12 @@ import com.slatcut.cutting.AbstractIntegrationTest;
 import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.domain.BomItem;
 import com.slatcut.cutting.domain.Customer;
+import com.slatcut.cutting.domain.CutLevel;
 import com.slatcut.cutting.domain.CuttingPlan;
 import com.slatcut.cutting.domain.CuttingPlanDetail;
 import com.slatcut.cutting.domain.CuttingPlanDetailItem;
 import com.slatcut.cutting.domain.CuttingPlanStatus;
+import com.slatcut.cutting.domain.CuttingPlanStockSnapshot;
 import com.slatcut.cutting.domain.DoorProduct;
 import com.slatcut.cutting.domain.InventoryBatch;
 import com.slatcut.cutting.domain.RemainderType;
@@ -24,6 +26,7 @@ import com.slatcut.cutting.repository.CustomerRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailRepository;
 import com.slatcut.cutting.repository.CuttingPlanRepository;
+import com.slatcut.cutting.repository.CuttingPlanStockSnapshotRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
@@ -72,6 +75,9 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
 
     @Autowired
     private ShortageRecordRepository shortageRecordRepository;
+
+    @Autowired
+    private CuttingPlanStockSnapshotRepository cuttingPlanStockSnapshotRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -212,6 +218,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         long detailsBefore = cuttingPlanDetailRepository.count();
         long itemsBefore = cuttingPlanDetailItemRepository.count();
         long shortagesBefore = shortageRecordRepository.count();
+        long snapshotsBefore = cuttingPlanStockSnapshotRepository.count();
         long sticksBefore = inventoryBatchRepository.sumAvailableSticks();
 
         CuttingPlanPreview preview = service.simulate();
@@ -221,6 +228,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         assertThat(cuttingPlanDetailRepository.count()).isEqualTo(detailsBefore);
         assertThat(cuttingPlanDetailItemRepository.count()).isEqualTo(itemsBefore);
         assertThat(shortageRecordRepository.count()).isEqualTo(shortagesBefore);
+        assertThat(cuttingPlanStockSnapshotRepository.count()).isEqualTo(snapshotsBefore);
         assertThat(inventoryBatchRepository.sumAvailableSticks()).isEqualTo(sticksBefore);
         assertThat(salesOrderRepository.findById(order.getId()).orElseThrow().getApprovedPlan())
                 .isNull();
@@ -538,6 +546,122 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         // Đơn ngoài phạm vi không bị đụng tới: không có lát cắt nào, và vẫn ở lại hàng chờ.
         assertThat(salesOrderRepository.findById(farFuture.getId()).orElseThrow().getApprovedPlan())
                 .isNull();
+    }
+
+    // =================================== Dữ liệu chỉ phục vụ báo cáo (mức cắt, tồn kho)
+
+    /**
+     * Mức ưu tiên phải được ghi lại đúng nhánh đã cắt. Bốn ca dựng riêng vì không suy ngược được từ
+     * kết quả — đó chính là lý do cột này tồn tại.
+     */
+    @Test
+    void approve_recordsTheCutLevelActuallyUsed_nearFit() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        CuttingPlan plan = approvePlan();
+
+        assertThat(cuttingPlanDetailRepository.findByCuttingPlan_Id(plan.getId()))
+                .extracting(CuttingPlanDetail::getCutLevel)
+                .containsExactly(CutLevel.PA1);
+    }
+
+    @Test
+    void approve_recordsTheCutLevelActuallyUsed_multiple() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 6000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("3.000"), LocalDate.now());
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("3.000"), LocalDate.now());
+
+        CuttingPlan plan = approvePlan();
+
+        assertThat(cuttingPlanDetailRepository.findByCuttingPlan_Id(plan.getId()))
+                .extracting(CuttingPlanDetail::getCutLevel)
+                .containsExactly(CutLevel.PA2);
+    }
+
+    @Test
+    void approve_recordsTheCutLevelActuallyUsed_combination() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 7000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("3.000"), LocalDate.now());
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("4.000"), LocalDate.now());
+
+        CuttingPlan plan = approvePlan();
+
+        assertThat(cuttingPlanDetailRepository.findByCuttingPlan_Id(plan.getId()))
+                .extracting(CuttingPlanDetail::getCutLevel)
+                .containsExactly(CutLevel.PA3);
+    }
+
+    /**
+     * Mức 4 cũng là ca kiểm số phôi còn lại rõ nhất: phôi 7000mm bị tiêu thụ hết, còn phần dư 4000mm
+     * quay lại kho thành một thanh mới — con số "còn lại" phải đọc từ trạng thái kho SAU lần chạy,
+     * kể cả phần vừa nhập lại giữa chừng.
+     */
+    @Test
+    void approve_recordsCutLevelFourAndRemainingSticksAfterTheRun() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 7000, 2);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("3.000"), LocalDate.now());
+
+        CuttingPlan plan = approvePlan();
+
+        List<CuttingPlanDetail> details = cuttingPlanDetailRepository.findByCuttingPlan_Id(plan.getId());
+        assertThat(details).hasSize(1);
+        assertThat(details.get(0).getCutLevel()).isEqualTo(CutLevel.PA4);
+        assertThat(details.get(0).getSourceLengthMm()).isEqualTo(7000);
+        // Kho có 2 thanh 7000mm, lần chạy tiêu 1 nên còn 1.
+        assertThat(details.get(0).getRemainingSticksAfter()).isEqualTo(1);
+    }
+
+    /**
+     * Ảnh chụp tồn kho phải là trạng thái TRƯỚC khi thuật toán tiêu thụ, và chỉ gồm những loại thanh
+     * nan có mặt trong lần chạy.
+     *
+     * <p>Chụp sau khi trừ kho thì báo cáo hiển thị một kho đã bị chính phương án đó làm thay đổi —
+     * người đọc không còn biết lúc lập phương án trong kho có gì. Chụp cả kho thì mỗi lần duyệt
+     * chép thừa hàng nghìn dòng không ai hỏi tới.
+     */
+    @Test
+    void approve_snapshotsStockAsItWasBeforeTheRunAndOnlyForMaterialsInvolved() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial used = persistSlatMaterial();
+        SlatMaterial untouched = persistSlatMaterial();
+        persistBomItem(doorProduct, used);
+        persistInventoryBatch(used, 2000, 3);
+        persistInventoryBatch(used, 5000, 1);
+        persistInventoryBatch(untouched, 4000, 9);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+
+        CuttingPlan plan = approvePlan();
+
+        assertThat(cuttingPlanStockSnapshotRepository.findByCuttingPlan_Id(plan.getId()))
+                .extracting(
+                        snapshot -> snapshot.getSlatMaterial().getId(),
+                        CuttingPlanStockSnapshot::getDoDaiThanhMm,
+                        CuttingPlanStockSnapshot::getSoThanh)
+                .containsExactlyInAnyOrder(tuple(used.getId(), 2000, 3), tuple(used.getId(), 5000, 1));
+        // Kho thật đã bị trừ 1 thanh 2000mm, nhưng ảnh chụp vẫn giữ nguyên con số trước lần chạy.
+        assertThat(inventoryBatchRepository
+                        .findBySlatMaterial_IdAndDoDaiThanhMm(used.getId(), 2000)
+                        .orElseThrow()
+                        .getSoThanh())
+                .isEqualTo(2);
     }
 
     /** Dấu vân rỗng (client cũ, hoặc bấm duyệt mà chưa hề xem phương án) cũng bị từ chối, không rơi vào NPE. */

@@ -1,6 +1,7 @@
 package com.slatcut.cutting.service;
 
 import com.slatcut.cutting.domain.SlatMaterial;
+import com.slatcut.cutting.service.optimizer.CutLevel;
 import com.slatcut.cutting.service.optimizer.CutRecord;
 import com.slatcut.cutting.service.optimizer.RemainderCategory;
 import com.slatcut.cutting.service.optimizer.ShortageEntry;
@@ -91,9 +92,16 @@ public final class CuttingResultGrouping {
         return cut.stockLengthMm() + "=" + segments + "+R" + cut.remainderMm();
     }
 
-    /** patternCode + danh sách TUẦN TỰ (ycsx,item,cutLengthMm) — 2 phôi chỉ gộp khi giống hệt cả thứ tự (đơn gốc trùng nhau). */
+    /**
+     * mức cắt + patternCode + danh sách TUẦN TỰ (ycsx,item,cutLengthMm) — 2 phôi chỉ gộp khi giống
+     * hệt cả thứ tự (đơn gốc trùng nhau).
+     *
+     * <p>Mức cắt bắt buộc nằm trong khóa: hai phôi cùng hình dạng cắt vẫn có thể đến từ hai mức
+     * khác nhau, và gộp chúng lại thì dòng kết quả mang mức của phôi đầu tiên — báo cáo gửi xuống
+     * xưởng khi đó nói sai phương án đã áp dụng cho nửa số phôi.
+     */
     private static String buildGroupKey(String patternCode, CutRecord cut) {
-        StringBuilder key = new StringBuilder(patternCode);
+        StringBuilder key = new StringBuilder(cut.cutLevel().name()).append('|').append(patternCode);
         for (CuttingDemand piece : cut.pieces()) {
             key.append('|').append(piece.ycsx()).append('#').append(piece.item()).append('#').append(piece.cutLengthMm());
         }
@@ -114,6 +122,7 @@ public final class CuttingResultGrouping {
             String patternCode,
             int remainderMm,
             RemainderCategory remainderCategory,
+            CutLevel cutLevel,
             int stickCount,
             List<CutItem> items) {}
 
@@ -170,6 +179,7 @@ public final class CuttingResultGrouping {
                     patternCode,
                     first.remainderMm(),
                     first.remainderCategory(),
+                    first.cutLevel(),
                     stickCount,
                     List.copyOf(items));
         }

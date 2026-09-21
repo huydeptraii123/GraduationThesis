@@ -56,7 +56,9 @@ public interface CuttingPlanMapper {
     @Mapping(source = "detail.patternCode", target = "patternCode")
     @Mapping(source = "detail.remainderMm", target = "remainderMm")
     @Mapping(source = "detail.remainderType", target = "remainderType")
+    @Mapping(source = "detail.cutLevel", target = "cutLevel")
     @Mapping(source = "detail.stickCount", target = "stickCount")
+    @Mapping(source = "detail.remainingSticksAfter", target = "remainingSticksAfter")
     CuttingPlanDetailResponse toDetailResponse(CuttingPlanDetail detail, List<CuttingPlanDetailItemResponse> items);
 
     @Mapping(source = "plan.id", target = "id")

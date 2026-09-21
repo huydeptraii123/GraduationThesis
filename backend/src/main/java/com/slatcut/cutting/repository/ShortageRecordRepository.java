@@ -10,4 +10,7 @@ public interface ShortageRecordRepository extends JpaRepository<ShortageRecord, 
 
     @EntityGraph(attributePaths = {"salesOrder.customer", "salesOrder.doorProduct", "slatMaterial"})
     List<ShortageRecord> findByCuttingPlan_Id(Long cuttingPlanId);
+
+    /** Chốt xóa loại thanh nan: nó đã bị báo thiếu trong một phương án đã duyệt thì không xóa được. */
+    boolean existsBySlatMaterial_Id(Long slatMaterialId);
 }

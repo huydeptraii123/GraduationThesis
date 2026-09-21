@@ -2,11 +2,13 @@ package com.slatcut.cutting.service.optimizer;
 
 import com.slatcut.cutting.domain.InventoryBatch;
 import com.slatcut.cutting.domain.SlatMaterial;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -107,6 +109,26 @@ public class InventoryPool {
     /** Nhập lại 1 thanh (thường là phần dư > 3m vừa cắt) để các đoạn xử lý SAU trong cùng lượt chạy dùng được ngay. */
     public void restock(SlatMaterial slatMaterial, int lengthMm) {
         stockByMaterialId.computeIfAbsent(slatMaterial.getId(), id -> new TreeMap<>()).merge(lengthMm, 1, Integer::sum);
+    }
+
+    /**
+     * Toàn bộ số thanh còn lại sau lần chạy, chỉ của những loại thanh nan được hỏi tới.
+     *
+     * <p>Đọc từ đây thay vì đọc lại CSDL sau khi trừ tồn kho: hai con số phải bằng nhau (cùng suy
+     * ra từ một danh sách lát cắt), nhưng kho tạm này là nơi duy nhất biết cả phần dư trên 3m vừa
+     * nhập lại giữa chừng lẫn những độ dài đã bị cắt hết sạch trong chính lần chạy.
+     */
+    public List<StockLine> remainingLines(Set<Long> slatMaterialIds) {
+        List<StockLine> lines = new ArrayList<>();
+        for (Map.Entry<Long, NavigableMap<Integer, Integer>> entry : stockByMaterialId.entrySet()) {
+            if (!slatMaterialIds.contains(entry.getKey())) {
+                continue;
+            }
+            for (Map.Entry<Integer, Integer> line : entry.getValue().entrySet()) {
+                lines.add(new StockLine(entry.getKey(), line.getKey(), line.getValue()));
+            }
+        }
+        return List.copyOf(lines);
     }
 
     /** Chỉ dùng cho test — số thanh còn lại của 1 độ dài cụ thể, không dùng trong logic chính. */

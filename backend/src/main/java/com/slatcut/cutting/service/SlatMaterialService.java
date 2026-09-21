@@ -9,7 +9,10 @@ import com.slatcut.cutting.dto.SlatMaterialRequest;
 import com.slatcut.cutting.dto.SlatMaterialResponse;
 import com.slatcut.cutting.mapper.SlatMaterialMapper;
 import com.slatcut.cutting.repository.BomItemRepository;
+import com.slatcut.cutting.repository.CuttingPlanDetailRepository;
+import com.slatcut.cutting.repository.CuttingPlanStockSnapshotRepository;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
+import com.slatcut.cutting.repository.ShortageRecordRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
 import com.slatcut.cutting.repository.spec.SlatMaterialSpecifications;
 import java.util.List;
@@ -24,16 +27,25 @@ public class SlatMaterialService {
     private final SlatMaterialRepository slatMaterialRepository;
     private final InventoryBatchRepository inventoryBatchRepository;
     private final BomItemRepository bomItemRepository;
+    private final CuttingPlanDetailRepository cuttingPlanDetailRepository;
+    private final ShortageRecordRepository shortageRecordRepository;
+    private final CuttingPlanStockSnapshotRepository cuttingPlanStockSnapshotRepository;
     private final SlatMaterialMapper mapper;
 
     public SlatMaterialService(
             SlatMaterialRepository slatMaterialRepository,
             InventoryBatchRepository inventoryBatchRepository,
             BomItemRepository bomItemRepository,
+            CuttingPlanDetailRepository cuttingPlanDetailRepository,
+            ShortageRecordRepository shortageRecordRepository,
+            CuttingPlanStockSnapshotRepository cuttingPlanStockSnapshotRepository,
             SlatMaterialMapper mapper) {
         this.slatMaterialRepository = slatMaterialRepository;
         this.inventoryBatchRepository = inventoryBatchRepository;
         this.bomItemRepository = bomItemRepository;
+        this.cuttingPlanDetailRepository = cuttingPlanDetailRepository;
+        this.shortageRecordRepository = shortageRecordRepository;
+        this.cuttingPlanStockSnapshotRepository = cuttingPlanStockSnapshotRepository;
         this.mapper = mapper;
     }
 
@@ -87,6 +99,16 @@ public class SlatMaterialService {
         }
         if (bomItemRepository.existsBySlatMaterial_Id(id)) {
             throw new ConflictException("Không thể xóa: vẫn còn định mức BOM tham chiếu đến loại thanh nan này");
+        }
+        // Ba bảng của phương án cắt gộp thành một câu vì với người dùng chúng là một sự thật duy
+        // nhất: loại thanh nan này đã nằm trong một phương án đã duyệt. Phải kiểm cả ba chứ không
+        // chỉ bảng ảnh chụp — phương án duyệt trước khi hệ thống bắt đầu chụp tồn kho không có dòng
+        // ảnh chụp nào, nhưng lát cắt và dòng thiếu vật tư của nó thì vẫn còn.
+        if (cuttingPlanDetailRepository.existsBySlatMaterial_Id(id)
+                || shortageRecordRepository.existsBySlatMaterial_Id(id)
+                || cuttingPlanStockSnapshotRepository.existsBySlatMaterial_Id(id)) {
+            throw new ConflictException(
+                    "Không thể xóa: loại thanh nan này đã nằm trong một phương án cắt đã được duyệt");
         }
         slatMaterialRepository.delete(entity);
     }

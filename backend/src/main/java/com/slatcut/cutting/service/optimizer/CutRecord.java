@@ -14,4 +14,5 @@ public record CutRecord(
         int stockLengthMm,
         List<CuttingDemand> pieces,
         int remainderMm,
-        RemainderCategory remainderCategory) {}
+        RemainderCategory remainderCategory,
+        CutLevel cutLevel) {}

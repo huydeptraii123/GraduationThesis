@@ -52,7 +52,7 @@ public class BestFitDecreasingStrategy implements CuttingStrategy {
 
             Optional<Integer> nearFit = pool.findNearFit(material, x.cutLengthMm());
             if (nearFit.isPresent()) {
-                cuts.add(buildCutRecord(material, nearFit.get(), List.of(x)));
+                cuts.add(buildCutRecord(material, nearFit.get(), List.of(x), CutLevel.PA1));
                 continue;
             }
 
@@ -63,7 +63,7 @@ public class BestFitDecreasingStrategy implements CuttingStrategy {
                 List<CuttingDemand> pieces = new ArrayList<>();
                 pieces.add(x);
                 removeSameLength(queue, x.cutLengthMm(), multiple.get().multiplier() - 1, pieces);
-                cuts.add(buildCutRecord(material, multiple.get().stockLengthMm(), pieces));
+                cuts.add(buildCutRecord(material, multiple.get().stockLengthMm(), pieces, CutLevel.PA2));
                 continue;
             }
 
@@ -79,13 +79,13 @@ public class BestFitDecreasingStrategy implements CuttingStrategy {
             }
             if (combinePartner != null) {
                 queue.remove(combinePartner);
-                cuts.add(buildCutRecord(material, combinedStockLengthMm, List.of(x, combinePartner)));
+                cuts.add(buildCutRecord(material, combinedStockLengthMm, List.of(x, combinePartner), CutLevel.PA3));
                 continue;
             }
 
             Optional<Integer> restockFit = pool.findRestockFit(material, x.cutLengthMm());
             if (restockFit.isPresent()) {
-                CutRecord cut = buildCutRecord(material, restockFit.get(), List.of(x));
+                CutRecord cut = buildCutRecord(material, restockFit.get(), List.of(x), CutLevel.PA4);
                 // Tái dùng ngay trong cùng lượt chạy — các đoạn xử lý sau (Mức 1-4) thấy được phần
                 // dư này như tồn kho thật, không phải chờ tới lần chạy kế tiếp. Mức 4 chỉ nhận
                 // thanh để lại phần dư > 3m nên nhánh này luôn là RESTOCK, không cần kiểm lại.
@@ -101,10 +101,17 @@ public class BestFitDecreasingStrategy implements CuttingStrategy {
         }
     }
 
-    private static CutRecord buildCutRecord(SlatMaterial material, int stockLengthMm, List<CuttingDemand> pieces) {
+    /**
+     * Mức cắt là tham số bắt buộc chứ không suy ra từ hình dạng kết quả: cùng một phôi cắt ra một
+     * đoạn với phần dư dưới 30cm có thể đến từ Mức 1 hoặc Mức 3, nên chỉ nhánh đã quyết định mới
+     * biết mức thật.
+     */
+    private static CutRecord buildCutRecord(
+            SlatMaterial material, int stockLengthMm, List<CuttingDemand> pieces, CutLevel cutLevel) {
         int usedMm = pieces.stream().mapToInt(CuttingDemand::cutLengthMm).sum();
         int remainderMm = stockLengthMm - usedMm;
-        return new CutRecord(material, stockLengthMm, pieces, remainderMm, RemainderCategory.classify(remainderMm));
+        return new CutRecord(
+                material, stockLengthMm, pieces, remainderMm, RemainderCategory.classify(remainderMm), cutLevel);
     }
 
     private static int countSameLength(List<CuttingDemand> queue, int cutLengthMm) {

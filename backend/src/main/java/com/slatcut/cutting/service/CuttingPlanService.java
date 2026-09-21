@@ -2,10 +2,12 @@ package com.slatcut.cutting.service;
 
 import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.config.ResourceNotFoundException;
+import com.slatcut.cutting.domain.CutLevel;
 import com.slatcut.cutting.domain.CuttingPlan;
 import com.slatcut.cutting.domain.CuttingPlanDetail;
 import com.slatcut.cutting.domain.CuttingPlanDetailItem;
 import com.slatcut.cutting.domain.CuttingPlanStatus;
+import com.slatcut.cutting.domain.CuttingPlanStockSnapshot;
 import com.slatcut.cutting.domain.InventoryBatch;
 import com.slatcut.cutting.domain.RemainderType;
 import com.slatcut.cutting.domain.SalesOrder;
@@ -22,6 +24,7 @@ import com.slatcut.cutting.repository.BomItemRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailRepository;
 import com.slatcut.cutting.repository.CuttingPlanRepository;
+import com.slatcut.cutting.repository.CuttingPlanStockSnapshotRepository;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
 import com.slatcut.cutting.repository.ShortageRecordRepository;
@@ -34,6 +37,7 @@ import com.slatcut.cutting.service.optimizer.CuttingStrategy;
 import com.slatcut.cutting.service.optimizer.InventoryPool;
 import com.slatcut.cutting.service.optimizer.RemainderCategory;
 import com.slatcut.cutting.service.optimizer.ShortageEntry;
+import com.slatcut.cutting.service.optimizer.StockLine;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -95,6 +99,7 @@ public class CuttingPlanService {
     private final CuttingPlanDetailRepository cuttingPlanDetailRepository;
     private final CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository;
     private final ShortageRecordRepository shortageRecordRepository;
+    private final CuttingPlanStockSnapshotRepository cuttingPlanStockSnapshotRepository;
     private final CuttingPlanMapper mapper;
 
     public CuttingPlanService(
@@ -108,6 +113,7 @@ public class CuttingPlanService {
             CuttingPlanDetailRepository cuttingPlanDetailRepository,
             CuttingPlanDetailItemRepository cuttingPlanDetailItemRepository,
             ShortageRecordRepository shortageRecordRepository,
+            CuttingPlanStockSnapshotRepository cuttingPlanStockSnapshotRepository,
             CuttingPlanMapper mapper) {
         this.salesOrderRepository = salesOrderRepository;
         this.inventoryBatchRepository = inventoryBatchRepository;
@@ -119,6 +125,7 @@ public class CuttingPlanService {
         this.cuttingPlanDetailRepository = cuttingPlanDetailRepository;
         this.cuttingPlanDetailItemRepository = cuttingPlanDetailItemRepository;
         this.shortageRecordRepository = shortageRecordRepository;
+        this.cuttingPlanStockSnapshotRepository = cuttingPlanStockSnapshotRepository;
         this.mapper = mapper;
     }
 
@@ -139,9 +146,9 @@ public class CuttingPlanService {
     @Transactional(readOnly = true)
     public CuttingPlanPreview simulate() {
         List<SalesOrder> scopeOrders = salesOrderRepository.findUnapproved();
-        CuttingPlanResult result = runAlgorithm(scopeOrders);
+        AlgorithmRun run = runAlgorithm(scopeOrders);
         long blockedOrderCount = salesOrderRepository.countUnapprovedIgnoringBom() - scopeOrders.size();
-        return buildPreview(scopeOrders, result, blockedOrderCount);
+        return buildPreview(scopeOrders, run, blockedOrderCount);
     }
 
     /**
@@ -151,10 +158,10 @@ public class CuttingPlanService {
     @Transactional(readOnly = true)
     public CuttingPlanApprovalPreview approvalPreview() {
         ScopeSnapshot snapshot = readApprovalScope();
-        CuttingPlanResult result = runAlgorithm(snapshot.orders());
+        AlgorithmRun run = runAlgorithm(snapshot.orders());
         long blockedOrderCount = countPendingMissingBom(snapshot.cutoffDate());
         return new CuttingPlanApprovalPreview(
-                buildPreview(snapshot.orders(), result, blockedOrderCount),
+                buildPreview(snapshot.orders(), run, blockedOrderCount),
                 snapshot.cutoffDate(),
                 snapshot.fingerprint());
     }
@@ -196,21 +203,45 @@ public class CuttingPlanService {
      * chạy 4 mức ưu tiên. Không chạm tới một repository ghi nào — đó là lý do chức năng tính có thể
      * dùng lại y nguyên thuật toán của chức năng duyệt mà không có rủi ro làm đổi dữ liệu.
      */
-    private CuttingPlanResult runAlgorithm(List<SalesOrder> orders) {
+    private AlgorithmRun runAlgorithm(List<SalesOrder> orders) {
         List<CuttingDemand> demands = cuttingDemandService.buildDemands(orders);
-        InventoryPool pool = new InventoryPool(inventoryBatchRepository.findAll());
-        return cuttingStrategy.computePlan(demands, pool);
+        List<InventoryBatch> batches = inventoryBatchRepository.findAll();
+        InventoryPool pool = new InventoryPool(batches);
+        CuttingPlanResult result = cuttingStrategy.computePlan(demands, pool);
+
+        // Chỉ giữ lại tồn kho của những loại thanh nan thực sự có mặt trong lần chạy: loại không
+        // liên quan thì báo cáo không bao giờ hỏi tới, mà ảnh chụp lại được ghi xuống CSDL mỗi lần
+        // duyệt nên không có lý do gì chép cả kho vào đó.
+        Set<Long> materialIds =
+                demands.stream().map(demand -> demand.slatMaterial().getId()).collect(Collectors.toSet());
+        return new AlgorithmRun(result, startingStock(batches, materialIds), pool.remainingLines(materialIds));
+    }
+
+    /**
+     * Tồn kho ngay TRƯỚC khi thuật toán tiêu thụ. Bỏ lô đã hết thanh đúng như {@link InventoryPool}
+     * bỏ khi nạp — lô có 0 thanh không phải là tồn kho, và để lại thì ảnh chụp mô tả một kho khác
+     * với kho mà thuật toán thực sự nhìn thấy.
+     */
+    private static List<StockLine> startingStock(List<InventoryBatch> batches, Set<Long> slatMaterialIds) {
+        return batches.stream()
+                .filter(batch -> batch.getSoThanh() != null && batch.getSoThanh() > 0)
+                .filter(batch -> slatMaterialIds.contains(batch.getSlatMaterial().getId()))
+                .map(batch -> new StockLine(
+                        batch.getSlatMaterial().getId(), batch.getDoDaiThanhMm(), batch.getSoThanh()))
+                .toList();
     }
 
     private CuttingPlanPreview buildPreview(
-            List<SalesOrder> scopeOrders, CuttingPlanResult result, long blockedOrderCount) {
+            List<SalesOrder> scopeOrders, AlgorithmRun run, long blockedOrderCount) {
         return new CuttingPlanPreview(
                 LocalDateTime.now(),
                 scopeOrders,
-                result,
+                run.result(),
                 blockedOrderCount,
-                totalWasteM(result.cuts()),
-                totalStockUsedM(result.cuts()));
+                totalWasteM(run.result().cuts()),
+                totalStockUsedM(run.result().cuts()),
+                run.stockAtStart(),
+                run.stockAfterRun());
     }
 
     /**
@@ -289,7 +320,8 @@ public class CuttingPlanService {
         List<SalesOrder> scopeOrders = snapshot.orders();
         Map<OrderKey, SalesOrder> orderIndex = scopeOrders.stream()
                 .collect(Collectors.toMap(so -> new OrderKey(so.getYcsx(), so.getItem()), so -> so));
-        CuttingPlanResult result = runAlgorithm(scopeOrders);
+        AlgorithmRun run = runAlgorithm(scopeOrders);
+        CuttingPlanResult result = run.result();
 
         CuttingPlan plan = new CuttingPlan();
         plan.setRunAt(LocalDateTime.now());
@@ -300,8 +332,9 @@ public class CuttingPlanService {
         plan.setTotalStockUsedM(totalStockUsedM(result.cuts()));
         cuttingPlanRepository.save(plan);
 
-        persistCuts(plan, result.cuts(), orderIndex);
+        persistCuts(plan, result.cuts(), orderIndex, run.stockAfterRun());
         persistShortages(plan, result.shortages(), orderIndex);
+        persistStockSnapshot(plan, run.stockAtStart());
         applyInventoryChanges(result.cuts());
         markScopeApproved(plan, scopeOrders, result);
         return plan;
@@ -526,7 +559,14 @@ public class CuttingPlanService {
      * của lớp kia.
      */
     private void persistCuts(
-            CuttingPlan plan, List<CutRecord> cuts, Map<OrderKey, SalesOrder> orderIndex) {
+            CuttingPlan plan,
+            List<CutRecord> cuts,
+            Map<OrderKey, SalesOrder> orderIndex,
+            List<StockLine> stockAfterRun) {
+        Map<StockKey, Integer> remainingByStock = stockAfterRun.stream()
+                .collect(Collectors.toMap(
+                        line -> new StockKey(line.slatMaterialId(), line.lengthMm()), StockLine::stickCount));
+
         for (CuttingResultGrouping.CutGroup group : CuttingResultGrouping.groupCuts(cuts)) {
             CuttingPlanDetail detail = new CuttingPlanDetail();
             detail.setCuttingPlan(plan);
@@ -535,7 +575,11 @@ public class CuttingPlanService {
             detail.setPatternCode(group.patternCode());
             detail.setRemainderMm(group.remainderMm());
             detail.setRemainderType(RemainderType.valueOf(group.remainderCategory().name()));
+            detail.setCutLevel(CutLevel.valueOf(group.cutLevel().name()));
             detail.setStickCount(group.stickCount());
+            // Vắng mặt nghĩa là độ dài đó đã bị cắt hết sạch trong chính lần chạy này, tức còn 0.
+            detail.setRemainingSticksAfter(remainingByStock.getOrDefault(
+                    new StockKey(group.slatMaterial().getId(), group.sourceLengthMm()), 0));
             cuttingPlanDetailRepository.save(detail);
 
             for (CuttingResultGrouping.CutItem cutItem : group.items()) {
@@ -547,6 +591,24 @@ public class CuttingPlanService {
                 item.setOriginalOrder(cutItem.originalOrder());
                 cuttingPlanDetailItemRepository.save(item);
             }
+        }
+    }
+
+    /**
+     * Chép tồn kho đầu lần chạy vào bảng ảnh chụp của phương án.
+     *
+     * <p>Chạy TRƯỚC {@link #applyInventoryChanges}: sau khi trừ kho thì ảnh chụp không còn chụp
+     * được trạng thái ban đầu nữa. Dùng tham chiếu lười tới loại thanh nan thay vì nạp entity —
+     * chỉ cần khóa ngoại để ghi, không đọc trường nào của nó.
+     */
+    private void persistStockSnapshot(CuttingPlan plan, List<StockLine> stockAtStart) {
+        for (StockLine line : stockAtStart) {
+            CuttingPlanStockSnapshot snapshot = new CuttingPlanStockSnapshot();
+            snapshot.setCuttingPlan(plan);
+            snapshot.setSlatMaterial(slatMaterialRepository.getReferenceById(line.slatMaterialId()));
+            snapshot.setDoDaiThanhMm(line.lengthMm());
+            snapshot.setSoThanh(line.stickCount());
+            cuttingPlanStockSnapshotRepository.save(snapshot);
         }
     }
 
@@ -566,6 +628,16 @@ public class CuttingPlanService {
     private static BigDecimal toMeters(int lengthMm) {
         return BigDecimal.valueOf(lengthMm).divide(MM_PER_M, 2, RoundingMode.HALF_UP);
     }
+
+    /**
+     * Một lần chạy thuật toán: kết quả cắt, cộng trạng thái kho ở hai đầu.
+     *
+     * <p>Hai danh sách tồn kho đi kèm kết quả chứ không đọc lại sau, vì chỉ lúc này mới biết được
+     * chúng: ảnh chụp đầu lần chạy sẽ sai ngay khi tồn kho bị trừ, còn số thanh còn lại thì kho tạm
+     * của thuật toán là nơi duy nhất biết cả phần dư trên 3m vừa nhập lại giữa chừng lẫn những độ
+     * dài đã cắt hết sạch.
+     */
+    private record AlgorithmRun(CuttingPlanResult result, List<StockLine> stockAtStart, List<StockLine> stockAfterRun) {}
 
     /**
      * Một lượt đọc trạng thái hệ thống: danh sách đơn trong phạm vi duyệt, mốc ngày giao đã dùng để
