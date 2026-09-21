@@ -65,6 +65,12 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
     /** Id chắc chắn không tồn tại — nhánh "được phép" sẽ dừng ở 404 thay vì đổi dữ liệu thật. */
     private static final long MISSING_ID = 999_999_999L;
 
+    /** Dấu vân chắc chắn không khớp — nhánh "được phép" dừng ở 409 thay vì duyệt thật một phương án. */
+    private static final String APPROVE_PLAN_JSON =
+            """
+            {"stateFingerprint":"khong-bao-gio-khop"}
+            """;
+
     private static final String SLAT_MATERIAL_JSON =
             """
             {"slatMaterial":70000001,"slatMaterialName":"Thanh nan kiểm thử","slatGroup":"BOTTOM_BAR"}
@@ -159,6 +165,23 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
                 // Chạy thuật toán: tác vụ vận hành hằng ngày, chỉ PLANNER.
                 new Endpoint("POST /cutting-plans/generate", Set.of(PLANNER), () -> post("/api/v1/cutting-plans/generate")),
                 new Endpoint("GET /cutting-plans/scope-preview", Set.of(PLANNER), () -> get("/api/v1/cutting-plans/scope-preview")),
+
+                // Tính phương án cắt CỐ Ý mở cho cả ADMIN dù là POST: nó chỉ đọc và không chốt
+                // quyết định sản xuất nào, nên đứng cùng nhóm với các endpoint đọc bên dưới chứ
+                // không cùng nhóm với hai dòng ghi ở trên. Duyệt thì ngược lại — đó là thao tác
+                // vận hành duy nhất ghi dữ liệu ở nhóm chức năng này.
+                new Endpoint(
+                        "POST /cutting-plans/simulate",
+                        Set.of(ADMIN, PLANNER),
+                        () -> post("/api/v1/cutting-plans/simulate")),
+                new Endpoint(
+                        "GET /cutting-plans/approval-preview",
+                        Set.of(PLANNER),
+                        () -> get("/api/v1/cutting-plans/approval-preview")),
+                new Endpoint(
+                        "POST /cutting-plans/approve",
+                        Set.of(PLANNER),
+                        () -> json(post("/api/v1/cutting-plans/approve"), APPROVE_PLAN_JSON)),
 
                 // Tài khoản người dùng: ADMIN độc quyền, kể cả GET — khác mọi module còn lại (xem
                 // Javadoc của UserController). Vòng đời là tạo/sửa/khóa nên không có DELETE.

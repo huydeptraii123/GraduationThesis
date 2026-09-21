@@ -159,6 +159,18 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         return salesOrderRepository.save(entity);
     }
 
+    /** Phương án rỗng chỉ để làm mốc "đã duyệt" cho đơn hàng — không kiểm nội dung của nó. */
+    private CuttingPlan persistCuttingPlan() {
+        CuttingPlan entity = new CuttingPlan();
+        entity.setRunAt(java.time.LocalDateTime.now());
+        entity.setStatus(CuttingPlanStatus.COMPLETED);
+        entity.setScopeCutoffDate(LocalDate.now());
+        entity.setScopeOrderCount(0);
+        entity.setTotalWasteM(BigDecimal.ZERO);
+        entity.setTotalStockUsedM(BigDecimal.ZERO);
+        return cuttingPlanRepository.save(entity);
+    }
+
     private void persistInventoryBatch(SlatMaterial slatMaterial, int lengthMm, int count) {
         InventoryBatch entity = new InventoryBatch();
         entity.setSlatMaterial(slatMaterial);
@@ -422,6 +434,43 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         SalesOrder loaded = preview.plan().scopeOrders().get(0);
         assertThat(Hibernate.isInitialized(loaded.getCustomer())).isTrue();
     }
+    /**
+     * Chốt chặn chống hai lượt duyệt chồng nhau, kiểm ở đúng tầng mà nó hoạt động. Dấu vân trạng
+     * thái không đủ: nó chỉ là một lần đọc thường nên hai lượt chạy song song — hoặc một cú nhấp
+     * đúp — đều đọc được dấu vân cũ và cùng vượt qua. Câu UPDATE này khóa dòng ở CSDL nên lượt sau
+     * không sửa được đơn mà lượt trước đã chốt, và số dòng nó trả về chính là thứ lớp dịch vụ dùng
+     * để phát hiện rồi hủy cả giao dịch.
+     *
+     * <p>Bản thân tình huống hai giao dịch chạy song song không dựng được trong bộ test này (mọi
+     * test chạy trong một giao dịch duy nhất rồi quay lui), nên phần kiểm được là cơ chế mà chốt
+     * chặn đó dựa vào: đơn đã thuộc phương án khác thì không bị sửa, và không bị đếm.
+     */
+    @Test
+    void markApproved_leavesOrdersAlreadyBelongingToAnotherPlanUntouched() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SalesOrder pending =
+                persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        SalesOrder alreadyApproved =
+                persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
+        CuttingPlan earlierPlan = persistCuttingPlan();
+        alreadyApproved.setApprovedPlan(earlierPlan);
+        salesOrderRepository.saveAndFlush(alreadyApproved);
+        CuttingPlan laterPlan = persistCuttingPlan();
+
+        int marked = salesOrderRepository.markApproved(laterPlan, List.of(pending.getId(), alreadyApproved.getId()));
+
+        assertThat(marked).isEqualTo(1);
+        assertThat(salesOrderRepository.findById(pending.getId()).orElseThrow().getApprovedPlan().getId())
+                .isEqualTo(laterPlan.getId());
+        assertThat(salesOrderRepository
+                        .findById(alreadyApproved.getId())
+                        .orElseThrow()
+                        .getApprovedPlan()
+                        .getId())
+                .isEqualTo(earlierPlan.getId());
+    }
+
     /** Dấu vân rỗng (client cũ, hoặc bấm duyệt mà chưa hề xem phương án) cũng bị từ chối, không rơi vào NPE. */
     @Test
     void approve_rejectsMissingFingerprint() {
