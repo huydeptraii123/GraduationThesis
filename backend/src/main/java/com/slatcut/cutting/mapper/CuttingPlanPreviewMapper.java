@@ -1,5 +1,6 @@
 package com.slatcut.cutting.mapper;
 
+import com.slatcut.cutting.domain.CutLevel;
 import com.slatcut.cutting.domain.RemainderType;
 import com.slatcut.cutting.domain.SalesOrder;
 import com.slatcut.cutting.dto.CuttingPlanApprovalPreviewResponse;
@@ -11,6 +12,7 @@ import com.slatcut.cutting.dto.ShortageRecordResponse;
 import com.slatcut.cutting.service.CuttingPlanApprovalPreview;
 import com.slatcut.cutting.service.CuttingPlanPreview;
 import com.slatcut.cutting.service.CuttingResultGrouping;
+import com.slatcut.cutting.service.optimizer.StockLine;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -56,12 +58,17 @@ public class CuttingPlanPreviewMapper {
                 preview.scopeCutoffDate(),
                 preview.stateFingerprint(),
                 toResponse(plan, demands),
-                toDetails(CuttingResultGrouping.groupCuts(plan.result().cuts()), orderIndex),
+                toDetails(CuttingResultGrouping.groupCuts(plan.result().cuts()), orderIndex, plan.stockAfterRun()),
                 toShortages(CuttingResultGrouping.groupShortages(plan.result().shortages()), orderIndex));
     }
 
     private static List<CuttingPlanDetailResponse> toDetails(
-            List<CuttingResultGrouping.CutGroup> groups, Map<OrderKey, SalesOrder> orderIndex) {
+            List<CuttingResultGrouping.CutGroup> groups,
+            Map<OrderKey, SalesOrder> orderIndex,
+            List<StockLine> stockAfterRun) {
+        Map<StockKey, Integer> remainingByStock = stockAfterRun.stream()
+                .collect(Collectors.toMap(
+                        line -> new StockKey(line.slatMaterialId(), line.lengthMm()), StockLine::stickCount));
         List<CuttingPlanDetailResponse> details = new ArrayList<>(groups.size());
         for (CuttingResultGrouping.CutGroup group : groups) {
             List<CuttingPlanDetailItemResponse> items = new ArrayList<>(group.items().size());
@@ -91,7 +98,10 @@ public class CuttingPlanPreviewMapper {
                     group.patternCode(),
                     group.remainderMm(),
                     RemainderType.valueOf(group.remainderCategory().name()),
+                    CutLevel.valueOf(group.cutLevel().name()),
                     group.stickCount(),
+                    remainingByStock.getOrDefault(
+                            new StockKey(group.slatMaterial().getId(), group.sourceLengthMm()), 0),
                     items));
         }
         return details;
@@ -123,4 +133,7 @@ public class CuttingPlanPreviewMapper {
     }
 
     private record OrderKey(String ycsx, Integer item) {}
+
+    /** Một dòng tồn kho — tra số phôi còn lại của đúng (loại thanh nan, độ dài) mà phôi này lấy ra. */
+    private record StockKey(Long slatMaterialId, int lengthMm) {}
 }

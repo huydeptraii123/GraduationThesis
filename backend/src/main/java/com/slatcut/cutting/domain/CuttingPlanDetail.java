@@ -57,4 +57,22 @@ public class CuttingPlanDetail {
 
     @Column(name = "stick_count")
     private Integer stickCount;
+
+    /**
+     * Mức ưu tiên mà thuật toán đã dùng cho phôi này. Rỗng với phương án lưu trước khi hệ thống bắt
+     * đầu ghi lại mức — không suy đoán ngược cho dữ liệu lịch sử.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cut_level")
+    private CutLevel cutLevel;
+
+    /**
+     * Số phôi cùng loại và cùng độ dài còn lại trong kho sau lần chạy.
+     *
+     * <p>Lưu lại thay vì đọc tồn kho lúc xuất báo cáo: tồn kho đổi hằng ngày, nên đọc lại thì cùng
+     * một phương án xuất ra ở hai thời điểm cho hai con số khác nhau, trong khi chứng từ đã phát
+     * hành xuống xưởng phải bất biến.
+     */
+    @Column(name = "remaining_sticks_after")
+    private Integer remainingSticksAfter;
 }

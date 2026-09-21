@@ -14,6 +14,9 @@ public interface CuttingPlanDetailRepository extends JpaRepository<CuttingPlanDe
     @EntityGraph(attributePaths = "slatMaterial")
     List<CuttingPlanDetail> findByCuttingPlan_Id(Long cuttingPlanId);
 
+    /** Chốt xóa loại thanh nan: nó đã được cắt trong một phương án đã duyệt thì không xóa được. */
+    boolean existsBySlatMaterial_Id(Long slatMaterialId);
+
     /**
      * Tổng độ dài phần dư theo từng loại, gộp sẵn ở tầng DB cho dashboard. {@code remainderMm} là
      * phần dư của MỖI phôi nên bắt buộc nhân {@code stickCount} — 1 dòng detail có thể đại diện
