@@ -479,6 +479,67 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
                 .isEqualTo(earlierPlan.getId());
     }
 
+    /**
+     * Mức 3 ghép hai đoạn của hai đơn khác nhau lên cùng một phôi. Phạm vi được phép ghép là tập
+     * đơn của CHÍNH lần chạy đó, nên hai chức năng cho kết quả khác nhau trên cùng một bộ dữ liệu:
+     * chức năng tính ghép được đơn giao gấp với đơn giao xa, còn đợt duyệt thì không — đơn giao xa
+     * không nằm trong phạm vi, và một phương án đưa xuống xưởng không được phép cắt cho một bộ cửa
+     * chưa tới lượt sản xuất.
+     *
+     * <p>Bộ dữ liệu dựng sao cho ghép hay không ghép cho hai kết quả nhìn thấy được: phôi 7000mm
+     * vừa khít 3000 + 4000 (phần dư 0), còn nếu chỉ cắt đoạn 3000 thì để lại 4000mm nhập lại kho.
+     * Mức 1 không khớp (dư 4000mm quá xa ngưỡng 30cm) và Mức 2 cũng không (7000 không chia hết cho
+     * 3000), nên mức quyết định kết quả đúng là Mức 3.
+     */
+    @Test
+    void simulate_pairsAcrossAllOrdersAtLevelThree() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 7000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("3.000"), LocalDate.now());
+        persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("4.000"), LocalDate.now().plusDays(90));
+
+        CuttingPlanPreview preview = service.simulate();
+
+        assertThat(preview.result().cuts()).hasSize(1);
+        assertThat(preview.result().cuts().get(0).pieces())
+                .extracting(CuttingDemand::cutLengthMm)
+                .containsExactlyInAnyOrder(3000, 4000);
+        assertThat(preview.result().cuts().get(0).remainderMm()).isZero();
+        assertThat(preview.result().shortages()).isEmpty();
+    }
+
+    /** Cùng bộ dữ liệu, nhưng đợt duyệt chỉ thấy đơn trong hạn giao nên không có đối tác để ghép. */
+    @Test
+    void approve_doesNotPairWithOrderOutsideTheApprovalScope() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 7000, 1);
+        SalesOrder urgent =
+                persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("3.000"), LocalDate.now());
+        SalesOrder farFuture = persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("4.000"), LocalDate.now().plusDays(90));
+
+        CuttingPlan plan = approvePlan();
+
+        List<CuttingPlanDetail> details = cuttingPlanDetailRepository.findByCuttingPlan_Id(plan.getId());
+        assertThat(details).hasSize(1);
+        // Không ghép được nên rơi xuống Mức 4: cắt đoạn 3000 và để lại 4000mm nhập lại kho.
+        assertThat(details.get(0).getRemainderMm()).isEqualTo(4000);
+        assertThat(details.get(0).getRemainderType()).isEqualTo(RemainderType.RESTOCK);
+        assertThat(cuttingPlanDetailItemRepository.findByCuttingPlanDetail_IdIn(List.of(details.get(0).getId())))
+                .extracting(item -> item.getSalesOrder().getId())
+                .containsExactly(urgent.getId());
+        // Đơn ngoài phạm vi không bị đụng tới: không có lát cắt nào, và vẫn ở lại hàng chờ.
+        assertThat(salesOrderRepository.findById(farFuture.getId()).orElseThrow().getApprovedPlan())
+                .isNull();
+    }
+
     /** Dấu vân rỗng (client cũ, hoặc bấm duyệt mà chưa hề xem phương án) cũng bị từ chối, không rơi vào NPE. */
     @Test
     void approve_rejectsMissingFingerprint() {
