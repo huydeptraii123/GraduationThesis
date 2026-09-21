@@ -171,6 +171,10 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
                         Set.of(ADMIN, PLANNER),
                         () -> post("/api/v1/cutting-plans/simulate")),
                 new Endpoint(
+                        "POST /cutting-plans/simulate/export",
+                        Set.of(ADMIN, PLANNER),
+                        () -> post("/api/v1/cutting-plans/simulate/export")),
+                new Endpoint(
                         "GET /cutting-plans/approval-preview",
                         Set.of(PLANNER),
                         () -> get("/api/v1/cutting-plans/approval-preview")),

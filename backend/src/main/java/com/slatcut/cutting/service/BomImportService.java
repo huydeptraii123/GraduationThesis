@@ -53,14 +53,6 @@ public class BomImportService {
             "slat_count_slope",
             "slat_count_intercept");
 
-    // Khớp đúng 5 giá trị tiếng Việt thật trong file nguồn — xem docs/domain-model.md mục 3.3.2.
-    private static final Map<String, SlatGroup> SLAT_GROUP_BY_LABEL = Map.of(
-            "Nan chính", SlatGroup.MAIN_SLAT,
-            "Nan phụ", SlatGroup.SUB_SLAT,
-            "Thanh đáy", SlatGroup.BOTTOM_BAR,
-            "Ray", SlatGroup.RAIL,
-            "Khác", SlatGroup.OTHER);
-
     private final BomItemRepository bomItemRepository;
     private final DoorProductRepository doorProductRepository;
     private final SlatMaterialRepository slatMaterialRepository;
@@ -170,7 +162,7 @@ public class BomImportService {
         if (slatGroupRaw == null || slatGroupRaw.isBlank()) {
             rowErrors.add("Thiếu nhóm thanh nan (slat_group)");
         } else {
-            slatGroup = SLAT_GROUP_BY_LABEL.get(slatGroupRaw);
+            slatGroup = SlatGroup.fromLabel(slatGroupRaw);
             if (slatGroup == null) {
                 rowErrors.add("Nhóm thanh nan (slat_group) không hợp lệ: " + slatGroupRaw);
             }
