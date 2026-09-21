@@ -4,6 +4,7 @@ import com.slatcut.cutting.domain.CuttingPlan;
 import com.slatcut.cutting.domain.CuttingPlanStatus;
 import com.slatcut.cutting.dto.CuttingPlanApprovalPreviewResponse;
 import com.slatcut.cutting.dto.CuttingPlanApproveRequest;
+import com.slatcut.cutting.dto.CuttingPlanDemandView;
 import com.slatcut.cutting.dto.CuttingPlanPreviewResponse;
 import com.slatcut.cutting.dto.CuttingPlanResponse;
 import com.slatcut.cutting.dto.CuttingPlanSummaryResponse;
@@ -16,6 +17,7 @@ import com.slatcut.cutting.service.CuttingPlanService;
 import com.slatcut.cutting.service.ExcelExportService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
+import java.util.List;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -106,14 +108,33 @@ public class CuttingPlanController {
         return service.getById(id);
     }
 
+    /**
+     * Xuất Excel cho một lần tính chưa lưu — chạy lại thuật toán rồi xuất thẳng, vì kết quả lần
+     * tính không tồn tại ở đâu để mà đọc lại bằng id. Mở cho cả hai vai trò như
+     * {@code POST /simulate}: vẫn chỉ đọc, không chốt quyết định sản xuất nào.
+     *
+     * <p>Con số trong file này là của trạng thái tại đúng thời điểm bấm, và vì chức năng tính ghép
+     * đoạn trên toàn bộ sổ đơn nên nhu cầu vật tư bù đọc được ở đây là <b>giới hạn dưới</b>, không
+     * phải con số sẽ xảy ra khi cắt thật theo từng đợt duyệt.
+     */
+    @PostMapping("/simulate/export")
+    @PreAuthorize("hasAnyRole('ADMIN','PLANNER')")
+    public ResponseEntity<byte[]> exportSimulation() {
+        List<CuttingPlanDemandView> rows = reportService.buildFromPreview(service.simulate());
+        return excelResponse(excelExportService.exportCuttingPlan(rows), "phuong-an-cat-du-kien.xlsx");
+    }
+
     @GetMapping("/{id}/export")
     public ResponseEntity<byte[]> export(@PathVariable Long id) {
-        return excelResponse(excelExportService.exportCuttingPlan(id), "phuong-an-cat-" + id + ".xlsx");
+        List<CuttingPlanDemandView> rows = reportService.buildFromApprovedPlan(id);
+        return excelResponse(excelExportService.exportCuttingPlan(rows), "phuong-an-cat-" + id + ".xlsx");
     }
 
     @GetMapping("/{id}/shortage-report")
     public ResponseEntity<byte[]> shortageReport(@PathVariable Long id) {
-        return excelResponse(excelExportService.exportShortageReport(id), "bao-cao-thieu-vat-tu-" + id + ".xlsx");
+        List<CuttingPlanDemandView> rows = reportService.buildFromApprovedPlan(id);
+        return excelResponse(
+                excelExportService.exportShortageReport(rows), "bao-cao-thieu-vat-tu-" + id + ".xlsx");
     }
 
     private ResponseEntity<byte[]> excelResponse(byte[] file, String filename) {
