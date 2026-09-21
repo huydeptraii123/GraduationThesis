@@ -33,6 +33,16 @@ public class DoorProduct {
     @Column(name = "z_mau_sac")
     private String mauSac;
 
+    /**
+     * Model cửa (dòng sản phẩm), trục của biểu đồ "số bộ cửa theo model" ở báo cáo tổng quan.
+     *
+     * <p>Rỗng được: cột này chỉ có trong hồ sơ đơn hàng, trong khi mẫu cửa có thể được tạo ra từ cả
+     * luồng nhập định mức — mẫu cửa biết tới qua đường đó sẽ tạm chưa có model cho tới khi một lượt
+     * nhập đơn hàng gặp đúng nó.
+     */
+    @Column(name = "material_group")
+    private String materialGroup;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

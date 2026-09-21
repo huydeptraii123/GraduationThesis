@@ -114,7 +114,8 @@ public class SalesOrderImportService {
                     continue;
                 }
 
-                parseRow(row, col, r + 1, evaluator, rows, errors, seenYcsxItemKeys, seenSalesDocItemKeys);
+                parseRow(
+                        row, col, r + 1, evaluator, materialGroup, rows, errors, seenYcsxItemKeys, seenSalesDocItemKeys);
             }
 
             if (!errors.isEmpty()) {
@@ -134,6 +135,7 @@ public class SalesOrderImportService {
             Map<String, Integer> col,
             int excelRowNumber,
             FormulaEvaluator evaluator,
+            String materialGroup,
             List<ParsedRow> rows,
             List<ImportRowError> errors,
             Set<YcsxItemKey> seenYcsxItemKeys,
@@ -264,6 +266,7 @@ public class SalesOrderImportService {
                 material,
                 itemDescription,
                 mauSac,
+                materialGroup,
                 chieuCaoDh,
                 chieuRongDh,
                 reqdDeliveryDate));
@@ -284,21 +287,40 @@ public class SalesOrderImportService {
         return result;
     }
 
+    /**
+     * Mẫu cửa mới thì tạo, mẫu cửa đã có thì dùng lại — và nhân thể điền model cửa nếu đang rỗng.
+     *
+     * <p>Điền-khi-rỗng KHÔNG phải là ghi đè: mẫu cửa được tạo ra từ cả luồng nhập định mức, mà hồ sơ
+     * định mức không có cột model, nên những mẫu cửa biết tới qua đường đó vốn bỏ trống ô này. Lượt
+     * nhập đơn hàng là nơi duy nhất biết model, và nó chỉ đang lấp chỗ trống. Giá trị đã có thì giữ
+     * nguyên, đúng nguyên tắc chung của mọi luồng nhập là không phá bản ghi sẵn có
+     * (docs/domain-model.md).
+     */
     private Map<DoorProductKey, DoorProduct> upsertDoorProducts(List<ParsedRow> rows) {
         Map<DoorProductKey, DoorProduct> result = new HashMap<>();
         for (ParsedRow row : rows) {
             DoorProductKey key = new DoorProductKey(row.material(), row.mauSac());
             result.computeIfAbsent(key, k -> doorProductRepository
                     .findByMaterialAndMauSac(k.material(), k.mauSac())
+                    .map(existing -> fillMissingMaterialGroup(existing, row.materialGroup()))
                     .orElseGet(() -> {
                         DoorProduct entity = new DoorProduct();
                         entity.setMaterial(k.material());
                         entity.setDoorMaterialName(row.itemDescription());
                         entity.setMauSac(k.mauSac());
+                        entity.setMaterialGroup(row.materialGroup());
                         return doorProductRepository.save(entity);
                     }));
         }
         return result;
+    }
+
+    private DoorProduct fillMissingMaterialGroup(DoorProduct entity, String materialGroup) {
+        if (entity.getMaterialGroup() != null || materialGroup == null) {
+            return entity;
+        }
+        entity.setMaterialGroup(materialGroup);
+        return doorProductRepository.save(entity);
     }
 
     /**
@@ -495,6 +517,7 @@ public class SalesOrderImportService {
             Long material,
             String itemDescription,
             String mauSac,
+            String materialGroup,
             BigDecimal chieuCaoDh,
             BigDecimal chieuRongDh,
             LocalDate reqdDeliveryDate) {}
