@@ -1,14 +1,33 @@
-import { CheckCircleOutlined } from '@ant-design/icons'
-import { Alert, Button, DatePicker, Input, Select, Space, Table, Tag, Typography } from 'antd'
+import { CalculatorOutlined, CheckCircleOutlined, DatabaseOutlined, FileTextOutlined } from '@ant-design/icons'
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Input,
+  Row,
+  Select,
+  Space,
+  Spin,
+  Statistic,
+  Table,
+  Tag,
+  Typography,
+} from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { extractErrorMessage } from '../../api/apiError'
 import { tablePagination, type PageParams } from '../../api/pagination'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { usePagedList } from '../../hooks/usePagedList'
 import { useAuth } from '../auth/AuthContext'
 import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
 import { canApproveCuttingPlan } from '../auth/permissions'
+import { WasteStatsSection } from '../dashboard/WasteStatsSection'
+import { getDashboard } from '../dashboard/dashboardApi'
+import type { DashboardResponse } from '../dashboard/types'
 import { listCuttingPlans } from './cuttingPlansApi'
 import type { CuttingPlanStatus } from './types'
 
@@ -25,6 +44,31 @@ export function CuttingPlanListPage() {
   const navigate = useNavigate()
   // Chỉ PLANNER duyệt được phương án cắt, khớp @PreAuthorize của POST /cutting-plans/approve.
   const canApprove = canApproveCuttingPlan(user)
+
+  // Số liệu cộng dồn qua MỌI đợt đã duyệt — thuộc về màn này chứ không phải trang chủ: trang chủ
+  // nói về một lần TÍNH (chưa ghi gì), còn mỗi dòng dưới đây là một lần tồn kho đã bị trừ thật.
+  const [stats, setStats] = useState<DashboardResponse | null>(null)
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [statsError, setStatsError] = useState<string | null>(null)
+  const latestStatsId = useRef(0)
+
+  useEffect(() => {
+    const statsId = ++latestStatsId.current
+    void getDashboard()
+      .then((loaded) => {
+        if (statsId === latestStatsId.current) {
+          setStats(loaded)
+          setStatsError(null)
+          setStatsLoading(false)
+        }
+      })
+      .catch((error: unknown) => {
+        if (statsId === latestStatsId.current) {
+          setStatsError(extractErrorMessage(error, 'Không tải được số liệu tổng hợp.'))
+          setStatsLoading(false)
+        }
+      })
+  }, [])
 
   const [keyword, setKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState<CuttingPlanStatus | null>(null)
@@ -84,6 +128,66 @@ export function CuttingPlanListPage() {
       {!canApprove && <RoleRestrictionNotice requiredRole="PLANNER" action="duyệt phương án cắt" />}
 
       {loadError && <Alert type="error" showIcon style={{ margin: '16px 0' }} title={loadError} />}
+
+      {statsError && <Alert type="error" showIcon style={{ margin: '16px 0' }} title={statsError} />}
+
+      {/* Bọc trong Spin và chỉ vẽ khi đã có dữ liệu: các ô này đọc `?? 0`, nên trong lúc đang tải
+          hoặc khi tải hỏng chúng hiện "Tỷ lệ phế cộng dồn 0,0%" — một con số sai trông như thật. */}
+      <Spin spinning={statsLoading}>
+        {stats != null && (
+          <>
+      <Row gutter={16} style={{ marginTop: 16 }}>
+        <Col span={8}>
+          <Card size="small">
+            <Statistic
+              title="Đơn hàng chờ xử lý"
+              value={stats?.pendingOrderCount ?? 0}
+              groupSeparator="."
+              suffix="đơn"
+              prefix={<FileTextOutlined />}
+            />
+            {stats && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Giao đến hết {dayjs(stats.scopeCutoffDate).format('DD/MM/YYYY')}
+              </Typography.Text>
+            )}
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small">
+            <Statistic
+              title="Lô tồn kho sẵn sàng"
+              value={stats?.readyBatchCount ?? 0}
+              groupSeparator="."
+              suffix="lô"
+              prefix={<DatabaseOutlined />}
+            />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {(stats?.readyStickCount ?? 0).toLocaleString('vi-VN')} thanh khả dụng
+            </Typography.Text>
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small">
+            <Statistic
+              title="Tỷ lệ phế cộng dồn"
+              value={stats?.cumulativeWasteRatioPercent ?? 0}
+              precision={1}
+              suffix="%"
+              prefix={<CalculatorOutlined />}
+            />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {(stats?.cumulativeWasteM ?? 0).toFixed(2)} m phế / {(stats?.cumulativeStockUsedM ?? 0).toFixed(2)} m
+              tiêu hao
+            </Typography.Text>
+          </Card>
+        </Col>
+      </Row>
+
+      <WasteStatsSection data={stats} />
+          </>
+        )}
+      </Spin>
 
       <Space style={{ margin: '16px 0' }} wrap>
         <Input
