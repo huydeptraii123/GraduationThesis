@@ -123,13 +123,21 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
      * entity ra rồi set — phạm vi có thể tới 70 đơn và không có lý do gì để kéo chúng vào
      * persistence context chỉ để đổi 1 khóa ngoại.
      *
+     * <p><b>{@code AND so.approvedPlan IS NULL} là chốt chặn cuối cùng chống hai lượt duyệt chồng
+     * nhau</b>, không phải điều kiện thừa. Dấu vân trạng thái chỉ là một lần đọc thường nên hai lượt
+     * duyệt chạy song song — hoặc đơn giản là một cú nhấp đúp — đều đọc được dấu vân cũ và cùng vượt
+     * qua nó. Câu UPDATE này thì khác: nó khóa dòng ở CSDL, nên lượt thứ hai phải chờ lượt thứ nhất
+     * kết thúc rồi mới chạy, và khi chạy thì thấy các đơn đã có phương án nên không sửa được dòng
+     * nào. Số dòng trả về vì vậy là câu trả lời đáng tin cho câu hỏi "mình có phải người duyệt
+     * chúng không"; nơi gọi so số đó với số đơn định duyệt và hủy cả giao dịch nếu lệch.
+     *
      * <p>{@code clearAutomatically}/{@code flushAutomatically} là bắt buộc: cùng transaction duyệt
      * có đọc lại SalesOrder (persist CuttingPlanDetailItem/ShortageRecord tham chiếu tới chúng),
      * nếu không xóa cache mức 1 thì các entity đã nạp trước đó vẫn mang approvedPlan cũ. Vì lý do
      * đó, gọi hàm này sau cùng trong transaction — mọi entity nạp trước nó đều trở thành detached.
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("UPDATE SalesOrder so SET so.approvedPlan = :plan WHERE so.id IN :ids")
+    @Query("UPDATE SalesOrder so SET so.approvedPlan = :plan WHERE so.id IN :ids AND so.approvedPlan IS NULL")
     int markApproved(@Param("plan") CuttingPlan plan, @Param("ids") List<Long> ids);
 
     /**

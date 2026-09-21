@@ -1,11 +1,18 @@
 package com.slatcut.cutting.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.jayway.jsonpath.JsonPath;
 import com.slatcut.cutting.AbstractIntegrationTest;
 import com.slatcut.cutting.domain.BomItem;
 import com.slatcut.cutting.domain.Customer;
@@ -31,6 +38,7 @@ import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 /** Test tầng controller đầu tiên trong dự án — MockMvc thật (Spring Security bật), JWT tự sinh qua JwtService, không qua /auth/login. */
@@ -42,6 +50,12 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
 
     @Autowired
     private JwtService jwtService;
+
+    /**
+     * Tự dựng chứ không lấy từ context: bộ tuần tự hóa của ứng dụng thuộc nhánh Jackson khác,
+     * còn ở đây chỉ cần đọc lại JSON đã trả về để so hai cây với nhau.
+     */
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
     private CuttingPlanService service;
@@ -127,6 +141,181 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
         inventoryBatchRepository.save(entity);
     }
 
+    /**
+     * Chức năng tính mở cho ADMIN — nó chỉ đọc và không chốt quyết định sản xuất nào. Khẳng định
+     * quan trọng ở đây không phải mã 200 mà là số phương án đã lưu không nhúc nhích: đây là endpoint
+     * dễ bị hiểu nhầm là "chạy thuật toán thì phải lưu lại" nhất.
+     */
+    @Test
+    void simulate_asAdmin_returnsDemandRowsWithoutSavingAnything() throws Exception {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        SalesOrder order = persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
+        long plansBefore = cuttingPlanRepository.count();
+
+        mockMvc.perform(post("/api/v1/cutting-plans/simulate").header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.scopeOrderCount").value(1))
+                .andExpect(jsonPath("$.computedAt").isNotEmpty())
+                .andExpect(jsonPath("$.demands.length()").value(1))
+                .andExpect(jsonPath("$.demands[0].ycsx").value(order.getYcsx()))
+                .andExpect(jsonPath("$.demands[0].quantityMissing").value(0))
+                .andExpect(jsonPath("$.demands[0].statusText").value("✔Đủ"));
+
+        assertThat(cuttingPlanRepository.count()).isEqualTo(plansBefore);
+    }
+
+    /**
+     * Màn hình duyệt tái sử dụng nguyên các thành phần hiển thị của phương án đã lưu, nên phương án
+     * chưa lưu phải trả về đúng hình dạng đó — chỉ khác ở chỗ mọi id còn rỗng vì chưa có bản ghi nào.
+     */
+    @Test
+    void approvalPreview_asPlanner_returnsSavedPlanShapeWithNullIdsPlusFingerprint() throws Exception {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        SalesOrder order = persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
+
+        mockMvc.perform(get("/api/v1/cutting-plans/approval-preview")
+                        .header("Authorization", "Bearer " + plannerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stateFingerprint").isNotEmpty())
+                .andExpect(jsonPath("$.scopeCutoffDate").value(LocalDate.now().plusDays(3).toString()))
+                .andExpect(jsonPath("$.details.length()").value(1))
+                .andExpect(jsonPath("$.details[0].id").isEmpty())
+                .andExpect(jsonPath("$.details[0].sourceLengthMm").value(2000))
+                .andExpect(jsonPath("$.details[0].items[0].id").isEmpty())
+                .andExpect(jsonPath("$.details[0].items[0].salesOrderId").value(order.getId()))
+                .andExpect(jsonPath("$.details[0].items[0].customerName").value(customer.getCustomerName()))
+                .andExpect(jsonPath("$.plan.demands.length()").value(1));
+    }
+
+    @Test
+    void approve_withStaleFingerprint_returnsConflictAndSavesNothing() throws Exception {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
+        long plansBefore = cuttingPlanRepository.count();
+
+        mockMvc.perform(post("/api/v1/cutting-plans/approve")
+                        .header("Authorization", "Bearer " + plannerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stateFingerprint\":\"da-cu\"}"))
+                .andExpect(status().isConflict());
+
+        assertThat(cuttingPlanRepository.count()).isEqualTo(plansBefore);
+    }
+
+    /** Đường đi trọn vẹn của màn hình duyệt: xem phương án, cầm dấu vân đi duyệt, nhận lại phương án đã lưu. */
+    @Test
+    void approve_withFingerprintFromPreview_savesPlanAndMarksOrderApproved() throws Exception {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        SalesOrder order = persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
+
+        String previewBody = mockMvc.perform(get("/api/v1/cutting-plans/approval-preview")
+                        .header("Authorization", "Bearer " + plannerToken()))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String fingerprint = JsonPath.read(previewBody, "$.stateFingerprint");
+
+        mockMvc.perform(post("/api/v1/cutting-plans/approve")
+                        .header("Authorization", "Bearer " + plannerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stateFingerprint\":\"" + fingerprint + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").isNotEmpty())
+                .andExpect(jsonPath("$.scopeOrderCount").value(1))
+                .andExpect(jsonPath("$.details[0].id").isNotEmpty());
+
+        assertThat(salesOrderRepository.findById(order.getId()).orElseThrow().getApprovedPlan())
+                .isNotNull();
+    }
+    /**
+     * Bất biến của màn hình duyệt: phương án PLANNER nhìn thấy và phương án được ghi xuống phải
+     * nhóm phôi y hệt nhau. Người duyệt chịu trách nhiệm trên đúng cái họ đã xem, nên hai bên lệch
+     * nhau dù chỉ ở cách gộp phôi cũng là lệch trách nhiệm.
+     *
+     * <p>Dựng bằng nhóm ray (mỗi bộ cửa cần 2 thanh cùng độ dài) để phép gộp thật sự phải làm
+     * việc: hai phôi giống hệt nhau phải thành MỘT dòng với số phôi bằng 2, chứ không phải hai
+     * dòng. Một bộ dữ liệu không có gì để gộp sẽ cho hai bên trùng nhau kể cả khi phép gộp sai.
+     */
+    @Test
+    void approvalPreviewAndApprovedPlan_groupSticksIdentically() throws Exception {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial rail = persistRailSlatMaterial();
+        persistRailBomItem(doorProduct, rail);
+        persistInventoryBatch(rail, 2500, 2);
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
+
+        String previewBody = mockMvc.perform(get("/api/v1/cutting-plans/approval-preview")
+                        .header("Authorization", "Bearer " + plannerToken()))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode previewDetails = objectMapper.readTree(previewBody).get("details");
+        String fingerprint = JsonPath.read(previewBody, "$.stateFingerprint");
+
+        String approvedBody = mockMvc.perform(post("/api/v1/cutting-plans/approve")
+                        .header("Authorization", "Bearer " + plannerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stateFingerprint\":\"" + fingerprint + "\"}"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode approvedDetails = objectMapper.readTree(approvedBody).get("details");
+
+        assertThat(previewDetails).hasSize(1);
+        assertThat(previewDetails.get(0).get("stickCount").asInt()).isEqualTo(2);
+        assertThat(previewDetails.get(0).get("items").get(0).get("cutQuantity").asInt())
+                .isEqualTo(2);
+        assertThat(withoutIds(approvedDetails)).isEqualTo(withoutIds(previewDetails));
+    }
+
+    /** Bỏ mọi trường id trước khi so: phương án chưa lưu chưa có id, đó là khác biệt duy nhất được phép. */
+    private static JsonNode withoutIds(JsonNode node) {
+        if (node.isObject()) {
+            ObjectNode copy = ((ObjectNode) node).deepCopy();
+            copy.remove("id");
+            copy.fieldNames().forEachRemaining(field -> copy.set(field, withoutIds(copy.get(field))));
+            return copy;
+        }
+        if (node.isArray()) {
+            ArrayNode copy = JsonNodeFactory.instance.arrayNode();
+            node.forEach(child -> copy.add(withoutIds(child)));
+            return copy;
+        }
+        return node;
+    }
+
+    private SlatMaterial persistRailSlatMaterial() {
+        SlatMaterial entity = new SlatMaterial();
+        entity.setSlatMaterial(70_000_000L + ++counter);
+        entity.setSlatMaterialName("Ray " + counter);
+        entity.setSlatGroup(SlatGroup.RAIL);
+        return slatMaterialRepository.save(entity);
+    }
+
+    private void persistRailBomItem(DoorProduct doorProduct, SlatMaterial slatMaterial) {
+        BomItem entity = new BomItem();
+        entity.setDoorProduct(doorProduct);
+        entity.setSlatMaterial(slatMaterial);
+        entity.setHeightOffsetM(BigDecimal.ZERO);
+        bomItemRepository.save(entity);
+    }
     @Test
     void generate_asPlanner_returnsNestedDetailsAndShortages() throws Exception {
         Customer customer = persistCustomer();
