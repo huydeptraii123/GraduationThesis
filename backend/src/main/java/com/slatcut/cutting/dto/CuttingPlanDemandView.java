@@ -26,8 +26,8 @@ import java.time.LocalDate;
  * @param statusText trạng thái đáp ứng dạng câu chữ, khuôn mẫu ở docs/sequence-diagrams.md
  * @param doorSetStatus trạng thái chung của cả bộ cửa — một loại thanh thiếu là cả bộ tính thiếu,
  *     vì bộ cửa không lắp được khi còn thiếu bất kỳ thành phần nào
- * @param lenhSx lệnh sản xuất của bộ cửa; <b>còn rỗng</b> cho tới khi trường này được nhập vào hệ
- *     thống cùng lượt nhập đơn hàng
+ * @param lenhSx lệnh sản xuất của bộ cửa — chỉ để in báo cáo cho khớp chứng từ xưởng. Rỗng với đơn
+ *     tạo thủ công và với đơn đã duyệt từ trước khi hệ thống bắt đầu lưu trường này
  * @param materialGroup model cửa, trục của biểu đồ "theo model". Rỗng với mẫu cửa chỉ mới biết tới
  *     qua luồng nhập định mức, vì hồ sơ định mức không có cột này — ô trống được lấp ở lượt nhập
  *     đơn hàng kế tiếp có mặt mẫu cửa đó

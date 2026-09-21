@@ -376,6 +376,58 @@ class SalesOrderImportServiceTest extends AbstractIntegrationTest {
                 .isEqualTo("CA-DA-DUOC-PHAN-LOAI");
     }
 
+    // ============================================ Lệnh sản xuất (chỉ để in ra báo cáo)
+
+    /**
+     * Cột lệnh sản xuất là cột TÙY CHỌN: hồ sơ nguồn cũ không có nó, và cả bộ test hiện tại cũng
+     * dùng tiêu đề không có nó. Thiếu cột phải cho giá trị rỗng chứ không được làm hỏng cả lượt
+     * nhập — nếu không, một cột chỉ phục vụ báo cáo lại chặn được cả việc nhập đơn hàng.
+     */
+    @Test
+    void importFromExcel_acceptsFileWithoutTheOptionalProductionOrderColumn() {
+        service.importFromExcel(excel(HEADER, doorRow("HY10040", 1, 1000100040L, 1, 92000040L)));
+
+        assertThat(salesOrderRepository.findByYcsxAndItem("HY10040", 1).orElseThrow().getLenhSx())
+                .isNull();
+    }
+
+    @Test
+    void importFromExcel_storesProductionOrderWhenTheColumnIsPresent() {
+        Object[] headerWithOrder = concat(HEADER, "order");
+        Object[] row = concat(doorRow("HY10041", 1, 1000100041L, 1, 92000041L), 7_000_123_456L);
+
+        service.importFromExcel(excel(headerWithOrder, row));
+
+        assertThat(salesOrderRepository.findByYcsxAndItem("HY10041", 1).orElseThrow().getLenhSx())
+                .isEqualTo(7_000_123_456L);
+    }
+
+    /**
+     * Hồ sơ nguồn có thể thiếu hẳn cột lệnh sản xuất — đó chính là tình huống mà đường đọc cột tùy
+     * chọn sinh ra để chịu được. Nhưng "chịu được" phải có nghĩa là bỏ qua, không phải ghi giá trị
+     * rỗng đè lên thứ đã nhập từ lần trước: người dùng sẽ thấy lệnh sản xuất biến mất khỏi báo cáo
+     * sau một lượt nhập bằng file cũ, mà không có cảnh báo nào vì trường này cố ý không được so
+     * sánh khi phát hiện xung đột.
+     */
+    @Test
+    void importFromExcel_doesNotWipeProductionOrderWhenTheColumnIsMissing() {
+        Object[] headerWithOrder = concat(HEADER, "order");
+        Object[] rowWithOrder = concat(doorRow("HY10042", 1, 1000100042L, 1, 92000042L), 7_000_123_456L);
+        service.importFromExcel(excel(headerWithOrder, rowWithOrder));
+
+        // Lượt nhập thứ hai bằng đúng hồ sơ nguồn KHÔNG có cột lệnh sản xuất.
+        service.importFromExcel(excel(HEADER, doorRow("HY10042", 1, 1000100042L, 1, 92000042L)));
+
+        assertThat(salesOrderRepository.findByYcsxAndItem("HY10042", 1).orElseThrow().getLenhSx())
+                .isEqualTo(7_000_123_456L);
+    }
+
+    private static Object[] concat(Object[] head, Object tail) {
+        Object[] result = java.util.Arrays.copyOf(head, head.length + 1);
+        result[head.length] = tail;
+        return result;
+    }
+
     @Test
     void importFromExcel_skipsRowsWhoseMaterialGroupIsNotADoorWithoutError() {
         SalesOrderImportResult result =

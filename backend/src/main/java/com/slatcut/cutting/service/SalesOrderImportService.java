@@ -167,6 +167,11 @@ public class SalesOrderImportService {
             salesDocument = salesDocumentRaw.longValue();
         }
 
+        // Lệnh sản xuất chỉ để in báo cáo nên đọc bằng đường cột tùy chọn: hồ sơ nguồn cũ không có
+        // cột này, và thiếu nó không phải lỗi nhập.
+        Double lenhSxRaw = readOptionalNumeric(row, col.get("order"), evaluator);
+        Long lenhSx = lenhSxRaw == null ? null : lenhSxRaw.longValue();
+
         Double salesOrderItemRaw = readNumeric(row, col.get("sales_order_item"), evaluator);
         Integer salesOrderItem = null;
         if (salesOrderItemRaw == null) {
@@ -261,6 +266,7 @@ public class SalesOrderImportService {
                 item,
                 salesDocument,
                 salesOrderItem,
+                lenhSx,
                 customer,
                 customerName,
                 material,
@@ -333,6 +339,12 @@ public class SalesOrderImportService {
      * là cố định nên tình huống này gần như chỉ xảy ra khi nhân viên đo sai rồi số liệu được đính
      * chính; quyết định tạo một bộ cửa mới để cắt lại thuộc về PLANNER, không phải về lượt nhập.
      *
+     * <p>Lệnh sản xuất cố ý KHÔNG nằm trong danh sách trường được so sánh ở {@code describeChanges}:
+     * nó chỉ để in báo cáo, không ảnh hưởng tới cách cắt, và hệ thống mới bắt đầu lưu nó — nên mọi
+     * bộ cửa đã duyệt từ trước đều đang rỗng và lượt nhập đầu tiên sau đó sẽ cảnh báo hàng loạt cho
+     * một thứ không ai cần xử lý. Hệ quả chấp nhận được: phương án đã duyệt từ trước để trống cột
+     * này, đúng nguyên tắc không suy đoán ngược cho dữ liệu lịch sử.
+     *
      * @return dòng cảnh báo khi bộ cửa đã duyệt VÀ dữ liệu nguồn khác dữ liệu đã lưu; rỗng khi
      *     không có gì bất thường — bộ cửa đã duyệt mà dữ liệu y hệt thì bỏ qua im lặng, vì file
      *     nguồn xuất lại toàn bộ tồn đọng mỗi ngày nên phần lớn dòng đã duyệt đều trùng khớp và
@@ -353,6 +365,13 @@ public class SalesOrderImportService {
         entity.setItem(row.item());
         entity.setSalesDocument(row.salesDocument());
         entity.setSalesOrderItem(row.salesOrderItem());
+        // Chỉ ghi khi hồ sơ nguồn CÓ giá trị. Cột lệnh sản xuất là cột tùy chọn, nên một file thiếu
+        // hẳn cột đó — đúng tình huống mà đường đọc tùy chọn sinh ra để chịu được — sẽ mang giá trị
+        // rỗng cho mọi dòng, và ghi đè vô điều kiện thì xóa sạch lệnh sản xuất đã nhập từ lần trước.
+        // Mọi trường khác đều thuộc cột bắt buộc nên không có đường rơi vào tình huống này.
+        if (row.lenhSx() != null) {
+            entity.setLenhSx(row.lenhSx());
+        }
         entity.setCustomer(customer);
         entity.setDoorProduct(doorProduct);
         entity.setChieuCaoDh(row.chieuCaoDh());
@@ -442,6 +461,14 @@ public class SalesOrderImportService {
         };
     }
 
+    /**
+     * Đọc một cột KHÔNG bắt buộc. Cột vắng mặt cho giá trị rỗng thay vì làm hỏng cả lượt nhập —
+     * dùng cho những trường chỉ phục vụ báo cáo, nơi hồ sơ nguồn cũ hơn vẫn phải nhập được.
+     */
+    private Double readOptionalNumeric(Row row, Integer colIndex, FormulaEvaluator evaluator) {
+        return colIndex == null ? null : readNumeric(row, colIndex, evaluator);
+    }
+
     private Double readNumeric(Row row, int colIndex, FormulaEvaluator evaluator) {
         Cell cell = row.getCell(colIndex);
         if (cell == null) {
@@ -512,6 +539,7 @@ public class SalesOrderImportService {
             Integer item,
             Long salesDocument,
             Integer salesOrderItem,
+            Long lenhSx,
             Long customer,
             String customerName,
             Long material,

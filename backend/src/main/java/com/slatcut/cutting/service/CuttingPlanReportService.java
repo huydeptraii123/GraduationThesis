@@ -212,7 +212,7 @@ public class CuttingPlanReportService {
                 rank,
                 order.getYcsx(),
                 order.getItem(),
-                null,
+                order.getLenhSx(),
                 order.getSalesDocument(),
                 order.getCustomer().getCustomerName(),
                 order.getReqdDeliveryDate(),
