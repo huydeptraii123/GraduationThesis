@@ -6,7 +6,6 @@ import com.slatcut.cutting.dto.CuttingPlanApprovalPreviewResponse;
 import com.slatcut.cutting.dto.CuttingPlanApproveRequest;
 import com.slatcut.cutting.dto.CuttingPlanPreviewResponse;
 import com.slatcut.cutting.dto.CuttingPlanResponse;
-import com.slatcut.cutting.dto.CuttingPlanScopePreviewResponse;
 import com.slatcut.cutting.dto.CuttingPlanSummaryResponse;
 import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.mapper.CuttingPlanPreviewMapper;
@@ -89,19 +88,6 @@ public class CuttingPlanController {
     public CuttingPlanResponse approve(@Valid @RequestBody CuttingPlanApproveRequest request) {
         CuttingPlan plan = service.approve(request.stateFingerprint());
         return service.getById(plan.getId());
-    }
-
-    @PostMapping("/generate")
-    @PreAuthorize("hasRole('PLANNER')")
-    public CuttingPlanResponse generate() {
-        CuttingPlan plan = service.generate();
-        return service.getById(plan.getId());
-    }
-
-    @GetMapping("/scope-preview")
-    @PreAuthorize("hasRole('PLANNER')")
-    public CuttingPlanScopePreviewResponse getScopePreview() {
-        return service.getScopePreview();
     }
 
     /** Lần chạy mới nhất lên đầu — đây là thứ người dùng mở màn hình này để tìm. */

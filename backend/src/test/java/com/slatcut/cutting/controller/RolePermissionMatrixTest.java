@@ -162,10 +162,6 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
                 new Endpoint("DELETE /sales-orders/{id}", Set.of(ADMIN, PLANNER), () -> delete("/api/v1/sales-orders/{id}", MISSING_ID)),
                 new Endpoint("POST /sales-orders/import", Set.of(PLANNER), () -> upload("/api/v1/sales-orders/import")),
 
-                // Chạy thuật toán: tác vụ vận hành hằng ngày, chỉ PLANNER.
-                new Endpoint("POST /cutting-plans/generate", Set.of(PLANNER), () -> post("/api/v1/cutting-plans/generate")),
-                new Endpoint("GET /cutting-plans/scope-preview", Set.of(PLANNER), () -> get("/api/v1/cutting-plans/scope-preview")),
-
                 // Tính phương án cắt CỐ Ý mở cho cả ADMIN dù là POST: nó chỉ đọc và không chốt
                 // quyết định sản xuất nào, nên đứng cùng nhóm với các endpoint đọc bên dưới chứ
                 // không cùng nhóm với hai dòng ghi ở trên. Duyệt thì ngược lại — đó là thao tác

@@ -141,6 +141,24 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
         inventoryBatchRepository.save(entity);
     }
 
+    /** Dấu vân trạng thái của phạm vi hiện tại, lấy qua đúng endpoint mà giao diện dùng. */
+    private String currentFingerprint() throws Exception {
+        String body = mockMvc.perform(get("/api/v1/cutting-plans/approval-preview")
+                        .header("Authorization", "Bearer " + plannerToken()))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return JsonPath.read(body, "$.stateFingerprint");
+    }
+
+    /**
+     * Duyệt phương án cho phạm vi hiện tại — thay cho đường ghi một bước đã gỡ. Đi qua đúng luồng
+     * thật: xem trước để lấy dấu vân trạng thái, rồi duyệt bằng chính dấu vân đó.
+     */
+    private CuttingPlan approvePlan() {
+        return service.approve(service.approvalPreview().stateFingerprint());
+    }
+
     /**
      * Chức năng tính mở cho ADMIN — nó chỉ đọc và không chốt quyết định sản xuất nào. Khẳng định
      * quan trọng ở đây không phải mã 200 mà là số phương án đã lưu không nhúc nhích: đây là endpoint
@@ -316,8 +334,10 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
         entity.setHeightOffsetM(BigDecimal.ZERO);
         bomItemRepository.save(entity);
     }
+
+    /** Một bộ cửa đủ vật tư và một bộ thiếu trong cùng một đợt duyệt — phản hồi phải mang đủ cả hai nhánh. */
     @Test
-    void generate_asPlanner_returnsNestedDetailsAndShortages() throws Exception {
+    void approve_returnsNestedDetailsAndShortages() throws Exception {
         Customer customer = persistCustomer();
 
         DoorProduct sufficientProduct = persistDoorProduct();
@@ -331,8 +351,10 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
         persistBomItem(shortageProduct, shortageMaterial);
         SalesOrder shortageOrder = persistSalesOrder(shortageProduct, customer, new BigDecimal("5.000"));
 
-        mockMvc.perform(post("/api/v1/cutting-plans/generate")
-                        .header("Authorization", "Bearer " + plannerToken()))
+        mockMvc.perform(post("/api/v1/cutting-plans/approve")
+                        .header("Authorization", "Bearer " + plannerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stateFingerprint\":\"" + currentFingerprint() + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.scopeOrderCount").value(2))
                 .andExpect(jsonPath("$.details.length()").value(1))
@@ -347,14 +369,17 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void generate_asAdmin_isForbidden() throws Exception {
-        mockMvc.perform(post("/api/v1/cutting-plans/generate").header("Authorization", "Bearer " + adminToken()))
+    void approve_asAdmin_isForbidden() throws Exception {
+        mockMvc.perform(post("/api/v1/cutting-plans/approve")
+                        .header("Authorization", "Bearer " + adminToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stateFingerprint\":\"khong-quan-trong\"}"))
                 .andExpect(status().isForbidden());
     }
 
     @Test
-    void generate_withoutToken_isUnauthorized() throws Exception {
-        mockMvc.perform(post("/api/v1/cutting-plans/generate")).andExpect(status().isUnauthorized());
+    void approvalPreview_withoutToken_isUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/cutting-plans/approval-preview")).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -366,7 +391,7 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
         persistInventoryBatch(slatMaterial, 2000, 1);
         persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
 
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         mockMvc.perform(get("/api/v1/cutting-plans/{id}", plan.getId())
                         .header("Authorization", "Bearer " + plannerToken()))
@@ -379,28 +404,6 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void getScopePreview_asPlanner_returnsEligibleCountAndCutoffDate() throws Exception {
-        Customer customer = persistCustomer();
-        DoorProduct doorProduct = persistDoorProduct();
-        // Mẫu cửa phải có định mức, nếu không đơn bị loại khỏi phạm vi (xem findUnprocessedInScope).
-        persistBomItem(doorProduct, persistSlatMaterial());
-        persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
-
-        mockMvc.perform(get("/api/v1/cutting-plans/scope-preview")
-                        .header("Authorization", "Bearer " + plannerToken()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.eligibleOrderCount").value(1))
-                .andExpect(jsonPath("$.scopeCutoffDate").value(LocalDate.now().plusDays(3).toString()));
-    }
-
-    @Test
-    void getScopePreview_asAdmin_isForbidden() throws Exception {
-        mockMvc.perform(get("/api/v1/cutting-plans/scope-preview")
-                        .header("Authorization", "Bearer " + adminToken()))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
     void export_asPlanner_returnsXlsxFile() throws Exception {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();
@@ -408,7 +411,7 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
         persistBomItem(doorProduct, slatMaterial);
         persistInventoryBatch(slatMaterial, 2000, 1);
         persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         mockMvc.perform(get("/api/v1/cutting-plans/{id}/export", plan.getId())
                         .header("Authorization", "Bearer " + plannerToken()))
@@ -431,7 +434,7 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
         SlatMaterial slatMaterial = persistSlatMaterial();
         persistBomItem(doorProduct, slatMaterial);
         persistSalesOrder(doorProduct, customer, new BigDecimal("5.000"));
-        CuttingPlan plan = service.generate();
+        CuttingPlan plan = approvePlan();
 
         mockMvc.perform(get("/api/v1/cutting-plans/{id}/shortage-report", plan.getId())
                         .header("Authorization", "Bearer " + plannerToken()))
