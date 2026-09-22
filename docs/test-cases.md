@@ -50,7 +50,8 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 | Báo cáo và xuất Excel (TC-RPT) | 8 | 8 | 0 |
 | Quản lý tài khoản (TC-USR) | 6 | 6 | 0 |
 | Yêu cầu phi chức năng (TC-NFR) | 9 | 9 | 0 |
-| **Tổng** | **84** | **84** | **0** |
+| Triển khai đóng gói (TC-DEP) | 8 | 8 | 0 |
+| **Tổng** | **92** | **92** | **0** |
 
 ## 4. Kịch bản kiểm thử theo nhóm
 
@@ -193,6 +194,27 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 | TC-NFR-08 | **Tính tái lập**: xóa sạch cơ sở dữ liệu, nhập lại cùng bộ dữ liệu rồi chạy lại cùng thao tác | Cho ra đúng cùng một kết quả | Đạt — hai lượt độc lập trùng khít: 182 bộ cửa (48 đủ / 134 thiếu), 748 dòng nhu cầu, phế 107,06m/9.030,21m; đợt duyệt 70 đơn, 82,05m/7.642,63m, 1.641 phôi (1.368/140/133), tồn kho còn 59.343 thanh | (B) |
 | TC-NFR-09 | Thời gian phản hồi của các màn hình danh sách, gồm cả khi lọc, đổi cột sắp xếp và nhảy tới trang cuối | Đủ nhanh để thao tác liên tục, và trang cuối không chậm hơn trang đầu một cách nhận thấy được ở quy mô 190 đơn | Đạt — trung vị **45–129 ms** trên 19 đường gọi; trang cuối của sổ đơn 64 ms so với trang đầu 80 ms, chênh lệch nhỏ hơn dao động giữa các lần đo. Số đo chi tiết ở mục 5.1 | (B) |
 
+### 4.12. Triển khai đóng gói
+
+Nhóm này kiểm bản triển khai đóng gói mô tả ở `docs/architecture.md`: ba dịch vụ — MySQL, máy chủ ứng dụng Spring Boot, và Nginx phục vụ giao diện đã dựng sẵn — chạy trong ba vùng chứa Docker tách biệt, dựng lên bằng một lệnh duy nhất từ `docker-compose.yml`. Đây mới là hình hài hệ thống khi đưa vào dùng thật; các nhóm trên chạy trực tiếp trên máy lập trình nên không đi qua Nginx và không kiểm được khâu đóng gói.
+
+Điểm cần nhấn: **mọi phép thử trong nhóm này gọi qua cổng của Nginx**, không gọi thẳng máy chủ ứng dụng. Chỉ như vậy mới chứng minh được trọn đường đi *trình duyệt → Nginx → Spring Boot → MySQL*; gọi thẳng máy chủ ứng dụng thì bỏ qua đúng khâu đang cần kiểm.
+
+| Mã | Kịch bản | Kết quả mong đợi | Kết quả | Bằng chứng |
+|---|---|---|---|---|
+| TC-DEP-01 | Dựng trọn bộ ba dịch vụ bằng một lệnh | Cả ba vùng chứa lên và ở trạng thái hoạt động | Đạt — cơ sở dữ liệu báo khỏe mạnh, máy chủ ứng dụng khởi động trong **7,6 giây**, Nginx phục vụ ngay sau đó | (B) |
+| TC-DEP-02 | Máy chủ ứng dụng trong vùng chứa nối vào cơ sở dữ liệu đã có sẵn dữ liệu | Nhận ra lược đồ đã ở phiên bản mới nhất, **không** chạy lại phiên bản di trú nào | Đạt — xác nhận đủ **14 phiên bản di trú**, lược đồ ở phiên bản 14, ghi rõ "không cần di trú" | (B) |
+| TC-DEP-03 | Nginx phục vụ giao diện tĩnh | Trả trang và gói mã giao diện, không cần máy chủ ứng dụng | Đạt — trang 200 trong **21 ms**; gói mã **1.806 KB** | (B) |
+| TC-DEP-04 | Nginx chuyển tiếp lời gọi đăng nhập và lời gọi nghiệp vụ sang máy chủ ứng dụng | Cả hai nhóm đường dẫn tới đúng đích và đọc được cơ sở dữ liệu | Đạt — đăng nhập 200 (**673 ms**, gồm cả lần dựng kết nối đầu tiên); danh sách đơn hàng trả đúng **190 đơn** trong 161 ms | (B) |
+| TC-DEP-05 | Gọi một đường dẫn nghiệp vụ khi chưa đăng nhập, đi qua Nginx | Vẫn bị chặn; lớp bảo mật không bị phép chuyển tiếp làm mất | Đạt — **401** | (B) |
+| TC-DEP-06 | Gửi gói tin 2 MB qua Nginx (mặc định của Nginx chặn ở 1 MB) | Gói tin tới được máy chủ ứng dụng, tức phần nới giới hạn có hiệu lực | Đạt — **400** do nội dung không phải tệp bảng tính hợp lệ, **không** phải 413 của phép chặn; cơ sở dữ liệu không đổi | (B) |
+| TC-DEP-07 | Chạy chức năng tính phương án bên trong vùng chứa | Ra đúng kết quả như khi chạy trực tiếp trên máy lập trình | Đạt — **112 bộ cửa · 453 dòng nhu cầu**, trùng với số liệu ở mục 5; tính **0,38 giây**, xuất tệp **1,10 giây** | (B) |
+| TC-DEP-08 | Bản đóng gói cũ hơn lược đồ cơ sở dữ liệu | Bị chặn ngay lúc khởi động thay vì chạy tiếp rồi hỏng lúc dùng | Đạt — quan sát được trên một bản đóng gói cũ: máy chủ dừng khởi động với thông báo thiếu cột, đúng cột đã bị một phiên bản di trú về sau xóa đi | (B) |
+
+Kết quả TC-DEP-07 đáng chú ý ở chỗ nó **đối chiếu chéo hai cách chạy khác nhau** trên cùng một cơ sở dữ liệu: bản đóng gói trong vùng chứa và bản chạy trực tiếp cho ra cùng số bộ cửa, cùng số dòng nhu cầu và cùng kích thước tệp xuất. Tệp xuất đi qua Nginx giữ nguyên **40.697 byte** như khi gọi thẳng máy chủ ứng dụng, nên phép chuyển tiếp không làm méo dữ liệu nhị phân.
+
+Cả tám phép thử của nhóm này chạy trên cơ sở dữ liệu đang giữ kết quả đợt duyệt ở mục 5, và chín chỉ số của cơ sở dữ liệu **trùng khít trước và sau** — nhóm này không ghi gì xuống, kể cả phép thử gửi gói tin 2 MB.
+
 ## 5. Số liệu của lần chạy dùng làm bằng chứng
 
 | Chỉ số | Giá trị |
@@ -260,3 +282,4 @@ Thứ ba, trong bảng có **bốn đường cố ý không phân trang** — da
 9. **Mọi số đo thời gian đều là đo một người dùng**, trên một máy cá nhân với máy chủ ứng dụng và cơ sở dữ liệu chạy cùng chỗ, không qua mạng. Chúng cho biết hệ thống đủ nhanh để thao tác, **không** phải kết quả kiểm thử tải: chưa đo khi nhiều người dùng đồng thời, chưa đo ở quy mô dữ liệu lớn hơn bộ dữ liệu này.
 10. **Báo cáo của phương án đã duyệt đọc sống** tên khách hàng, tên mẫu cửa và model, không lấy từ ảnh chụp. Sửa các trường này về sau sẽ làm file xuất lại khác file xuất lần đầu của cùng một phương án; đặc tả chỉ yêu cầu chụp lại số liệu tồn kho.
 11. **Nhánh từ chối vì phạm vi rỗng không bấm tới được từ giao diện.** Nút Duyệt bị vô hiệu ngay khi phạm vi không còn đơn nào, và một phạm vi đang có đơn chỉ rỗng đi khi dữ liệu thay đổi — mà thay đổi đó làm lệch dấu vân trạng thái nên hệ thống từ chối vì lý do "dữ liệu đã đổi" trước. Nhánh này tồn tại cho lời gọi trực tiếp tới máy chủ và cho thẻ trình duyệt mở từ trước, nên TC-APR-08 chỉ kiểm được bằng lời gọi trực tiếp.
+12. **Tệp bảng tính xuất ra không trùng nhau tới từng byte giữa hai lần chạy**, kể cả khi dữ liệu y hệt: khuôn dạng bảng tính nhúng mốc thời gian tạo tệp. Vì vậy mọi phép đối chiếu hai tệp xuất — trong TC-RPT-06 cũng như TC-DEP-07 — đều so trên **nội dung ô và số dòng**, không so trên byte. Tính tái lập khẳng định ở TC-NFR-08 cũng phải hiểu theo nghĩa nội dung.
