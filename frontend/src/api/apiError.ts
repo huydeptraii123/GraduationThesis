@@ -2,7 +2,7 @@ import { AxiosError } from 'axios'
 
 /**
  * Backend trả lỗi theo 3 hình dạng khác nhau (xem GlobalExceptionHandler phía server):
- * - 404 / 409: body là chuỗi văn bản thuần;
+ * - 404 / 409 / 422: body là chuỗi văn bản thuần;
  * - 400 của luồng import: body là mảng JSON các lỗi theo dòng;
  * - 400 do @Valid: không có handler riêng nên rơi về body lỗi mặc định của Spring.
  * Gom việc bóc tách vào một chỗ để mọi màn hình hiển thị lỗi giống nhau.
@@ -20,6 +20,7 @@ const STATUS_FALLBACK: Record<number, string> = {
   404: 'Không tìm thấy dữ liệu tương ứng.',
   409: 'Dữ liệu xung đột với ràng buộc hiện có.',
   413: 'File vượt quá dung lượng cho phép (tối đa 10MB).',
+  422: 'Không thực hiện được thao tác này với dữ liệu hiện có.',
 }
 
 function isImportRowErrorList(data: unknown): data is ImportRowError[] {
