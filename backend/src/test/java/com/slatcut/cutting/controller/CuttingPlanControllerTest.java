@@ -232,6 +232,32 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
         assertThat(cuttingPlanRepository.count()).isEqualTo(plansBefore);
     }
 
+    /**
+     * Phạm vi rỗng đi ra ngoài bằng mã 422 chứ không phải 409: giao diện phải phân biệt được "không
+     * có gì để duyệt" với "dữ liệu đã đổi", vì trường hợp sau kéo theo việc tính lại phương án còn
+     * trường hợp trước thì tính lại bao nhiêu lần cũng vẫn rỗng.
+     */
+    @Test
+    void approve_withEmptyScope_returnsUnprocessableAndSavesNothing() throws Exception {
+        long plansBefore = cuttingPlanRepository.count();
+
+        String previewBody = mockMvc.perform(get("/api/v1/cutting-plans/approval-preview")
+                        .header("Authorization", "Bearer " + plannerToken()))
+                .andExpect(jsonPath("$.plan.scopeOrderCount").value(0))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String fingerprint = JsonPath.read(previewBody, "$.stateFingerprint");
+
+        mockMvc.perform(post("/api/v1/cutting-plans/approve")
+                        .header("Authorization", "Bearer " + plannerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stateFingerprint\":\"" + fingerprint + "\"}"))
+                .andExpect(status().isUnprocessableContent());
+
+        assertThat(cuttingPlanRepository.count()).isEqualTo(plansBefore);
+    }
+
     /** Đường đi trọn vẹn của màn hình duyệt: xem phương án, cầm dấu vân đi duyệt, nhận lại phương án đã lưu. */
     @Test
     void approve_withFingerprintFromPreview_savesPlanAndMarksOrderApproved() throws Exception {

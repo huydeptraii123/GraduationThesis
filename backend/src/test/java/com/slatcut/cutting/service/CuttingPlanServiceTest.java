@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import com.slatcut.cutting.AbstractIntegrationTest;
 import com.slatcut.cutting.config.ConflictException;
+import com.slatcut.cutting.config.UnprocessableRequestException;
 import com.slatcut.cutting.domain.BomItem;
 import com.slatcut.cutting.domain.Customer;
 import com.slatcut.cutting.domain.CutLevel;
@@ -360,6 +361,31 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         assertThat(inventoryBatchRepository.sumAvailableSticks()).isEqualTo(sticksBefore - 1);
         assertThat(salesOrderRepository.findById(order.getId()).orElseThrow().getApprovedPlan())
                 .isNotNull();
+    }
+
+    /**
+     * Phạm vi rỗng: dấu vân vẫn khớp (không có gì thay đổi để mà lệch), nên nếu không có chốt riêng
+     * thì lượt duyệt này ghi xuống một phương án trắng — và vì nó cũng không làm đổi dữ liệu nào,
+     * dấu vân tiếp tục khớp ở lần bấm sau, lặp lại được vô hạn.
+     */
+    @Test
+    void approve_rejectsWhenScopeHasNoOrder() {
+        // Không tạo đơn hàng nào: mỗi test chạy trong transaction riêng và quay lui sau khi xong,
+        // nên phạm vi ở đây rỗng thật.
+        CuttingPlanApprovalPreview preview = service.approvalPreview();
+        assertThat(preview.plan().scopeOrders()).isEmpty();
+        long plansBefore = cuttingPlanRepository.count();
+        long detailsBefore = cuttingPlanDetailRepository.count();
+        long shortagesBefore = shortageRecordRepository.count();
+
+        assertThatThrownBy(() -> service.approve(preview.stateFingerprint()))
+                .isInstanceOf(UnprocessableRequestException.class)
+                .hasMessageContaining("Không có đơn hàng nào trong phạm vi");
+
+        // Đo bằng phần chênh lệch, không dùng số tuyệt đối: CSDL test dùng chung cho cả bộ.
+        assertThat(cuttingPlanRepository.count()).isEqualTo(plansBefore);
+        assertThat(cuttingPlanDetailRepository.count()).isEqualTo(detailsBefore);
+        assertThat(shortageRecordRepository.count()).isEqualTo(shortagesBefore);
     }
 
     /**
@@ -731,9 +757,12 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistSalesOrder(
                 "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now().plusDays(10));
 
-        CuttingPlan plan = approvePlan();
+        // Phạm vi rỗng nay bị từ chối thay vì ghi xuống một phương án trắng — lời từ chối đó chính
+        // là bằng chứng đơn giao xa đã bị loại khỏi phạm vi.
+        assertThatThrownBy(this::approvePlan)
+                .as("đơn có ngày giao sau mốc t+3 không được đưa vào phạm vi duyệt")
+                .isInstanceOf(UnprocessableRequestException.class);
 
-        assertThat(plan.getScopeOrderCount()).isEqualTo(0);
         assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
         assertThat(shortageRecordRepository.findAll()).isEmpty();
     }
@@ -748,9 +777,10 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
 
         approvePlan();
-        CuttingPlan second = approvePlan();
 
-        assertThat(second.getScopeOrderCount()).isEqualTo(0);
+        assertThatThrownBy(this::approvePlan)
+                .as("đơn đã duyệt không quay lại hàng chờ nên lượt duyệt sau không còn đơn nào")
+                .isInstanceOf(UnprocessableRequestException.class);
         assertThat(cuttingPlanDetailItemRepository.findAll()).hasSize(1);
     }
 
@@ -1159,11 +1189,10 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
                 .as("cả 3 đơn đều không sinh được nhu cầu cắt nên phải đếm là đang bị chặn")
                 .isEqualTo(3);
 
-        CuttingPlan plan = approvePlan();
-
-        assertThat(plan.getScopeOrderCount())
+        assertThatThrownBy(this::approvePlan)
                 .as("không đơn nào trong 3 kịch bản được đưa vào phạm vi xử lý")
-                .isZero();
+                .isInstanceOf(UnprocessableRequestException.class);
+
         assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
         assertThat(shortageRecordRepository.findAll()).isEmpty();
         assertThat(service.countPendingMissingBom()).isEqualTo(3);
