@@ -49,8 +49,8 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 | Duyệt phương án cắt (TC-APR) | 9 | 9 | 0 |
 | Báo cáo và xuất Excel (TC-RPT) | 8 | 8 | 0 |
 | Quản lý tài khoản (TC-USR) | 6 | 6 | 0 |
-| Yêu cầu phi chức năng (TC-NFR) | 8 | 8 | 0 |
-| **Tổng** | **83** | **83** | **0** |
+| Yêu cầu phi chức năng (TC-NFR) | 9 | 9 | 0 |
+| **Tổng** | **84** | **84** | **0** |
 
 ## 4. Kịch bản kiểm thử theo nhóm
 
@@ -152,7 +152,7 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 | TC-APR-05 | Định mức hoặc danh mục vật tư bị sửa giữa chừng | Cũng bị bắt, vì cả hai là đầu vào của thuật toán | Đạt | (A) `.approve_rejectsWhenBomChangedSincePreview`, `.approve_rejectsWhenSlatMaterialCatalogChangedSincePreview` |
 | TC-APR-06 | Một đơn **ngoài phạm vi** được nhập thêm giữa chừng | **Không** chặn duyệt — phạm vi không đổi thì không có lý do từ chối | Đạt | (A) `.approve_toleratesNewOrderBeyondDeliveryCutoff` |
 | TC-APR-07 | **Hai thẻ trình duyệt**: thẻ A đang xem phương án, thẻ B sửa một lô tồn kho, thẻ A bấm duyệt | Thẻ A báo dữ liệu đã thay đổi, tự tính lại trên trạng thái mới, không ghi gì | Đạt — cảnh báo hiện đúng, nhãn thời điểm tính đổi từ 16:52:40 sang 16:52:48, màn hình giữ nguyên | (B) |
-| TC-APR-08 | Bấm duyệt khi **phạm vi không còn đơn nào** | Từ chối kèm thông báo, không ghi một phương án trắng | Đạt — duyệt hết phạm vi rồi gọi tiếp thì bị từ chối, số lượng phương án trong cơ sở dữ liệu không đổi. Phép thử (B) đi bằng lời gọi trực tiếp tới máy chủ, vì trên giao diện nút Duyệt đã bị vô hiệu khi phạm vi rỗng (xem hạn chế 7) | (A) `.approve_rejectsWhenScopeHasNoOrder`, `CuttingPlanControllerTest.approve_withEmptyScope_returnsUnprocessableAndSavesNothing` · (B) |
+| TC-APR-08 | Bấm duyệt khi **phạm vi không còn đơn nào** | Từ chối kèm thông báo, không ghi một phương án trắng | Đạt — duyệt hết phạm vi rồi gọi tiếp thì bị từ chối, số lượng phương án trong cơ sở dữ liệu không đổi. Phép thử (B) đi bằng lời gọi trực tiếp tới máy chủ, vì trên giao diện nút Duyệt đã bị vô hiệu khi phạm vi rỗng (xem hạn chế 11) | (A) `.approve_rejectsWhenScopeHasNoOrder`, `CuttingPlanControllerTest.approve_withEmptyScope_returnsUnprocessableAndSavesNothing` · (B) |
 | TC-APR-09 | Đơn đã duyệt ở lần chạy trước | Không quay lại hàng chờ của bất kỳ lần chạy nào sau đó | Đạt | (A) `.generate_ordersAlreadyProcessed_areExcludedFromLaterRuns`, `.findUnapproved_excludesOrdersAlreadyApproved` |
 
 ### 4.9. Báo cáo và xuất Excel
@@ -191,6 +191,7 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 | TC-NFR-06 | Thời gian xuất Excel | Vài giây | Đạt — **1,82–2,45 giây** cho bản tính trước đợt duyệt (182 bộ cửa, 65,9 KB); **1,21 giây** cho bản tính sau đợt duyệt (112 bộ cửa, 453 dòng, 39,8 KB) | (B) |
 | TC-NFR-07 | Dựng lại hệ thống từ lược đồ trống | Toàn bộ phiên bản di trú chạy được từ đầu, không lỗi | Đạt — **14 phiên bản di trú, 1,28–2,07 giây** (hai lần dựng lại), tài khoản mặc định hoạt động lại | (B) |
 | TC-NFR-08 | **Tính tái lập**: xóa sạch cơ sở dữ liệu, nhập lại cùng bộ dữ liệu rồi chạy lại cùng thao tác | Cho ra đúng cùng một kết quả | Đạt — hai lượt độc lập trùng khít: 182 bộ cửa (48 đủ / 134 thiếu), 748 dòng nhu cầu, phế 107,06m/9.030,21m; đợt duyệt 70 đơn, 82,05m/7.642,63m, 1.641 phôi (1.368/140/133), tồn kho còn 59.343 thanh | (B) |
+| TC-NFR-09 | Thời gian phản hồi của các màn hình danh sách, gồm cả khi lọc, đổi cột sắp xếp và nhảy tới trang cuối | Đủ nhanh để thao tác liên tục, và trang cuối không chậm hơn trang đầu một cách nhận thấy được ở quy mô 190 đơn | Đạt — trung vị **45–129 ms** trên 19 đường gọi; trang cuối của sổ đơn 64 ms so với trang đầu 80 ms, chênh lệch nhỏ hơn dao động giữa các lần đo. Số đo chi tiết ở mục 5.1 | (B) |
 
 ## 5. Số liệu của lần chạy dùng làm bằng chứng
 
@@ -204,6 +205,42 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 | Dòng thiếu vật tư của đợt duyệt | 117 dòng / 534 đoạn chưa cắt được |
 
 Hai tỷ lệ phế trên **không so sánh trực tiếp được với nhau**: chức năng tính ghép trên toàn bộ sổ đơn nên có nhiều cơ hội ghép cặp hơn hẳn một đợt duyệt tối đa 70 đơn, vì vậy con số của nó phải đọc như **giới hạn dưới** của hao phí chứ không phải kết quả sẽ đạt được.
+
+### 5.1. Thời gian phản hồi của các màn hình danh sách
+
+Mỗi đường gọi được làm nóng một lượt (bỏ kết quả) rồi đo năm lượt liên tiếp, trên cùng máy với máy chủ ứng dụng và cơ sở dữ liệu chạy cục bộ. Cột *quy mô* ghi khối lượng dữ liệu mà đường gọi đó thực sự phải xử lý; với các dòng có điều kiện lọc, nó ghi dạng *số bản ghi chọn ra / tổng số bản ghi* để thấy phép lọc có thu hẹp tập dữ liệu thật hay không.
+
+| Màn hình / thao tác | Quy mô | Trung vị | Khoảng đo |
+|---|---|---|---|
+| Đơn hàng — trang đầu, 20 dòng | 190 đơn | 80 ms | 56–106 ms |
+| Đơn hàng — nhảy tới trang cuối | 190 đơn | 64 ms | 62–88 ms |
+| Đơn hàng — lọc theo từ khóa | 13 / 190 đơn | 71 ms | 43–83 ms |
+| Đơn hàng — lọc theo khoảng ngày giao | 35 / 190 đơn | 101 ms | 91–111 ms |
+| Đơn hàng — đổi cột sắp xếp | 190 đơn | 85 ms | 72–100 ms |
+| Tồn kho — trang đầu, 20 dòng | 2.308 lô | 81 ms | 67–87 ms |
+| Tồn kho — lọc theo nhóm nan chính | 1.246 / 2.308 lô | 68 ms | 49–79 ms |
+| Tồn kho — ô thống kê tổng hợp | toàn bảng | 54 ms | 40–91 ms |
+| Định mức — trang đầu, 20 dòng | 1.860 dòng | 100 ms | 94–117 ms |
+| Định mức — lọc theo nhóm nan chính | 527 / 1.860 dòng | 85 ms | 81–88 ms |
+| Định mức — ô thống kê tổng hợp | toàn bảng | 83 ms | 40–98 ms |
+| Mẫu cửa — danh sách tra cứu cho màn Định mức và Đơn hàng, **không phân trang** | 392 mẫu · 39,7 KB | 80 ms | 55–110 ms |
+| Khách hàng — danh sách tra cứu cho màn Đơn hàng, **không phân trang** | 21 khách hàng · 1,4 KB | 62 ms | 48–90 ms |
+| Danh mục thanh nan — trang đầu, 20 dòng | 620 mã | 45 ms | 39–69 ms |
+| Danh mục thanh nan — danh sách tra cứu, **không phân trang** | 620 mã · 64,9 KB | 95 ms | 80–96 ms |
+| Phương án cắt — danh sách | 1 phương án | 71 ms | 61–98 ms |
+| Phương án cắt — khối số liệu hao phí cộng dồn của cùng màn đó | gộp trên toàn bộ phương án | 121 ms | 100–141 ms |
+| Tài khoản — trang đầu, 20 dòng | 2 tài khoản | 75 ms | 65–114 ms |
+| Chi tiết một phương án, **không phân trang** | 144,6 KB | 129 ms | 106–167 ms |
+
+Số lô tồn kho ở đây là **2.308**, nhiều hơn 2.283 lô đã nhập vào ở mục 2 đúng **25 lô**. Đây không phải số liệu mâu thuẫn mà là hai thời điểm khác nhau: 133 thanh dư trên 3m mà đợt duyệt nhập lại kho rơi vào 25 độ dài chưa từng có lô riêng nào, nên hệ thống tạo thêm đúng 25 dòng lô mới chứa trọn 133 thanh đó.
+
+Ba điểm đáng chú ý khi đọc bảng này.
+
+Thứ nhất, **trang cuối không chậm hơn trang đầu** ở quy mô dữ liệu này — điều kiện lọc và phép sắp xếp đều do cơ sở dữ liệu thực hiện, máy chủ chỉ nhận về đúng số dòng của một trang. Cần nói rõ giới hạn của quan sát: phép phân trang vẫn theo kiểu bỏ qua một số dòng đầu, nên về nguyên tắc chi phí có tăng theo số trang đã bỏ qua; với 190 đơn thì mức tăng đó nhỏ hơn dao động giữa các lần đo, và hai điểm đo (trang đầu, trang cuối) không đủ để dựng một xu hướng cho sổ đơn lớn hơn nhiều lần.
+
+Thứ hai, **đường gọi chậm nhất là trang chi tiết một phương án** (129 ms), và đứng ngay sau là **khối số liệu hao phí cộng dồn** của màn danh sách phương án (121 ms). Cái đầu phải trả trọn bộ dòng cắt thì phần chú giải mới tổng hợp đúng; cái sau phải gộp trên toàn bộ phương án đã lưu chứ không chỉ trang đang xem.
+
+Thứ ba, trong bảng có **bốn đường cố ý không phân trang** — danh sách tra cứu thanh nan, danh sách mẫu cửa, danh sách khách hàng và trang chi tiết phương án. Ba cái đầu là nguồn dữ liệu cho ô chọn và cho việc hiển thị tên trên màn khác, phân trang thì màn dùng chúng không tra cứu được. Chi phí của cả bốn tăng theo số bản ghi phải đọc và trả về; đợt đo này **không tách riêng** phần truy vấn với phần tuần tự hóa và truyền dữ liệu, nên không kết luận được khâu nào chiếm phần lớn. Điều khẳng định được là cả bốn vẫn nằm trong một phần nhỏ của giây.
 
 ## 6. Cách chạy lại
 
@@ -220,4 +257,6 @@ Hai tỷ lệ phế trên **không so sánh trực tiếp được với nhau**:
 6. **Hai tầng phân định ưu tiên chưa được phủ hết**: ca tự động chỉ chạm tới tầng lô sản xuất, chưa có ca riêng cho tầng số thứ tự bộ cửa (TC-ALG-10); và thứ tự sắp **mặc định** của endpoint danh sách đơn hàng chưa có ca khóa lại, mới chỉ khóa được phép sắp (TC-SO-02).
 7. **Dấu vân trạng thái không chống được hai lượt duyệt chạy song song** — nó chỉ chặn việc duyệt một phương án đã lỗi thời. Hai lượt cùng đọc được dấu vân cũ đều vượt qua cửa này; chốt chặn thật nằm ở điều kiện cập nhật trạng thái đơn, làm cả giao dịch quay lui khi số dòng lệch. TC-APR-07 vì vậy **không** được đọc thành "đã chứng minh an toàn khi nhiều người duyệt cùng lúc".
 8. **Dấu hiệu phôi tái sử dụng trong cột mô tả cách cắt là suy đoán**, dựa trên việc độ dài đó không có trong ảnh chụp tồn kho đầu lần chạy. Phần dư trùng đúng một độ dài vốn đã có trong kho thì không phân biệt được (liên quan TC-RPT-08).
-9. **Báo cáo của phương án đã duyệt đọc sống** tên khách hàng, tên mẫu cửa và model, không lấy từ ảnh chụp. Sửa các trường này về sau sẽ làm file xuất lại khác file xuất lần đầu của cùng một phương án; đặc tả chỉ yêu cầu chụp lại số liệu tồn kho.
+9. **Mọi số đo thời gian đều là đo một người dùng**, trên một máy cá nhân với máy chủ ứng dụng và cơ sở dữ liệu chạy cùng chỗ, không qua mạng. Chúng cho biết hệ thống đủ nhanh để thao tác, **không** phải kết quả kiểm thử tải: chưa đo khi nhiều người dùng đồng thời, chưa đo ở quy mô dữ liệu lớn hơn bộ dữ liệu này.
+10. **Báo cáo của phương án đã duyệt đọc sống** tên khách hàng, tên mẫu cửa và model, không lấy từ ảnh chụp. Sửa các trường này về sau sẽ làm file xuất lại khác file xuất lần đầu của cùng một phương án; đặc tả chỉ yêu cầu chụp lại số liệu tồn kho.
+11. **Nhánh từ chối vì phạm vi rỗng không bấm tới được từ giao diện.** Nút Duyệt bị vô hiệu ngay khi phạm vi không còn đơn nào, và một phạm vi đang có đơn chỉ rỗng đi khi dữ liệu thay đổi — mà thay đổi đó làm lệch dấu vân trạng thái nên hệ thống từ chối vì lý do "dữ liệu đã đổi" trước. Nhánh này tồn tại cho lời gọi trực tiếp tới máy chủ và cho thẻ trình duyệt mở từ trước, nên TC-APR-08 chỉ kiểm được bằng lời gọi trực tiếp.
