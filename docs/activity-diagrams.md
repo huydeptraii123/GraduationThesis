@@ -107,7 +107,7 @@ flowchart TD
     D --> E["Hiển thị mức tổng quan + mức chi tiết theo đơn hàng,<br/>kèm số đơn đang bị chặn vì mẫu cửa thiếu định mức;<br/>cho phép xuất Excel"]
     E --> Z1([Kết thúc — KHÔNG thay đổi dữ liệu nào])
 
-    B -- "Duyệt phương án cắt<br/>(chỉ PLANNER)" --> F["Trong CÙNG một lượt đọc: lấy phạm vi và ghi dấu vân trạng thái.<br/>Phạm vi = đơn chưa duyệt, sinh được ít nhất 1 nhu cầu cắt,<br/>reqd_delivery_date sớm hơn hoặc bằng t+3 ngày,<br/>tổng số đơn dưới 70 (ngoài phạm vi → 'nhóm 99', chờ lần duyệt sau)"]
+    B -- "Duyệt phương án cắt<br/>(chỉ PLANNER)" --> F["Trong CÙNG một lượt đọc: lấy phạm vi và ghi dấu vân trạng thái.<br/>Phạm vi = đơn chưa duyệt, sinh được ít nhất 1 nhu cầu cắt,<br/>reqd_delivery_date sớm hơn hoặc bằng t+3 ngày,<br/>tổng số đơn tối đa 70 (ngoài phạm vi → 'nhóm 99', chờ lần duyệt sau)"]
     F --> G["Chạy thuật toán 4 mức ưu tiên<br/>(xem sơ đồ 3.2)"]
     G --> I["Trình phương án đề xuất kèm danh sách đợt cắt<br/>để PLANNER xem xét"]
     I --> J{"PLANNER chấp nhận<br/>phương án?"}
@@ -176,7 +176,7 @@ Một hệ quả quan trọng của cách đặt điều kiện ở Mức 4: h�
 
 Mức 3 cố ý chỉ ghép **đúng hai đoạn** và dừng ở đoạn khớp **đầu tiên** tìm được, không tìm tổ hợp ba đoạn trở lên cũng không duyệt hết hàng đợi để chọn tổ hợp tốt nhất: số tổ hợp tăng theo cấp số nhân với số đoạn được phép ghép, trong khi phần lợi thêm rất nhỏ vì điều kiện chấp nhận đã là phần dư dưới 30cm — và giới hạn này giữ cho kết quả tái lập được, không phụ thuộc thứ tự duyệt.
 
-Điểm dễ hiểu nhầm nhất, cần nhấn lại: thứ tự **xử lý** trong hàng đợi luôn theo đúng ưu tiên `(reqd_delivery_date, ycsx, z_item)` — đoạn X ở bước "Lấy đoạn X ưu tiên cao nhất còn lại" luôn là đoạn đầu hàng đợi, không bao giờ bị bỏ qua để chờ ghép; khác với phạm vi **ghép nối** ở Mức 2 và Mức 3, chỉ áp dụng giữa các đoạn cùng nằm trong phạm vi của chính lần chạy đó (đã xác định ở sơ đồ 3.1 — toàn bộ đơn chưa duyệt nếu là chức năng tính, tập đơn đã giới hạn t+3/dưới 70 đơn nếu là chức năng duyệt), không bao giờ ghép với đơn nằm ngoài phạm vi. Ngoài ra, mỗi nhóm `slatMaterial` ở vòng lặp ngoài được xử lý độc lập với nhau — vì tồn kho (`InventoryBatch`) đã tách riêng theo `slatMaterial`, không có ràng buộc chéo giữa các nhóm.
+Điểm dễ hiểu nhầm nhất, cần nhấn lại: thứ tự **xử lý** trong hàng đợi luôn theo đúng ưu tiên `(reqd_delivery_date, ycsx, z_item)` — đoạn X ở bước "Lấy đoạn X ưu tiên cao nhất còn lại" luôn là đoạn đầu hàng đợi, không bao giờ bị bỏ qua để chờ ghép; khác với phạm vi **ghép nối** ở Mức 2 và Mức 3, chỉ áp dụng giữa các đoạn cùng nằm trong phạm vi của chính lần chạy đó (đã xác định ở sơ đồ 3.1 — toàn bộ đơn chưa duyệt nếu là chức năng tính, tập đơn đã giới hạn t+3/tối đa 70 đơn nếu là chức năng duyệt), không bao giờ ghép với đơn nằm ngoài phạm vi. Ngoài ra, mỗi nhóm `slatMaterial` ở vòng lặp ngoài được xử lý độc lập với nhau — vì tồn kho (`InventoryBatch`) đã tách riêng theo `slatMaterial`, không có ràng buộc chéo giữa các nhóm.
 
 ## 4. Luồng xem/xuất kết quả phương án cắt
 

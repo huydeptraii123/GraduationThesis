@@ -40,7 +40,7 @@ Kết quả của luồng luôn thuộc đúng một trong hai trường hợp: 
 
 ## 2. Luồng tính và duyệt phương án cắt (luồng lõi)
 
-Đây là luồng quan trọng nhất của khóa luận, và nó có hai cửa vào khác nhau. **Tính phương án cắt** chạy trên toàn bộ đơn hàng chưa duyệt để thấy trước tình trạng đáp ứng vật tư, không chạm vào dữ liệu. **Duyệt phương án cắt** chạy trên tập đơn đã giới hạn theo quy tắc t+3 ngày/dưới 70 đơn, và là nơi duy nhất ghi dữ liệu xuống hệ thống. Hai luồng dùng chung đúng một thuật toán — 4 mức ưu tiên đã chốt: khớp gần đúng → cắt theo bội số (cùng phạm vi lần chạy) → ghép đúng 2 đoạn của 2 đơn (cùng phạm vi lần chạy, lấy đoạn khớp đầu tiên) → cắt để phần dư nhập lại được kho (trên 3m), hết cách thì báo thiếu vật tư — nên phần `computePlan` chỉ được vẽ chi tiết một lần ở sơ đồ 2a.
+Đây là luồng quan trọng nhất của khóa luận, và nó có hai cửa vào khác nhau. **Tính phương án cắt** chạy trên toàn bộ đơn hàng chưa duyệt để thấy trước tình trạng đáp ứng vật tư, không chạm vào dữ liệu. **Duyệt phương án cắt** chạy trên tập đơn đã giới hạn theo quy tắc t+3 ngày/tối đa 70 đơn, và là nơi duy nhất ghi dữ liệu xuống hệ thống. Hai luồng dùng chung đúng một thuật toán — 4 mức ưu tiên đã chốt: khớp gần đúng → cắt theo bội số (cùng phạm vi lần chạy) → ghép đúng 2 đoạn của 2 đơn (cùng phạm vi lần chạy, lấy đoạn khớp đầu tiên) → cắt để phần dư nhập lại được kho (trên 3m), hết cách thì báo thiếu vật tư — nên phần `computePlan` chỉ được vẽ chi tiết một lần ở sơ đồ 2a.
 
 ### 2a. Tính phương án cắt (không thay đổi dữ liệu)
 
@@ -127,7 +127,7 @@ sequenceDiagram
     U->>FE: Mở màn hình "Duyệt phương án cắt"
     FE->>C: GET /api/v1/cutting-plans/approval-preview
     C->>SVC: approvalPreview()
-    SVC->>DB: trong CÙNG một lượt đọc — lấy SalesOrder có approved_plan_id rỗng và sinh được ít nhất 1 nhu cầu cắt, reqd_delivery_date <= t+3, giới hạn dưới 70 đơn (ngoài phạm vi -> "nhóm 99", chờ lần duyệt sau), đồng thời đọc dấu vân trạng thái của bốn nguồn dữ liệu thuật toán sẽ đọc (đơn chưa duyệt trong hạn giao, tồn kho, định mức, danh mục thanh nan)
+    SVC->>DB: trong CÙNG một lượt đọc — lấy SalesOrder có approved_plan_id rỗng và sinh được ít nhất 1 nhu cầu cắt, reqd_delivery_date <= t+3, giới hạn tối đa 70 đơn (ngoài phạm vi -> "nhóm 99", chờ lần duyệt sau), đồng thời đọc dấu vân trạng thái của bốn nguồn dữ liệu thuật toán sẽ đọc (đơn chưa duyệt trong hạn giao, tồn kho, định mức, danh mục thanh nan)
     DB-->>SVC: rows + stateFingerprint
     SVC->>CS: computePlan(demands, pool) — 4 mức ưu tiên, chi tiết xem sơ đồ 2a
     CS-->>SVC: CuttingPlanResult

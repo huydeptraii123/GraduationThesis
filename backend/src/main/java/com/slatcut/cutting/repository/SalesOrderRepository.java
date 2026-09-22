@@ -35,7 +35,7 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
     /**
      * Phạm vi 1 lần DUYỆT phương án cắt (docs/requirements-functional.md Nhóm 3): đơn chưa
      * duyệt (approvedPlan IS NULL) có reqdDeliveryDate <= cutoffDate, sắp theo đúng thứ tự ưu tiên
-     * (reqdDeliveryDate, ycsx, item). Gọi với Pageable.ofSize(70) để giới hạn "dưới 70 đơn" ngay
+     * (reqdDeliveryDate, ycsx, item). Gọi với Pageable.ofSize(70) để giới hạn "tối đa 70 đơn" ngay
      * trong query — đơn ngoài phạm vi này thuộc "nhóm 99", không cần lọc riêng.
      *
      * <p>Khác {@link #findUnapproved()} đúng ở hai chỗ: có mốc ngày giao và có hạn mức số đơn.
