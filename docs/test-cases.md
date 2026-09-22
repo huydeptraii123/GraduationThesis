@@ -51,7 +51,8 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 | Quản lý tài khoản (TC-USR) | 6 | 6 | 0 |
 | Yêu cầu phi chức năng (TC-NFR) | 9 | 9 | 0 |
 | Triển khai đóng gói (TC-DEP) | 8 | 8 | 0 |
-| **Tổng** | **92** | **92** | **0** |
+| Kiểm tra tự động khi đẩy mã (TC-CI) | 7 | 7 | 0 |
+| **Tổng** | **99** | **99** | **0** |
 
 ## 4. Kịch bản kiểm thử theo nhóm
 
@@ -215,6 +216,26 @@ Kết quả TC-DEP-07 đáng chú ý ở chỗ nó **đối chiếu chéo hai c�
 
 Cả tám phép thử của nhóm này chạy trên cơ sở dữ liệu đang giữ kết quả đợt duyệt ở mục 5, và chín chỉ số của cơ sở dữ liệu **trùng khít trước và sau** — nhóm này không ghi gì xuống, kể cả phép thử gửi gói tin 2 MB.
 
+### 4.13. Kiểm tra tự động khi đẩy mã
+
+Các nhóm trên đều chạy trên máy của người làm khóa luận, với một bộ công cụ đã cài sẵn. Điều đó không phân biệt được *"mã nguồn đúng"* với *"máy này tình cờ cấu hình vừa vặn"*. Nhóm này kiểm điều còn lại: dựng lại toàn bộ từ con số không trên một máy sạch do GitHub cấp, mỗi lần đẩy mã lên nhánh chính.
+
+Số liệu dưới đây lấy từ lượt chạy đầu tiên, trên đúng phiên bản mã nguồn đã đưa tệp mô tả quy trình vào kho.
+
+| Mã | Kịch bản | Kết quả mong đợi | Kết quả | Bằng chứng |
+|---|---|---|---|---|
+| TC-CI-01 | Đẩy mã lên nhánh chính | Quy trình kiểm tự động chạy mà không cần thao tác tay | Đạt — lượt chạy số 1 kết luận **thành công** | (B) |
+| TC-CI-02 | Biên dịch và chạy toàn bộ bộ kiểm thử trên máy sạch, dùng đúng phiên bản Java của bản triển khai | Chạy hết, không ca nào thất bại | Đạt — **428 ca: 0 thất bại, 0 lỗi, 3 bỏ qua**, trọn 1 phút 17 giây trên máy chưa hề được chuẩn bị gì | (B) |
+| TC-CI-03 | Cài phụ thuộc giao diện theo tệp khóa phiên bản | Cài được, tức tệp khóa còn khớp với danh sách phụ thuộc | Đạt — **9 giây**; lệnh này cố ý thất bại nếu hai tệp lệch nhau | (B) |
+| TC-CI-04 | Soát lỗi tĩnh và dựng bản phát hành giao diện | Cả hai qua; bước dựng phủ luôn kiểm kiểu | Đạt — soát lỗi tức thì, dựng **6 giây** | (B) |
+| TC-CI-05 | Dựng ảnh triển khai của cả ba dịch vụ từ mã nguồn | Dựng được, tức tệp mô tả ảnh chưa mục so với mã nguồn | Đạt — **71 giây** | (B) |
+| TC-CI-06 | Giữ lại báo cáo kiểm thử sau khi chạy | Tải về đọc được, kể cả khi bước kiểm thử hỏng | Đạt — gói báo cáo **127.460 byte** | (B) |
+| TC-CI-07 | Ba nhóm việc chạy song song | Tổng thời gian chờ ngắn hơn tổng thời gian ba việc cộng lại | Đạt — ba việc tốn 92 + 21 + 75 = **188 giây**, nhưng người đẩy mã chỉ chờ **1 phút 37 giây** | (B) |
+
+Điểm đáng nói của TC-CI-02: bộ kiểm thử này dựng cơ sở dữ liệu thật trong vùng chứa chứ không dùng cơ sở dữ liệu trong bộ nhớ, nên việc nó chạy được trên một máy chưa hề được chuẩn bị gì là bằng chứng rằng **toàn bộ phụ thuộc môi trường đã được khai báo trong mã nguồn**, không có bước cài đặt tay nào còn sót lại trong đầu người làm.
+
+Một lưu ý khi đọc lại nhóm này: máy sạch **không có bộ dữ liệu của doanh nghiệp** — bộ dữ liệu đó không được đưa lên kho mã vì lý do bảo mật. Ba ca kiểm thử nhập liệu có gắn điều kiện tiên quyết vào tệp dữ liệu thật vì vậy tự bỏ qua, và **đúng 3 ca bỏ qua** là con số quan sát được. Chênh lệch giữa 428 ca ở mục 2 và 425 ca thật sự chạy ở đây hoàn toàn nằm ở ba ca đó, không phải ở đâu khác. Xem thêm mục 6.
+
 ## 5. Số liệu của lần chạy dùng làm bằng chứng
 
 | Chỉ số | Giá trị |
@@ -268,6 +289,10 @@ Thứ ba, trong bảng có **bốn đường cố ý không phân trang** — da
 
 - **Nhóm (A)**: chạy lệnh kiểm thử của mô-đun máy chủ. Lệnh luôn kèm bước dọn thư mục biên dịch — biên dịch tăng dần có thể giữ lại lớp cũ và làm kết quả không phản ánh mã nguồn hiện tại.
 - **Nhóm (B)**: dựng cơ sở dữ liệu trống, khởi động máy chủ để các phiên bản di trú tự chạy, nhập ba file dữ liệu **đúng thứ tự định mức → tồn kho → đơn hàng**, rồi thao tác trên giao diện theo đúng kịch bản trong bảng.
+- **Nhóm (B) cho triển khai đóng gói (TC-DEP)**: dựng ba dịch vụ bằng một lệnh từ tệp mô tả trong mã nguồn, rồi gọi **qua cổng của Nginx**, không gọi thẳng máy chủ ứng dụng.
+- **Nhóm (B) cho kiểm tra tự động (TC-CI)**: không cần thao tác gì — đẩy mã lên nhánh chính là quy trình tự chạy.
+
+**Một điểm phải lưu ý khi chạy lại nhóm (A) ở nơi khác.** Bộ dữ liệu của doanh nghiệp không được đưa lên kho mã, nên trên máy không có sẵn bộ dữ liệu đó thì **ba ca kiểm thử nhập liệu tự bỏ qua** thay vì thất bại: chúng có điều kiện tiên quyết là sự tồn tại của tệp dữ liệu thật. Đây là cách cố ý — một ca không chạy được vì thiếu dữ liệu đầu vào thì báo "đã bỏ qua" trung thực hơn là báo thất bại. Người chạy lại vì vậy nên đối chiếu **cả số ca đạt lẫn số ca bỏ qua**, đừng chỉ nhìn tổng. Con số cụ thể: **425 ca đạt, 3 ca bỏ qua**, không ca nào thất bại. Con số này quan sát được ở **hai môi trường độc lập** — một vùng chứa sạch dựng tại chỗ và máy của dịch vụ kiểm tra tự động (TC-CI-02) — nên nó là hành vi của bộ kiểm thử khi thiếu dữ liệu đầu vào, không phải đặc thù của một máy.
 
 ## 7. Hạn chế đã biết của đợt kiểm thử
 
