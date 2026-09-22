@@ -2,6 +2,7 @@ package com.slatcut.cutting.service;
 
 import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.config.ResourceNotFoundException;
+import com.slatcut.cutting.config.UnprocessableRequestException;
 import com.slatcut.cutting.domain.CutLevel;
 import com.slatcut.cutting.domain.CuttingPlan;
 import com.slatcut.cutting.domain.CuttingPlanDetail;
@@ -187,6 +188,7 @@ public class CuttingPlanService {
      * @throws ConflictException khi dấu vân lệch — đơn hàng hoặc tồn kho đã thay đổi, phương án
      *     đang hiển thị đã lỗi thời và ghi xuống sẽ trừ tồn kho những phôi thực tế không còn, hoặc
      *     bỏ sót đơn vừa được bổ sung vào phạm vi
+     * @throws UnprocessableRequestException khi phạm vi không còn đơn nào để duyệt
      */
     @Transactional
     public CuttingPlan approve(String expectedStateFingerprint) {
@@ -194,6 +196,18 @@ public class CuttingPlanService {
         if (!snapshot.fingerprint().equals(expectedStateFingerprint)) {
             throw new ConflictException("Đơn hàng hoặc tồn kho đã thay đổi kể từ lúc phương án này được tính."
                     + " Hãy xem lại phương án tính trên trạng thái mới rồi duyệt lại.");
+        }
+        // Kiểm SAU phép so dấu vân, không phải trước: dấu vân lệch nghĩa là dữ liệu nền đã đổi, nên
+        // chính con số "phạm vi có bao nhiêu đơn" vừa đọc được cũng không còn là con số PLANNER đã
+        // nhìn thấy — báo "dữ liệu đã thay đổi" mới là mô tả đúng chuyện vừa xảy ra.
+        //
+        // Không có chốt này thì một lần bấm duyệt khi phạm vi đã rỗng vẫn ghi xuống một CuttingPlan
+        // trắng: không đoạn cắt, không dòng thiếu vật tư, không đơn nào được đánh dấu. Tệ hơn, vì
+        // bản thân nó không làm đổi dữ liệu nào nên dấu vân vẫn khớp ở lần bấm kế tiếp và thao tác
+        // đó lặp lại được vô hạn (docs/requirements-functional.md, mục chức năng duyệt).
+        if (snapshot.orders().isEmpty()) {
+            throw new UnprocessableRequestException("Không có đơn hàng nào trong phạm vi để duyệt."
+                    + " Phương án chỉ được ghi lại khi có ít nhất một đơn hàng được chốt.");
         }
         return persistApprovedPlan(snapshot);
     }
