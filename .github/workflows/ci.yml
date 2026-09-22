@@ -1,0 +1,93 @@
+name: CI
+
+# Chạy trên mọi lần đẩy lên nhánh chính và mọi pull request, để mỗi thay đổi
+# đều được kiểm lại trên máy sạch thay vì chỉ trên máy của người phát triển.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# Đẩy liên tiếp nhiều lần thì chỉ giữ lượt chạy mới nhất của cùng một nhánh.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Máy chủ ứng dụng — biên dịch và kiểm thử
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Dùng đúng phiên bản Java mà ảnh triển khai dùng (xem backend/Dockerfile),
+      # không dùng bản mới hơn trên máy phát triển: thứ cần bảo đảm là tạo tác
+      # thực sự được đem đi chạy.
+      - name: Cài JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      # Bộ kiểm thử dựng MySQL thật bằng Testcontainers. Runner ubuntu-latest có
+      # sẵn Docker nên không cần cài thêm; bước này chỉ để nếu thiếu thì hỏng
+      # ngay với thông báo rõ ràng thay vì hỏng giữa bộ kiểm thử.
+      - name: Kiểm Docker có sẵn cho Testcontainers
+        run: docker version
+
+      - name: Chạy toàn bộ kiểm thử
+        working-directory: backend
+        # Luôn kèm 'clean': biên dịch tăng dần có thể giữ lại lớp cũ và làm kết
+        # quả không phản ánh mã nguồn hiện tại.
+        run: ./mvnw clean test -B
+
+      # Giữ lại báo cáo kiểm thử kể cả khi bước trên đỏ, để đọc được vì sao hỏng.
+      - name: Lưu báo cáo kiểm thử
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bao-cao-kiem-thu
+          path: backend/target/surefire-reports/
+          if-no-files-found: warn
+
+  frontend:
+    name: Giao diện — soát lỗi tĩnh và dựng bản phát hành
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # 'npm ci' cố tình khác 'npm install': nó đòi package-lock.json khớp với
+      # package.json, nên lệch phiên bản phụ thuộc sẽ hỏng ở đây thay vì âm thầm
+      # cài một cây phụ thuộc khác trên máy khác.
+      - name: Cài phụ thuộc
+        working-directory: frontend
+        run: npm ci
+
+      - name: Soát lỗi tĩnh
+        working-directory: frontend
+        run: npm run lint
+
+      # Lệnh dựng chạy kiểm kiểu TypeScript trước rồi mới đóng gói, nên bước này
+      # phủ luôn cả lỗi kiểu.
+      - name: Dựng bản phát hành
+        working-directory: frontend
+        run: npm run build
+
+  images:
+    name: Ảnh triển khai — dựng được từ mã nguồn
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Chỉ dựng ảnh, không chạy. Mục đích là chặn tình trạng tệp mô tả ảnh mục
+      # dần theo mã nguồn mà không ai biết cho tới lúc cần triển khai.
+      - name: Dựng ảnh của cả ba dịch vụ
+        run: docker compose build
