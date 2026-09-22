@@ -368,7 +368,7 @@ UNIQUE (`ycsx`, `z_item`): khóa nghiệp vụ đúng theo grain của `don_hang
 | scope_cutoff_date | DATE | NOT NULL |
 | scope_order_count | INT | NOT NULL |
 
-**Mỗi dòng là một lần duyệt, không phải một lần tính.** Chức năng tính phương án cắt chạy trọn vẹn thuật toán nhưng không tạo dòng nào ở bảng này, nên lịch sử ở đây đúng bằng lịch sử các quyết định đã chốt — không lẫn các lần chạy thử. `total_stock_used_m` là tổng độ dài tồn kho thực tiêu hao của lần duyệt (đã trừ phần dư nhập lại kho), tức mẫu số của tỷ lệ phế; lưu sẵn thay vì cộng lại từ bảng con mỗi lần đọc báo cáo.
+**Mỗi dòng là một lần duyệt, không phải một lần tính.** Chức năng tính phương án cắt chạy trọn vẹn thuật toán nhưng không tạo dòng nào ở bảng này, nên lịch sử ở đây đúng bằng lịch sử các quyết định đã chốt — không lẫn các lần chạy thử. `total_stock_used_m` là tổng độ dài tồn kho thực tiêu hao của lần duyệt (đã trừ phần dư nhập lại kho), tức mẫu số của tỷ lệ phế; lưu sẵn thay vì cộng lại từ bảng con mỗi lần đọc báo cáo. `scope_order_count` của một dòng đã lưu **không bao giờ bằng 0**: hệ thống từ chối duyệt khi phạm vi rỗng, nên không tồn tại bản ghi lần duyệt nào không chốt lấy một đơn hàng nào.
 
 Không có `updated_at`: một `CuttingPlan` và toàn bộ bảng con được ghi trong đúng 1 transaction, không có luồng chỉnh sửa sau khi lưu. Giá trị `FAILED` mang tính dự phòng (nếu về sau cần một bước xử lý nhiều giai đoạn có thể thất bại giữa chừng); ở phạm vi khóa luận, transaction rollback khi lỗi thì không có dòng nào được lưu, nên hiện tại chỉ `COMPLETED` được set trong thực tế.
 

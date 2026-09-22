@@ -138,14 +138,18 @@ sequenceDiagram
     U->>FE: Bấm "Duyệt phương án"
     FE->>C: POST /api/v1/cutting-plans/approve (kèm stateFingerprint)
     C->>SVC: approve(stateFingerprint)
-    SVC->>DB: đọc lại dấu vân trạng thái hiện tại
-    DB-->>SVC: stateFingerprint hiện tại
+    SVC->>DB: trong CÙNG một lượt đọc — lấy lại phạm vi đơn và đọc lại dấu vân trạng thái hiện tại
+    DB-->>SVC: danh sách đơn trong phạm vi + stateFingerprint hiện tại
 
     alt dấu vân đã lệch — dữ liệu đổi trong lúc xem xét
         SVC-->>C: ConflictException
         C-->>FE: 409 "dữ liệu đã thay đổi"
         FE-->>U: Báo lỗi, tự tải lại phương án tính trên trạng thái mới
-    else dấu vân còn khớp
+    else dấu vân còn khớp nhưng phạm vi rỗng — không còn đơn nào để duyệt
+        SVC-->>C: UnprocessableRequestException
+        C-->>FE: 422 "không có đơn nào để duyệt"
+        FE-->>U: Hiện thông báo, giữ nguyên màn hình, KHÔNG ghi gì
+    else dấu vân còn khớp và phạm vi có đơn
         SVC->>CS: computePlan(demands, pool) — chạy lại bên trong transaction duyệt
         CS-->>SVC: CuttingPlanResult
         SVC->>REPO: save(CuttingPlan, CuttingPlanDetail[], CuttingPlanDetailItem[], ShortageRecord[], CuttingPlanStockSnapshot[]) + UPDATE inventory_batch + UPDATE sales_order.approved_plan_id  // trong 1 transaction
@@ -159,6 +163,8 @@ sequenceDiagram
 ```
 
 Thuật toán được chạy **hai lần** trong luồng duyệt: một lần lúc trình phương án cho PLANNER xem, một lần nữa bên trong transaction duyệt. Đây không phải lãng phí mà là điều kiện để phương án ghi xuống luôn khớp dữ liệu thật: nhận lại một kết quả đã tính sẵn từ phía người dùng là tin vào đúng thứ đang phải kiểm. Chạy lại bên trong transaction duyệt thì phương án được tính từ chính dữ liệu mà transaction đó đọc được, còn dấu vân đảm bảo dữ liệu đó vẫn là dữ liệu PLANNER đã nhìn thấy. Hai cơ chế này bổ sung cho nhau chứ không thay nhau, và cũng không thay được khóa dòng: hai lượt duyệt chạy song song cùng đọc được dấu vân cũ thì cả hai đều vượt qua được ô kiểm (xem `docs/activity-diagrams.md` mục 3.1).
+
+Khối `alt` có ba nhánh chứ không phải hai, và thứ tự giữa chúng là cố ý: **dấu vân được kiểm trước, phạm vi rỗng kiểm sau**. Dấu vân lệch nghĩa là dữ liệu nền đã đổi — lúc đó con số "phạm vi có bao nhiêu đơn" vừa đọc được cũng không còn là con số PLANNER đã nhìn thấy, nên báo "dữ liệu đã thay đổi" mới là mô tả đúng chuyện vừa xảy ra. Hai nhánh từ chối dùng **hai mã trạng thái khác nhau** vì giao diện phải phản ứng khác nhau: 409 kéo theo việc tính lại phương án trên trạng thái mới (bấm lại bằng dấu vân cũ thì lần nào cũng hỏng), còn 422 thì tính lại hoàn toàn vô ích — không có đơn nào thì tính bao nhiêu lần cũng vẫn không có, nên chỉ hiện một thông báo và giữ nguyên màn hình. Gộp chung một mã sẽ buộc giao diện đoán ý nghĩa qua nội dung câu thông báo.
 
 Bốn thứ được ghi trong cùng một transaction, không tách rời được: kết quả cắt (`CuttingPlan` + 3 bảng con), ảnh chụp tồn kho tại thời điểm bắt đầu lần chạy, số thanh tồn kho bị trừ và phần dư trên 3m được nhập lại, và `approved_plan_id` của **mọi** đơn trong phạm vi. Nếu tách, hệ thống có thể rơi vào trạng thái nửa vời nguy hiểm — ví dụ tồn kho đã bị trừ nhưng đơn vẫn nằm trong hàng chờ, khiến lần duyệt sau cắt lại chính những đơn đó trên một kho đã cạn.
 
