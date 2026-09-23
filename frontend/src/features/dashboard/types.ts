@@ -21,6 +21,20 @@ export interface RemainderBreakdownResponse {
 export interface SlatGroupWasteResponse {
   slatGroup: SlatGroup
   totalM: number
+  /** Tồn kho thực tiêu hao của nhóm — mẫu số của tỷ lệ, đã trừ phần dư nhập lại kho. */
+  stockUsedM: number
+  wasteRatioPercent: number
+}
+
+/** 1 bộ cửa đã cắt, đặt tại ngày giao của nó trên biểu đồ xu hướng. */
+export interface OrderWastePointResponse {
+  salesOrderId: number
+  ycsx: string
+  item: number
+  reqdDeliveryDate: string
+  wasteM: number
+  stockUsedM: number
+  wasteRatioPercent: number
 }
 
 export interface DashboardResponse {
@@ -37,6 +51,8 @@ export interface DashboardResponse {
   cumulativeWasteRatioPercent: number
   /** Sắp xếp CŨ → MỚI, tối đa 10 lần chạy gần nhất. */
   wasteTrend: WasteTrendPointResponse[]
+  /** Sắp theo ngày giao — nguồn của biểu đồ xu hướng tỷ lệ phế. */
+  orderWasteTrend: OrderWastePointResponse[]
   remainderBreakdown: RemainderBreakdownResponse[]
   wasteByGroup: SlatGroupWasteResponse[]
 }
