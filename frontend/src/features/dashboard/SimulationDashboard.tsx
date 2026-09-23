@@ -36,6 +36,7 @@ import {
   wasteRatioPercent,
   type ShortageByMaterial,
 } from './demandAggregates'
+import { StackedSegmentLabel } from '../../components/chartLabels'
 import { CHART_SURFACE, DOOR_SET_STATUSES, DOOR_SET_STATUS_COLOR, type DoorSetStatus } from './simulationSeries'
 
 interface Props {
@@ -208,12 +209,16 @@ export function SimulationDashboard({ simulation }: Props) {
                     // Bo 4px ở đầu tự do của cột, vuông ở chân trục — chỉ đoạn trên cùng có đầu tự do.
                     radius={index === DOOR_SET_STATUSES.length - 1 ? [4, 4, 0, 0] : undefined}
                   >
+                    {/* Đoạn quá mỏng thì nhãn không nằm lọt trong đoạn và hai nhãn liền nhau
+                        đè lên nhau — đẩy lệch ngang mỗi chuỗi một hướng, xem chartLabels. */}
                     <LabelList
                       dataKey={status}
-                      position="center"
-                      fill="#ffffff"
-                      fontSize={12}
-                      formatter={renderSegmentLabel}
+                      content={
+                        <StackedSegmentLabel
+                          thinOffsetX={index === 0 ? -20 : 20}
+                          thinColor={DOOR_SET_STATUS_COLOR[status]}
+                        />
+                      }
                     />
                     {index === DOOR_SET_STATUSES.length - 1 && (
                       <LabelList dataKey="total" position="top" fill="#595959" fontSize={12} />
