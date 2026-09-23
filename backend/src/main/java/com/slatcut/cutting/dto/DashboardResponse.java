@@ -20,6 +20,8 @@ public record DashboardResponse(
         BigDecimal cumulativeStockUsedM,
         BigDecimal cumulativeWasteRatioPercent,
         List<WasteTrendPointResponse> wasteTrend,
+        /** Phế quy về từng bộ cửa, sắp theo ngày giao — trục thời gian của biểu đồ xu hướng. */
+        List<OrderWastePointResponse> orderWasteTrend,
         List<RemainderBreakdownResponse> remainderBreakdown,
         List<SlatGroupWasteResponse> wasteByGroup) {
 }
