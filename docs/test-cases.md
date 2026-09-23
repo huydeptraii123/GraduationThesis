@@ -20,7 +20,7 @@ Kịch bản nào chưa gắn được vào (A) hoặc (B) thì không được 
 | Cơ sở dữ liệu | MySQL 8.0 (Docker), lược đồ do Flyway dựng từ 14 phiên bản di trú |
 | Máy chủ ứng dụng | Spring Boot, JDK 23 |
 | Giao diện | React + TypeScript + Ant Design, kiểm bằng trình duyệt thật điều khiển tự động |
-| Kiểm thử tự động | **428 ca, 0 thất bại, 0 lỗi** trên 23 lớp kiểm thử |
+| Kiểm thử tự động | **431 ca, 0 thất bại, 0 lỗi** trên 23 lớp kiểm thử |
 
 Dữ liệu dùng cho nhóm (B) là bộ dữ liệu thật của doanh nghiệp, **nhập lại từ đầu trên một lược đồ trống** ngay trước đợt kiểm thử này, để mọi con số trong tài liệu thuộc về cùng một lần nhập và cùng một phiên bản mã nguồn:
 
@@ -52,7 +52,8 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 | Yêu cầu phi chức năng (TC-NFR) | 9 | 9 | 0 |
 | Triển khai đóng gói (TC-DEP) | 8 | 8 | 0 |
 | Kiểm tra tự động khi đẩy mã (TC-CI) | 7 | 7 | 0 |
-| **Tổng** | **99** | **99** | **0** |
+| Biểu đồ thống kê và nhãn số (TC-CHT) | 7 | 7 | 0 |
+| **Tổng** | **106** | **106** | **0** |
 
 ## 4. Kịch bản kiểm thử theo nhóm
 
@@ -187,7 +188,7 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 |---|---|---|---|---|
 | TC-NFR-01 | **Cân bằng vật liệu** của một đợt duyệt thật | Tổng độ dài đã cắt + tổng phần dư = tổng độ dài phôi xuất kho, **không sai lệch** | Đạt — 7.560.577mm + 497.863mm = 8.058.440mm, lệch **0** | (B) |
 | TC-NFR-02 | Trừ tồn kho sau khi duyệt | Số thanh giảm đúng bằng số phôi đã dùng trừ số phần dư nhập lại kho | Đạt — 60.851 → 59.343 thanh (giảm 1.508 = 1.641 phôi xuất − 133 phôi nhập lại) | (B) · (A) `CuttingPlanServiceTest.generate_decrementsConsumedInventory` cho vế trừ phôi đã dùng, `.generate_remainderRestockedThenReusedInSameRunNetsOut` và `.generate_totalStockUsedM_excludesRemainderRestockedToInventory` cho vế phần dư nhập lại kho |
-| TC-NFR-03 | Phần dư sinh ra sau một đợt duyệt | Chỉ có loại **bỏ đi** (dưới 30cm) và **nhập lại kho** (trên 3m); **không** có phần dư 30cm–3m | Đạt — nhập lại kho 415.810mm / bỏ đi 82.053mm / lãng phí **0** | (B) |
+| TC-NFR-03 | Phần dư sinh ra sau một đợt duyệt | Chỉ có loại **bỏ đi** (dưới 30cm) và **nhập lại kho** (trên 3m); **không** có phần dư 30cm–3m | Đạt — nhập lại kho 415.810mm / bỏ đi 82.053mm / lãng phí **0**; đọc từ cơ cấu phần dư do máy chủ trả về, không phải từ biểu đồ — ngưỡng 30cm–3m đã được gỡ khỏi biểu đồ vì luôn rỗng (TC-CHT-06) | (B) |
 | TC-NFR-04 | Thời gian chức năng **tính** trên toàn bộ sổ đơn | Vài giây | Đạt — **0,25–0,63 giây** qua hai lần chạy độc lập (182 bộ cửa, 748 dòng nhu cầu, 582 KB dữ liệu trả về) | (B) |
 | TC-NFR-05 | Thời gian chức năng **duyệt** một đợt | Vài giây | Đạt — xem phương án **0,33–0,45 giây**, ghi xuống **2,60–5,93 giây** (70 đơn) qua hai lần chạy độc lập | (B) |
 | TC-NFR-06 | Thời gian xuất Excel | Vài giây | Đạt — **1,82–2,45 giây** cho bản tính trước đợt duyệt (182 bộ cửa, 65,9 KB); **1,21 giây** cho bản tính sau đợt duyệt (112 bộ cửa, 453 dòng, 39,8 KB) | (B) |
@@ -234,7 +235,29 @@ Số liệu dưới đây lấy từ lượt chạy đầu tiên, trên đúng p
 
 Điểm đáng nói của TC-CI-02: bộ kiểm thử này dựng cơ sở dữ liệu thật trong vùng chứa chứ không dùng cơ sở dữ liệu trong bộ nhớ, nên việc nó chạy được trên một máy chưa hề được chuẩn bị gì là bằng chứng rằng **toàn bộ phụ thuộc môi trường đã được khai báo trong mã nguồn**, không có bước cài đặt tay nào còn sót lại trong đầu người làm.
 
-Một lưu ý khi đọc lại nhóm này: máy sạch **không có bộ dữ liệu của doanh nghiệp** — bộ dữ liệu đó không được đưa lên kho mã vì lý do bảo mật. Ba ca kiểm thử nhập liệu có gắn điều kiện tiên quyết vào tệp dữ liệu thật vì vậy tự bỏ qua, và **đúng 3 ca bỏ qua** là con số quan sát được. Chênh lệch giữa 428 ca ở mục 2 và 425 ca thật sự chạy ở đây hoàn toàn nằm ở ba ca đó, không phải ở đâu khác. Xem thêm mục 6.
+Một lưu ý khi đọc lại nhóm này: máy sạch **không có bộ dữ liệu của doanh nghiệp** — bộ dữ liệu đó không được đưa lên kho mã vì lý do bảo mật. Ba ca kiểm thử nhập liệu có gắn điều kiện tiên quyết vào tệp dữ liệu thật vì vậy tự bỏ qua, và **đúng 3 ca bỏ qua** là con số quan sát được. Chênh lệch giữa **428 ca của chính lượt chạy đó** và 425 ca thật sự chạy hoàn toàn nằm ở ba ca đó, không phải ở đâu khác. Mục 2 ghi 431 vì bộ kiểm thử có thêm ba ca sau lượt chạy này — hai con số thuộc hai phiên bản mã nguồn khác nhau nên không trừ thẳng cho nhau được. Xem thêm mục 6.
+
+Bảng trên thuộc về **lượt chạy đầu tiên**, và mã nguồn đã đổi thêm vài lần kể từ đó. Lượt chạy gần nhất — trên đúng phiên bản mã nguồn mà tài liệu này mô tả — **cũng kết luận thành công ở cả ba công việc**: máy chủ ứng dụng 74 giây (riêng bước chạy kiểm thử 63 giây), dựng ảnh triển khai 52 giây, giao diện 19 giây. Số ca đạt và số ca bỏ qua của lượt đó **cố ý không ghi ở đây**: chúng chỉ nằm trong nhật ký chạy, mà nhật ký đòi đăng nhập kể cả với kho mã công khai, nên chưa quan sát được. Con số tương ứng, đo tại chỗ, có ở mục 6.
+
+### 4.14. Biểu đồ thống kê và nhãn số
+
+Nhóm này kiểm phần trình bày số liệu — thứ doanh nghiệp đọc hằng ngày chứ không phải thứ hệ thống tính ra. Bốn ca đầu kiểm con số phía sau biểu đồ, ba ca cuối kiểm chính cách biểu đồ nói ra con số đó.
+
+Một lưu ý khi đối chiếu: biểu đồ xu hướng có **64 điểm chứ không phải 70**, dù đợt duyệt gồm 70 bộ cửa. Sáu bộ cửa còn lại thiếu toàn bộ số thanh cần cắt nên không phát sinh mét phế nào để quy về; vẽ chúng ở mức 0% sẽ nói rằng chúng cắt hoàn hảo, ngược hẳn sự thật. Mọi số liệu (B) dưới đây đọc trên **phương án đã duyệt** (70 bộ cửa), tức đo sau đợt duyệt — không phải trên 112 bộ cửa còn lại trong hàng chờ.
+
+Ba biểu đồ được nhắc ở TC-CHT-01 đến TC-CHT-06 — tỷ lệ phế theo nhóm thanh nan, cơ cấu phần dư, và xu hướng tỷ lệ phế — đều nằm trong khu thống kê trên màn hình danh sách phương án cắt. Riêng TC-CHT-07 trải trên cả ba màn hình có biểu đồ: màn tính phương án, màn danh sách phương án, và tab tổng quan của một phương án cụ thể.
+
+| Mã | Kịch bản | Kết quả mong đợi | Kết quả | Bằng chứng |
+|---|---|---|---|---|
+| TC-CHT-01 | Đọc mức hao phí từng nhóm thanh nan theo **tỷ lệ** thay vì theo số mét | Thứ hạng phản ánh nhóm cắt kém nhất, không phải nhóm tiêu thụ nhiều vật tư nhất | Đạt — **hai đầu bảng đổi chỗ cho nhau**: theo tỷ lệ là nan phụ 2,4% · thanh đáy 1,8% · ray dẫn hướng 1,5% · nan chính 1,0%, trong khi theo mét thì nan chính đứng đầu với 68,58m, gấp hơn 10 lần nhóm kế tiếp. Nhóm bị chỉ đích danh khi đọc theo mét lại chính là nhóm cắt khít nhất | (B) |
+| TC-CHT-02 | Mẫu số của tỷ lệ theo nhóm | Là tồn kho **thực tiêu hao** của nhóm đó (đã trừ phần dư nhập lại kho), cùng công thức với tỷ lệ phế của cả lần chạy | Đạt — cộng mẫu số của 4 nhóm ra **7.642,63m**, đúng bằng tổng tồn kho tiêu hao của đợt duyệt | (A) `DashboardControllerTest.getDashboard_remainderBreakdown_weightsRemainderByStickCount` khóa cả mẫu số lẫn tỷ lệ của một nhóm · (B) |
+| TC-CHT-03 | Một phôi bị **hai bộ cửa dùng chung** (ghép hai đoạn của hai đơn khác nhau lên cùng một thanh) | Phần dư chia cho hai bên theo tỷ lệ độ dài mỗi bên đã cắt; cộng mọi bộ cửa lại vẫn đúng bằng tổng phế của phương án | Đạt — phép cộng ngược trên dữ liệu thật: 64 bộ cửa cộng lại ra **82,05m phế / 7.642,63m tiêu hao**, khớp tuyệt đối với tổng của phương án | (A) `DashboardControllerTest.getDashboard_orderWasteTrend_splitsOneSharedStickBetweenTwoDoorSetsByCutLength` · (B) |
+| TC-CHT-04 | Phôi cắt ở mức 4, để lại phần dư trên 3m nhập lại kho | Phần dư đó **không** tính là phế, đồng thời **bị trừ khỏi** lượng tiêu hao; nhóm vẫn hiện trên biểu đồ ở mức 0% thay vì biến mất | Đạt | (A) `DashboardControllerTest.getDashboard_restockedRemainder_addsNoWasteAndIsRemovedFromTheDenominator` |
+| TC-CHT-05 | Thứ tự các điểm trên biểu đồ xu hướng | Sắp theo **ngày giao yêu cầu**, không theo thứ tự các đợt duyệt đã chạy | Đạt | (A) `DashboardControllerTest.getDashboard_orderWasteTrend_isSortedByDeliveryDateNotByApprovalOrder` — hai bộ cửa cố ý duyệt ở hai đợt khác nhau, đợt trước duyệt bộ giao muộn hơn |
+| TC-CHT-06 | Ngưỡng phần dư 30cm–3m trên biểu đồ cơ cấu | Không còn hiển thị: thuật toán không sinh ra phần dư loại này nên lát đó rỗng vĩnh viễn và chỉ làm loãng chú giải | Đạt — biểu đồ còn đúng **2 lát** (bỏ đi 82,05m · nhập lại kho 415,81m), chú giải đúng 2 mục; dữ liệu thật có **0 dòng** phần dư loại này | (B) |
+| TC-CHT-07 | Mọi biểu đồ hiển thị sẵn con số, không phải rê chuột mới đọc được | Nhãn hiện thẳng trên biểu đồ, không nhãn nào đè lên nhau hay tràn ra ngoài | Đạt — đo bằng toạ độ thật của từng nhãn trên trình duyệt, trên cả **7 biểu đồ** có nhãn vẽ thẳng: **0 cặp nhãn đè nhau** (trước khi sửa: 4 cặp) và **0 nhãn tràn ra ngoài mép thẻ**. Sáu nhãn không nằm gọn bên trong hình mà chúng chú thích, nhưng cả sáu đều **có chủ ý**: bốn nhãn thuộc đoạn cột quá mỏng để chứa chữ nên được đẩy lệch ra thay vì bị ẩn đi, hai nhãn còn lại là nhãn của đường xu hướng vẽ đè lên chấm bộ cửa và có viền trắng để vẫn đọc được | (B) |
+
+TC-CHT-01 và TC-CHT-07 là hai ca dễ bị bỏ qua nhất vì trông như chuyện thẩm mỹ. Chúng không phải: TC-CHT-01 cho thấy cùng một bộ dữ liệu, hai cách đọc chỉ tới **hai nhóm khác nhau** — đọc sai thước đo thì kết luận cải tiến cũng sai chỗ. Còn ở TC-CHT-07, phép đo bắt được tình huống mà nhìn ảnh chụp dễ cho qua: ở một cột tổng 3 bộ cửa, hai đoạn cao 10px và 5px khiến hai nhãn cách nhau chưa tới 8px trong khi mỗi dòng chữ cao 15px — con số vẫn "được hiển thị" nhưng không đọc được.
 
 ## 5. Số liệu của lần chạy dùng làm bằng chứng
 
@@ -292,7 +315,7 @@ Thứ ba, trong bảng có **bốn đường cố ý không phân trang** — da
 - **Nhóm (B) cho triển khai đóng gói (TC-DEP)**: dựng ba dịch vụ bằng một lệnh từ tệp mô tả trong mã nguồn, rồi gọi **qua cổng của Nginx**, không gọi thẳng máy chủ ứng dụng.
 - **Nhóm (B) cho kiểm tra tự động (TC-CI)**: không cần thao tác gì — đẩy mã lên nhánh chính là quy trình tự chạy.
 
-**Một điểm phải lưu ý khi chạy lại nhóm (A) ở nơi khác.** Bộ dữ liệu của doanh nghiệp không được đưa lên kho mã, nên trên máy không có sẵn bộ dữ liệu đó thì **ba ca kiểm thử nhập liệu tự bỏ qua** thay vì thất bại: chúng có điều kiện tiên quyết là sự tồn tại của tệp dữ liệu thật. Đây là cách cố ý — một ca không chạy được vì thiếu dữ liệu đầu vào thì báo "đã bỏ qua" trung thực hơn là báo thất bại. Người chạy lại vì vậy nên đối chiếu **cả số ca đạt lẫn số ca bỏ qua**, đừng chỉ nhìn tổng. Con số cụ thể: **425 ca đạt, 3 ca bỏ qua**, không ca nào thất bại. Con số này quan sát được ở **hai môi trường độc lập** — một vùng chứa sạch dựng tại chỗ và máy của dịch vụ kiểm tra tự động (TC-CI-02) — nên nó là hành vi của bộ kiểm thử khi thiếu dữ liệu đầu vào, không phải đặc thù của một máy.
+**Một điểm phải lưu ý khi chạy lại nhóm (A) ở nơi khác.** Bộ dữ liệu của doanh nghiệp không được đưa lên kho mã, nên trên máy không có sẵn bộ dữ liệu đó thì **ba ca kiểm thử nhập liệu tự bỏ qua** thay vì thất bại: chúng có điều kiện tiên quyết là sự tồn tại của tệp dữ liệu thật. Đây là cách cố ý — một ca không chạy được vì thiếu dữ liệu đầu vào thì báo "đã bỏ qua" trung thực hơn là báo thất bại. Người chạy lại vì vậy nên đối chiếu **cả số ca đạt lẫn số ca bỏ qua**, đừng chỉ nhìn tổng. Con số cụ thể: **428 trên 431 ca đạt, 3 ca bỏ qua**, không ca nào thất bại — đo bằng cách chạy lại trọn bộ kiểm thử từ một bản sao mã nguồn đặt ở nơi không có bộ dữ liệu bên cạnh. Việc bỏ qua **đúng ba ca** chứ không phải con số khác là hành vi ổn định của bộ kiểm thử khi thiếu dữ liệu đầu vào, không phải đặc thù của một máy: nó cũng là con số quan sát được trên máy của dịch vụ kiểm tra tự động (TC-CI-02).
 
 ## 7. Hạn chế đã biết của đợt kiểm thử
 
@@ -308,3 +331,4 @@ Thứ ba, trong bảng có **bốn đường cố ý không phân trang** — da
 10. **Báo cáo của phương án đã duyệt đọc sống** tên khách hàng, tên mẫu cửa và model, không lấy từ ảnh chụp. Sửa các trường này về sau sẽ làm file xuất lại khác file xuất lần đầu của cùng một phương án; đặc tả chỉ yêu cầu chụp lại số liệu tồn kho.
 11. **Nhánh từ chối vì phạm vi rỗng không bấm tới được từ giao diện.** Nút Duyệt bị vô hiệu ngay khi phạm vi không còn đơn nào, và một phạm vi đang có đơn chỉ rỗng đi khi dữ liệu thay đổi — mà thay đổi đó làm lệch dấu vân trạng thái nên hệ thống từ chối vì lý do "dữ liệu đã đổi" trước. Nhánh này tồn tại cho lời gọi trực tiếp tới máy chủ và cho thẻ trình duyệt mở từ trước, nên TC-APR-08 chỉ kiểm được bằng lời gọi trực tiếp.
 12. **Tệp bảng tính xuất ra không trùng nhau tới từng byte giữa hai lần chạy**, kể cả khi dữ liệu y hệt: khuôn dạng bảng tính nhúng mốc thời gian tạo tệp. Vì vậy mọi phép đối chiếu hai tệp xuất — trong TC-RPT-06 cũng như TC-DEP-07 — đều so trên **nội dung ô và số dòng**, không so trên byte. Tính tái lập khẳng định ở TC-NFR-08 cũng phải hiểu theo nghĩa nội dung.
+13. **Số đo về cách biểu đồ hiển thị con số (TC-CHT-07) lấy bằng cách đọc toạ độ của từng nhãn trên trình duyệt điều khiển tự động.** Phép đo chạy lại được nhưng không chạy cùng mỗi lần biên dịch như nhóm (A) — cùng giới hạn với hạn chế 5 — và nó chỉ khẳng định được cho đúng phân bố số liệu đang có: một bộ dữ liệu khác có thể tạo ra đoạn cột mỏng ở vị trí khác, nên kết luận "không nhãn nào đè nhau" phải hiểu là đúng với lần đo này chứ không phải một bảo đảm cho mọi dữ liệu. Phép đo cũng chỉ phủ các biểu đồ **vẽ nhãn thẳng lên hình**; biểu đồ tròn trên màn tính phương án đưa số và tỷ lệ vào chú giải thay vì lên lát, nên không có nhãn nào để đo va chạm.
