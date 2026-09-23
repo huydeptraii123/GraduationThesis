@@ -6,6 +6,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Legend,
   Pie,
   PieChart,
@@ -14,6 +15,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { StackTotalLabel, StackedSegmentLabel } from '../../components/chartLabels'
 import type { CuttingBatch, CuttingBatchOrderRow } from './cuttingBatches'
 import type { CuttingPlanResponse } from './types'
 
@@ -28,6 +30,11 @@ const TARGET_WASTE_RATIO_PERCENT = 5
 
 const SUFFICIENT_COLOR = '#52c41a'
 const SHORTAGE_COLOR = '#f5222d'
+
+/** Nhãn quanh vành khuyên: số bộ cửa kèm tỷ trọng; tên loại đã có ở chú giải nên không lặp lại. */
+function renderShareSliceLabel(entry: { value?: number; percent?: number }): string {
+  return `${entry.value ?? 0} bộ (${((entry.percent ?? 0) * 100).toFixed(1)}%)`
+}
 
 export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
   const wasteRatioPercent = plan.totalStockUsedM > 0 ? (plan.totalWasteM / plan.totalStockUsedM) * 100 : 0
@@ -47,7 +54,12 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
     })
     return Array.from(buckets.values())
       .sort((a, b) => a.date.localeCompare(b.date))
-      .map((bucket) => ({ ...bucket, label: dayjs(bucket.date).format('DD/MM') }))
+      .map((bucket) => ({
+        ...bucket,
+        label: dayjs(bucket.date).format('DD/MM'),
+        // Tổng cột phải tính sẵn ở đây: LabelList chỉ đọc được trường có thật trong dữ liệu.
+        total: bucket.sufficient + bucket.shortage,
+      }))
   }, [orderRows])
 
   const byDoorProduct = useMemo(() => {
@@ -125,14 +137,27 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
         <Col span={14}>
           <Card size="small" title="Số bộ cửa theo ngày giao yêu cầu">
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={byDeliveryDate}>
+              <BarChart data={byDeliveryDate} margin={{ top: 22, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="label" />
                 <YAxis allowDecimals={false} />
                 <RechartsTooltip />
                 <Legend />
-                <Bar dataKey="sufficient" name="Đủ vật tư" stackId="orders" fill={SUFFICIENT_COLOR} />
-                <Bar dataKey="shortage" name="Thiếu vật tư" stackId="orders" fill={SHORTAGE_COLOR} />
+                <Bar dataKey="sufficient" name="Đủ vật tư" stackId="orders" fill={SUFFICIENT_COLOR}>
+                  <LabelList
+                    dataKey="sufficient"
+                    content={<StackedSegmentLabel thinOffsetX={-20} thinColor={SUFFICIENT_COLOR} />}
+                  />
+                </Bar>
+                {/* Nhãn tổng gắn vào đoạn TRÊN CÙNG của cột chồng: gắn vào đoạn dưới thì nó nằm
+                    giữa thân cột chứ không phải trên đỉnh. */}
+                <Bar dataKey="shortage" name="Thiếu vật tư" stackId="orders" fill={SHORTAGE_COLOR}>
+                  <LabelList
+                    dataKey="shortage"
+                    content={<StackedSegmentLabel thinOffsetX={20} thinColor={SHORTAGE_COLOR} />}
+                  />
+                  <LabelList dataKey="total" content={<StackTotalLabel />} />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -140,7 +165,7 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
         <Col span={10}>
           <Card size="small" title="Tỷ trọng đủ/thiếu vật tư">
             <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
+              <PieChart margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
                 <Pie
                   data={[
                     { name: 'Đủ vật tư', value: sufficientCount },
@@ -148,8 +173,10 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
                   ]}
                   dataKey="value"
                   nameKey="name"
-                  innerRadius={50}
-                  outerRadius={80}
+                  innerRadius={44}
+                  outerRadius={70}
+                  label={renderShareSliceLabel}
+                  labelLine
                 >
                   <Cell fill={SUFFICIENT_COLOR} />
                   <Cell fill={SHORTAGE_COLOR} />
