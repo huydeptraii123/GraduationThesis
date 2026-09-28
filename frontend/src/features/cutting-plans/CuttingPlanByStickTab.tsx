@@ -40,7 +40,7 @@ export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
   // PHẢI duyệt TOÀN BỘ plan.details, không phải chỉ trang đang xem: màu gán theo thứ tự đơn hàng
   // xuất hiện lần đầu, nên nếu để các thẻ ở trang sau tự gán thì mở thẳng trang 3 sẽ ra bảng màu
   // khác với khi lật từ trang 1 — cùng một đơn hàng đổi màu theo đường người dùng đi tới.
-  const legend = useMemo(() => {
+  const legendByOrder = useMemo(() => {
     const seen = new Map<string, { label: string; color: string }>()
     plan.details.forEach((detail) => {
       detail.items.forEach((item) => {
@@ -50,7 +50,7 @@ export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
         }
       })
     })
-    return Array.from(seen.values())
+    return seen
   }, [plan, assignOrderColor])
 
   // Giữ lại chỉ số gốc để nhãn "Phôi #n" vẫn là số thứ tự trong CẢ phương án, không phải trong trang.
@@ -62,11 +62,21 @@ export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
     [plan.details, current, pageSize],
   )
 
+  // Màu thì gán trên cả phương án (xem trên), nhưng chú giải chỉ HIỆN các đơn có mặt ở trang này:
+  // một đợt duyệt có tới ~70 đơn, liệt kê hết thì khối chú giải chiếm trọn màn đầu và người xem
+  // phải cuộn qua nó mới tới được sơ đồ đầu tiên.
+  const legend = useMemo(() => {
+    const onPage = new Set(pageDetails.flatMap(({ detail }) => detail.items.map((item) => String(item.salesOrderId))))
+    return Array.from(legendByOrder.entries())
+      .filter(([key]) => onPage.has(key))
+      .map(([, entry]) => entry)
+  }, [legendByOrder, pageDetails])
+
   return (
     <div>
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space size={12} wrap>
-          <Typography.Text strong>Đơn hàng:</Typography.Text>
+          <Typography.Text strong>Đơn hàng trên trang này:</Typography.Text>
           {legend.map((entry) => (
             <Tag key={entry.label} color={entry.color}>
               {entry.label}

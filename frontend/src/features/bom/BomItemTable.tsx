@@ -13,6 +13,33 @@ import { ImportBomModal } from './ImportBomModal'
 import { deleteBomItem, listBomItems } from './bomApi'
 import type { BomItemResponse, DoorProductResponse } from './types'
 
+/**
+ * Offset mà thuật toán THẬT SỰ dùng cho một dòng định mức — lặp đúng luật của
+ * `CuttingDemandService.buildDemand` ở backend, không phải "trường nào có giá trị thì in trường đó".
+ *
+ * Dữ liệu SAP mang cả W lẫn H trên rất nhiều dòng, kể cả nhóm không dùng tới chúng. In theo kiểu
+ * "có W thì in W" khiến dòng ray hiện W — con số thuật toán bỏ qua — trong khi H mới là con số quyết
+ * định độ dài đoạn cắt.
+ */
+function offsetLabel(group: SlatGroup | undefined, item: BomItemResponse): string {
+  switch (group) {
+    case 'MAIN_SLAT':
+      // Thiếu hệ số số lượng nan thì backend bỏ cả dòng trước khi xét tới offset — in W ở đây sẽ
+      // che mất lý do bộ cửa của mẫu này không bao giờ vào phạm vi tính.
+      if (item.slatCountSlope == null || item.slatCountIntercept == null) {
+        return 'Thiếu hệ số số lượng nan — bị bỏ qua khi tính'
+      }
+      return item.widthOffsetM != null ? `W: ${item.widthOffsetM.toFixed(3)} m` : 'W: theo hệ số 0,976'
+    case 'RAIL':
+      return item.heightOffsetM != null ? `H: ${item.heightOffsetM.toFixed(3)} m` : 'Thiếu H — bị bỏ qua khi tính'
+    case 'BOTTOM_BAR':
+    case 'SUB_SLAT':
+      return 'Không trừ offset'
+    default:
+      return '—'
+  }
+}
+
 interface Props {
   doorProducts: DoorProductResponse[]
   /** Danh mục vật tư ĐẦY ĐỦ — cần tra nhóm cho mọi dòng, kể cả dòng ngoài trang đang xem. */
@@ -142,11 +169,7 @@ export function BomItemTable({ doorProducts, slatMaterials, canEdit, onChanged }
           },
           {
             title: 'Offset cắt (m)',
-            render: (_, item) => {
-              if (item.widthOffsetM != null) return <span>W: {item.widthOffsetM.toFixed(3)} m</span>
-              if (item.heightOffsetM != null) return <span>H: {item.heightOffsetM.toFixed(3)} m</span>
-              return '—'
-            },
+            render: (_, item) => offsetLabel(groupBySlatMaterialId.get(item.slatMaterialId), item),
           },
           ...(canEdit
             ? [
