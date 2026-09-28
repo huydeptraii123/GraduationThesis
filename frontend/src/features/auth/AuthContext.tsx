@@ -12,7 +12,8 @@ interface AuthUser {
 
 interface AuthContextValue {
   user: AuthUser | null
-  login: (username: string, password: string) => Promise<void>
+  /** `remember = false` giữ phiên riêng trong tab này, mất khi đóng tab — xem `authStorage.ts`. */
+  login: (username: string, password: string, remember?: boolean) => Promise<void>
   logout: () => void
 }
 
@@ -24,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!stored) {
       return null
     }
-    // Phiên cũ trong localStorage có thể mang mã vai trò không còn tồn tại — coi như chưa đăng nhập
+    // Phiên cũ trong bộ nhớ trình duyệt có thể mang mã vai trò không còn tồn tại — coi như chưa đăng nhập
     // thay vì dựng một người dùng có vai trò vô nghĩa.
     const role = parseRole(stored.role)
     if (!role) {
@@ -59,14 +60,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [scheduleAutoLogout])
 
   const login = useCallback(
-    async (username: string, password: string) => {
+    async (username: string, password: string, remember = true) => {
       const response = await authApi.login({ username, password })
       const role = parseRole(response.role)
       if (!role) {
         throw new Error(`Tài khoản đang mang vai trò không được hỗ trợ (${response.role}).`)
       }
       const expiresAt = Date.now() + response.expiresInMs
-      setStoredAuth({ token: response.token, username: response.username, role, expiresAt })
+      setStoredAuth({ token: response.token, username: response.username, role, expiresAt }, remember)
       setUser({ username: response.username, role })
       scheduleAutoLogout(expiresAt)
     },
