@@ -43,10 +43,24 @@ interface Props {
   simulation: CuttingPlanPreviewResponse
 }
 
+/** Chiều cao tối thiểu của hàng biểu đồ — hàng chỉ cao hơn khi biểu đồ theo model cần thêm chỗ. */
 const CHART_HEIGHT = 300
 
 /** Cột mảnh hơn ô của nó — phần trống còn lại là khoảng thở, không phải chỗ để nới cột ra. */
 const MAX_BAR_SIZE = 24
+
+/**
+ * Mỗi dòng của biểu đồ theo model: thanh 16px trong ô 52px, để khe giữa hai thanh liền nhau là 36px.
+ *
+ * Khe đó phải chứa được HAI nhãn cùng lúc: nhãn đoạn hẹp của dòng trên đẩy xuống dưới, nhãn đoạn
+ * hẹp của dòng dưới đẩy lên trên, và cả hai cùng nằm sát trục khi đoạn chỉ 1–2 bộ cửa. Đo thật mỗi
+ * nhãn cao 16px cộng 2px khe với thanh, hai nhãn là 36px — khe hẹp hơn thì chúng đè lên nhau.
+ */
+const MODEL_BAR_SIZE = 16
+const MODEL_ROW_HEIGHT = 52
+
+/** Phần không thuộc dòng nào: trục số bên dưới, chú giải và lề trên. */
+const MODEL_CHART_CHROME = 72
 
 /** Khe hở vẽ bằng màu nền để hai đoạn của cột chồng tách nhau mà không cần viền quanh mark. */
 const SEGMENT_GAP = 2
@@ -122,12 +136,6 @@ function buildDonutLegend(slices: { status: DoorSetStatus; count: number }[], to
   }))
 }
 
-/** Nhãn số bên trong đoạn cột — ẩn khi đoạn bằng 0 để không in số 0 chồng lên đường trục. */
-function renderSegmentLabel(value: unknown): string {
-  const count = Number(value ?? 0)
-  return count > 0 ? String(count) : ''
-}
-
 export function SimulationDashboard({ simulation }: Props) {
   const doorSets = useMemo(() => toDoorSets(simulation.demands), [simulation.demands])
   const byDate = useMemo(() => byDeliveryDate(doorSets, formatDeliveryDate), [doorSets])
@@ -138,6 +146,9 @@ export function SimulationDashboard({ simulation }: Props) {
   const wasteRatio = wasteRatioPercent(simulation.totalWasteM, simulation.totalStockUsedM)
   const doorSetCount = doorSets.length
   const donutLegend = buildDonutLegend(statusSlices, doorSetCount)
+  // Cả hàng dùng chung một chiều cao: chỉ nới riêng biểu đồ theo model thì hai thẻ bên cạnh lùn
+  // hơn và hàng lệch mép dưới.
+  const rowChartHeight = Math.max(CHART_HEIGHT, byModelRows.length * MODEL_ROW_HEIGHT + MODEL_CHART_CHROME)
 
   if (doorSetCount === 0) {
     return (
@@ -179,7 +190,7 @@ export function SimulationDashboard({ simulation }: Props) {
 
         <Col span={10}>
           <Card size="small" title="Số bộ cửa Open theo ngày giao hàng &amp; tình trạng đáp ứng nan">
-            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+            <ResponsiveContainer width="100%" height={rowChartHeight}>
               <BarChart data={byDate} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid vertical={false} stroke={GRID_COLOR} />
                 {/* Nhiều ngày giao thì thưa bớt nhãn thay vì để chúng chồng lên nhau — mốc đầu và
@@ -232,7 +243,7 @@ export function SimulationDashboard({ simulation }: Props) {
 
         <Col span={5}>
           <Card size="small" title="Số bộ cửa Open theo model">
-            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+            <ResponsiveContainer width="100%" height={rowChartHeight}>
               <BarChart data={byModelRows} layout="vertical" margin={{ top: 8, right: 32, left: 8, bottom: 0 }}>
                 <CartesianGrid horizontal={false} stroke={GRID_COLOR} />
                 <XAxis type="number" allowDecimals={false} tick={AXIS_TICK} tickLine={false} axisLine={false} />
@@ -240,6 +251,9 @@ export function SimulationDashboard({ simulation }: Props) {
                   type="category"
                   dataKey="label"
                   width={90}
+                  // Mặc định Recharts tự bỏ nhãn sắp chồng nhau — chính cách dòng lớn nhất từng
+                  // mất tên. Chiều cao nay nới theo số dòng nên mọi nhãn đều có chỗ, bắt hiện hết.
+                  interval={0}
                   tick={AXIS_TICK}
                   tickLine={false}
                   axisLine={{ stroke: GRID_COLOR }}
@@ -253,17 +267,21 @@ export function SimulationDashboard({ simulation }: Props) {
                     name={status}
                     stackId="doorSets"
                     fill={DOOR_SET_STATUS_COLOR[status]}
-                    maxBarSize={MAX_BAR_SIZE}
+                    maxBarSize={MODEL_BAR_SIZE}
                     stroke={CHART_SURFACE}
                     strokeWidth={SEGMENT_GAP}
                     radius={index === DOOR_SET_STATUSES.length - 1 ? [0, 4, 4, 0] : undefined}
                   >
+                    {/* Đoạn quá hẹp thì nhãn ra trên/dưới thanh, mỗi chuỗi một phía — xem chartLabels. */}
                     <LabelList
                       dataKey={status}
-                      position="center"
-                      fill="#ffffff"
-                      fontSize={12}
-                      formatter={renderSegmentLabel}
+                      content={
+                        <StackedSegmentLabel
+                          layout="horizontal"
+                          thinSide={index === 0 ? 'above' : 'below'}
+                          thinColor={DOOR_SET_STATUS_COLOR[status]}
+                        />
+                      }
                     />
                     {index === DOOR_SET_STATUSES.length - 1 && (
                       <LabelList dataKey="total" position="right" fill="#595959" fontSize={12} />
@@ -277,7 +295,7 @@ export function SimulationDashboard({ simulation }: Props) {
 
         <Col span={4}>
           <Card size="small" title="Tỷ trọng đáp ứng nan">
-            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+            <ResponsiveContainer width="100%" height={rowChartHeight}>
               <PieChart>
                 <Pie
                   data={statusSlices}

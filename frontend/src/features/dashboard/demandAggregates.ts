@@ -12,8 +12,11 @@ import { DOOR_SET_SHORT, DOOR_SET_SUFFICIENT, type DoorSetStatus } from './simul
 /** Model chưa khai báo vẫn phải lên biểu đồ — gộp im lặng vào nhóm khác thì số liệu nói dối. */
 export const UNKNOWN_MODEL_LABEL = '(chưa có model)'
 
-/** Số dòng tối đa của biểu đồ theo model, kể cả dòng "Khác" gộp phần đuôi. */
-const MAX_MODEL_ROWS = 12
+/**
+ * Số dòng tối đa của biểu đồ theo model, kể cả dòng "Khác" gộp phần đuôi — sáu model nhiều bộ cửa
+ * nhất cộng một dòng gộp, khớp độ dài danh sách trên dashboard Power BI của doanh nghiệp.
+ */
+const MAX_MODEL_ROWS = 7
 
 /**
  * Một bộ cửa trong lần tính. Khóa là `(ycsx, item)` — đúng khóa nghiệp vụ của một bộ cửa, và là
@@ -106,9 +109,10 @@ export function byDeliveryDate(doorSets: DoorSetSummary[], formatDate: (iso: str
 /**
  * Số bộ cửa theo model, nhiều nhất lên trên — thanh ngang đọc từ trên xuống như ảnh mẫu.
  *
- * Quá {@link MAX_MODEL_ROWS} model thì phần đuôi gộp thành một dòng "Khác": trục dọc có chiều cao
- * cố định nên thêm model chỉ làm các thanh mỏng dần tới lúc nhãn chồng lên nhau và không đọc được
- * dòng nào. Dòng gộp ghi rõ nó thay cho bao nhiêu model để tổng vẫn khớp số bộ cửa Open.
+ * Quá {@link MAX_MODEL_ROWS} model thì phần đuôi gộp thành một dòng "Khác". Nơi vẽ tự nới chiều
+ * cao theo số dòng nên đây không còn là giới hạn chỗ vẽ, mà là giới hạn người đọc: mười mấy dòng
+ * thì mắt không còn so được dòng nào với dòng nào. Dòng gộp ghi rõ nó thay cho bao nhiêu model để
+ * tổng vẫn khớp số bộ cửa Open.
  */
 export function byModel(doorSets: DoorSetSummary[]): StatusBreakdown[] {
   const groups = new Map<string, StatusBreakdown>()
