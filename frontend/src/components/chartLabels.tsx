@@ -25,6 +25,17 @@ const VALUE_LABEL_SIZE = 11
 const MIN_INNER_LABEL_HEIGHT = 16
 
 /**
+ * Bề rộng ước lượng của một chữ số ở cỡ {@link VALUE_LABEL_SIZE} cộng phần đệm hai bên — dùng cho
+ * cột NẰM NGANG, nơi thứ quyết định chữ có lọt trong đoạn hay không là bề rộng chứ không phải
+ * chiều cao.
+ */
+const DIGIT_WIDTH = 7
+const INNER_LABEL_PADDING_X = 6
+
+/** Khe giữa mép cột nằm ngang và nhãn bị đẩy ra ngoài. */
+const THIN_LABEL_GAP = 2
+
+/**
  * Viền trắng quanh chữ để đọc được khi nhãn nằm đè lên mark khác.
  *
  * `paintOrder: 'stroke'` bắt SVG vẽ viền TRƯỚC rồi mới vẽ ruột chữ; thiếu nó thì viền phủ lên
@@ -54,6 +65,13 @@ interface StackedSegmentLabelProps extends LabelGeometry {
   thinOffsetX?: number
   /** Màu chữ khi nhãn phải ra ngoài đoạn — lấy đúng màu của chuỗi để biết nó thuộc về đoạn nào. */
   thinColor?: string
+  /** Hướng của cột: `vertical` là cột đứng (mặc định), `horizontal` là thanh nằm ngang. */
+  layout?: 'vertical' | 'horizontal'
+  /**
+   * Chỉ dùng với thanh nằm ngang: đoạn quá hẹp thì nhãn ra phía TRÊN hay phía DƯỚI thanh. Mỗi chuỗi
+   * dữ liệu chọn một phía, cùng lý do với {@link thinOffsetX} của cột đứng.
+   */
+  thinSide?: 'above' | 'below'
 }
 
 function toNumber(value: number | string | undefined): number {
@@ -76,6 +94,10 @@ function formatPercent(value: number | string | undefined): string {
  * rộng gần 100px nên vẫn còn thừa chỗ ngang, trong khi chiều dọc thì hết — đẩy ngang là hướng duy
  * nhất còn chỗ. Chữ đổi sang màu của chính chuỗi đó kèm viền trắng để biết nó thuộc đoạn nào.
  *
+ * Thanh NẰM NGANG là phép đối xứng của đúng quy tắc đó: thứ hết chỗ là bề RỘNG của đoạn (một bộ
+ * đủ nan trong cột 141 bộ chỉ rộng chừng 1px), còn chỗ trống nằm ở chiều dày thanh — nên nhãn đoạn
+ * hẹp được đẩy ra phía trên hoặc phía dưới thanh thay vì lệch ngang.
+ *
  * Đoạn bằng 0 thì bỏ hẳn: in số 0 chồng lên đường trục chỉ gây nhiễu.
  */
 export function StackedSegmentLabel({
@@ -86,12 +108,47 @@ export function StackedSegmentLabel({
   value,
   thinOffsetX = 0,
   thinColor,
+  layout = 'vertical',
+  thinSide = 'above',
 }: StackedSegmentLabelProps) {
   const count = toNumber(value)
   if (count <= 0) {
     return null
   }
   const boxHeight = toNumber(height)
+  if (layout === 'horizontal') {
+    const boxWidth = toNumber(width)
+    const fitsInside = boxWidth >= String(count).length * DIGIT_WIDTH + INNER_LABEL_PADDING_X
+    const centerX = toNumber(x) + boxWidth / 2
+    if (fitsInside) {
+      return (
+        <text
+          x={centerX}
+          y={toNumber(y) + boxHeight / 2}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={VALUE_LABEL_SIZE}
+          fill="#ffffff"
+        >
+          {count}
+        </text>
+      )
+    }
+    const above = thinSide === 'above'
+    return (
+      <text
+        x={centerX}
+        y={above ? toNumber(y) - THIN_LABEL_GAP : toNumber(y) + boxHeight + THIN_LABEL_GAP}
+        textAnchor="middle"
+        dominantBaseline={above ? 'text-after-edge' : 'text-before-edge'}
+        fontSize={VALUE_LABEL_SIZE}
+        fill={thinColor ?? VALUE_LABEL_COLOR}
+        {...HALO}
+      >
+        {count}
+      </text>
+    )
+  }
   const fitsInside = boxHeight >= MIN_INNER_LABEL_HEIGHT
   return (
     <text
