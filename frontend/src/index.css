@@ -1,5 +1,7 @@
 :root {
-  color-scheme: light dark;
+  /* Giao diện chỉ có bản sáng. Khai "light dark" khiến trình duyệt ở chế độ tối tô ô tự điền và các
+     điều khiển gốc theo bảng màu tối — ra những dải xám lạc tông giữa form trắng. */
+  color-scheme: light;
 }
 
 body {
@@ -10,4 +12,19 @@ body {
 
 #root {
   min-height: 100vh;
+}
+
+/*
+ * Chrome tô nền ô được tự điền (tài khoản đã lưu) và chỉ tô thẻ <input> bên trong, không tô cả khung
+ * AntD chứa icon — thành một dải màu lệch nằm giữa ô. Nền của thuộc tính này không ghi đè trực tiếp
+ * được, nên phủ lên bằng bóng đổ trong cùng màu nền ô và giữ màu chữ như ô thường.
+ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+  box-shadow: 0 0 0 1000px #fff inset;
+  -webkit-text-fill-color: rgba(0, 0, 0, 0.88);
+  caret-color: rgba(0, 0, 0, 0.88);
+  transition: background-color 9999s ease-out 0s;
 }
