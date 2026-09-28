@@ -1,6 +1,7 @@
 import { SearchOutlined } from '@ant-design/icons'
 import { Button, Card, Col, Input, Row, Select, Space, Statistic, Table, Tag } from 'antd'
 import { useMemo, useState } from 'react'
+import { localPagination } from '../../api/pagination'
 import { REMAINDER_TYPE_LABEL } from './remainderLabels'
 import type { CuttingPlanResponse } from './types'
 
@@ -163,7 +164,7 @@ export function CuttingPlanByOrderTab({ plan }: Props) {
       <Table
         rowKey="key"
         dataSource={filtered}
-        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `${total} dòng nhu cầu cắt` }}
+        pagination={localPagination((total) => `${total} dòng nhu cầu cắt`)}
         columns={[
           {
             title: 'Lệnh SX / Bộ cửa',

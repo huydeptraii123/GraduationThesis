@@ -4,7 +4,6 @@ import type {
   CuttingPlanApprovalPreviewResponse,
   CuttingPlanPreviewResponse,
   CuttingPlanResponse,
-  CuttingPlanStatus,
   CuttingPlanSummaryResponse,
 } from './types'
 
@@ -13,7 +12,6 @@ const CUTTING_PLANS_URL = '/api/v1/cutting-plans'
 export interface CuttingPlanFilterParams extends PageParams {
   /** Mã lần chạy (#CP-<id>) — tra chính xác chứ không tìm gần đúng. */
   planId?: number | null
-  status?: CuttingPlanStatus | null
   /** Định dạng YYYY-MM-DD, lọc theo thời điểm chạy. */
   runFrom?: string | null
   runTo?: string | null

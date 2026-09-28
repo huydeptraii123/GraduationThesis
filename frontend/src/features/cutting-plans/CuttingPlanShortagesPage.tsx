@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { extractBlobErrorMessage, extractErrorMessage } from '../../api/apiError'
 import { downloadFile } from '../../api/downloadFile'
+import { localPagination } from '../../api/pagination'
 import { exportShortageReport, getCuttingPlan } from './cuttingPlansApi'
 import type { CuttingPlanResponse } from './types'
 
@@ -134,7 +135,7 @@ export function CuttingPlanShortagesPage() {
       <Table
         rowKey="id"
         dataSource={filtered}
-        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `${total} đơn thiếu vật tư` }}
+        pagination={localPagination((total) => `${total} đơn thiếu vật tư`)}
         columns={[
           {
             title: 'Lệnh SX / Bộ cửa',

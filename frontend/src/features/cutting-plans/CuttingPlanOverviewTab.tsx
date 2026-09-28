@@ -16,6 +16,7 @@ import {
   YAxis,
 } from 'recharts'
 import { StackTotalLabel, StackedSegmentLabel } from '../../components/chartLabels'
+import { localPagination } from '../../api/pagination'
 import type { CuttingBatch, CuttingBatchOrderRow } from './cuttingBatches'
 import type { CuttingPlanResponse } from './types'
 
@@ -211,7 +212,7 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
           <Table
             size="small"
             rowKey="slatMaterialId"
-            pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${total} loại vật tư thiếu` }}
+            pagination={localPagination((total) => `${total} loại vật tư thiếu`)}
             dataSource={shortagesByMaterial}
             columns={[
               { title: 'Loại thanh nan', dataIndex: 'slatMaterialName' },
@@ -238,7 +239,7 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
         <Table
           size="small"
           rowKey="batchNumber"
-          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${total} đợt cắt` }}
+          pagination={localPagination((total) => `${total} đợt cắt`)}
           dataSource={batches}
           columns={[
             { title: 'Đợt cắt', dataIndex: 'batchNumber', render: (value: number) => `Đợt ${value}` },
