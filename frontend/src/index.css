@@ -4,6 +4,8 @@
 
 body {
   margin: 0;
+  /* Cùng font với token của AntD (app/theme.ts): token chỉ áp vào component, không áp vào body. */
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 #root {
