@@ -34,8 +34,16 @@ export function toCurrentPage(page: number): number {
   return page + 1
 }
 
+/**
+ * Cỡ trang mặc định của MỌI bảng: 10 dòng. Danh sách dài thì người dùng tự chọn cỡ lớn hơn — mặc định
+ * 20 khiến một màn có hai bảng xếp chồng dài quá một màn hình mà phần lớn thời gian không cần.
+ */
+export const DEFAULT_PAGE_SIZE = 10
+
+const PAGE_SIZE_OPTIONS = ['10', '20', '50', '100']
+
 /** Trang rỗng dùng làm giá trị khởi tạo, tránh phải kiểm tra null ở mọi bảng. */
-export function emptyPage<T>(size = 20): Page<T> {
+export function emptyPage<T>(size = DEFAULT_PAGE_SIZE): Page<T> {
   return { content: [], page: 0, size, totalElements: 0, totalPages: 0 }
 }
 
@@ -59,7 +67,23 @@ export function tablePagination(
     pageSize: state.pageSize,
     total: state.total,
     showSizeChanger: true,
-    pageSizeOptions: ['10', '20', '50', '100'],
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    showTotal,
+  }
+}
+
+/**
+ * Phân trang cho bảng có TOÀN BỘ dữ liệu sẵn ở trình duyệt (không gọi lại máy chủ khi đổi trang).
+ *
+ * Phải dùng `defaultPageSize`, KHÔNG dùng `pageSize`: truyền `pageSize` là biến cỡ trang thành giá trị
+ * cố định do nơi gọi nắm giữ — người dùng chọn "20 / trang" thì bảng lập tức bị ép về số cũ, ô chọn
+ * cỡ trang hiện ra nhưng bấm không có tác dụng gì. Đây đúng là lỗi từng có ở 5 bảng.
+ */
+export function localPagination(showTotal: (total: number) => string) {
+  return {
+    defaultPageSize: DEFAULT_PAGE_SIZE,
+    showSizeChanger: true,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
     showTotal,
   }
 }

@@ -7,7 +7,6 @@ import {
   DatePicker,
   Input,
   Row,
-  Select,
   Space,
   Spin,
   Statistic,
@@ -71,7 +70,6 @@ export function CuttingPlanListPage() {
   }, [])
 
   const [keyword, setKeyword] = useState('')
-  const [statusFilter, setStatusFilter] = useState<CuttingPlanStatus | null>(null)
   const [runRange, setRunRange] = useState<[Dayjs, Dayjs] | null>(null)
 
   const debouncedKeyword = useDebouncedValue(keyword)
@@ -98,13 +96,13 @@ export function CuttingPlanListPage() {
 
   const load = useCallback(
     (params: PageParams) =>
-      listCuttingPlans({ ...params, planId: planIdFilter, status: statusFilter, runFrom, runTo }),
-    [planIdFilter, statusFilter, runFrom, runTo],
+      listCuttingPlans({ ...params, planId: planIdFilter, runFrom, runTo }),
+    [planIdFilter, runFrom, runTo],
   )
   const { data, loading, error: loadError, current, pageSize, handleTableChange } = usePagedList(
     load,
-    [planIdFilter, statusFilter, runFrom, runTo],
-    { initialPageSize: 10, errorMessage: 'Không tải được danh sách phương án cắt.' },
+    [planIdFilter, runFrom, runTo],
+    { errorMessage: 'Không tải được danh sách phương án cắt.' },
   )
 
   return (
@@ -202,17 +200,8 @@ export function CuttingPlanListPage() {
           value={runRange}
           onChange={(value) => setRunRange(value && value[0] && value[1] ? [value[0], value[1]] : null)}
         />
-        <Select<CuttingPlanStatus | null>
-          allowClear
-          placeholder="Trạng thái: Tất cả"
-          style={{ width: 180 }}
-          value={statusFilter}
-          onChange={(value) => setStatusFilter(value ?? null)}
-          options={[
-            { value: 'COMPLETED', label: 'Hoàn tất' },
-            { value: 'FAILED', label: 'Thất bại' },
-          ]}
-        />
+        {/* Cố ý không có bộ lọc trạng thái: backend chỉ bao giờ ghi COMPLETED (lỗi thì giao dịch quay
+            lui, không để lại dòng nào), nên lọc "Thất bại" luôn rỗng còn lọc "Hoàn tất" không lọc gì. */}
       </Space>
 
       <Table

@@ -2,6 +2,7 @@ import { InboxOutlined } from '@ant-design/icons'
 import { Alert, Button, Modal, Table, Typography, Upload } from 'antd'
 import { useState } from 'react'
 import { extractErrorMessage, extractImportRowErrors, type ImportRowError } from '../../api/apiError'
+import { localPagination } from '../../api/pagination'
 import { importInventoryExcel } from './inventoryApi'
 import type { InventoryImportResult } from './types'
 
@@ -134,7 +135,7 @@ export function ImportInventoryModal({ open, onClose, onImported }: Props) {
             size="small"
             rowKey={(row) => `${row.rowNumber}-${row.message}`}
             dataSource={rowErrors}
-            pagination={rowErrors.length > 10 ? { pageSize: 10 } : false}
+            pagination={rowErrors.length > 10 ? localPagination((total) => `${total} dòng lỗi`) : false}
             scroll={{ y: 240 }}
             columns={[
               { title: 'Dòng', dataIndex: 'rowNumber', width: 80 },

@@ -1,6 +1,7 @@
 import { Card, Pagination, Space, Table, Tag, Typography } from 'antd'
 import { useMemo, useState } from 'react'
 import { CuttingBarDiagram } from '../../components/CuttingBarDiagram'
+import { localPagination } from '../../api/pagination'
 import { expandDetailToPieces } from './expandDetailToPieces'
 import { REMAINDER_TYPE_LABEL } from './remainderLabels'
 import type { CuttingPlanDetailResponse, CuttingPlanResponse } from './types'
@@ -146,7 +147,7 @@ export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
         <Table
           size="small"
           rowKey="id"
-          pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `${total} dòng phôi` }}
+          pagination={localPagination((total) => `${total} dòng phôi`)}
           dataSource={plan.details}
           columns={[
             {

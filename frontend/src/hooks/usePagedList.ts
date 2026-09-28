@@ -1,7 +1,7 @@
 import type { SorterResult, TablePaginationConfig } from 'antd/es/table/interface'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { extractErrorMessage } from '../api/apiError'
-import { emptyPage, toPageParam, type Page, type PageParams } from '../api/pagination'
+import { DEFAULT_PAGE_SIZE, emptyPage, toPageParam, type Page, type PageParams } from '../api/pagination'
 
 interface Options {
   initialPageSize?: number
@@ -48,7 +48,7 @@ export function usePagedList<T>(
   filterDeps: unknown[],
   options: Options = {},
 ) {
-  const { initialPageSize = 20, errorMessage = 'Không tải được dữ liệu.' } = options
+  const { initialPageSize = DEFAULT_PAGE_SIZE, errorMessage = 'Không tải được dữ liệu.' } = options
 
   const [current, setCurrent] = useState(1)
   const [pageSize, setPageSize] = useState(initialPageSize)
