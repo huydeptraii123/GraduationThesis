@@ -2,18 +2,22 @@
  * Nhãn số hiển thị THẲNG trên biểu đồ, không phải chờ di chuột.
  *
  * Đây là yêu cầu của doanh nghiệp: người xem tổng quát cần đọc được con số ngay, di chuột từng
- * mark là mất thời gian. Gom vào một chỗ vì hai màn hình cùng vẽ biểu đồ có nhãn (tab tổng quan
- * phương án cắt và khu thống kê phế liệu) — hai bản sao đối ứng của cùng một quy ước nhãn là đúng
- * thứ đã gây lỗi ở chú giải biểu đồ trước đây.
+ * mark là mất thời gian. Gom vào một chỗ vì nhiều màn hình cùng vẽ biểu đồ có nhãn — hai bản sao
+ * đối ứng của cùng một quy ước nhãn là đúng thứ đã gây lỗi ở chú giải biểu đồ trước đây.
+ *
+ * Cỡ chữ, màu chữ và viền trắng nằm ở `charts.css` (các class `chart-value-label*`); ở đây chỉ có
+ * VỊ TRÍ. Ngoại lệ duy nhất là màu của nhãn bị đẩy ra ngoài một đoạn quá mỏng: nó mang đúng màu
+ * chuỗi của đoạn đó, truyền qua `style` vì màu chuỗi là dữ liệu, không phải phong cách.
  *
  * File này cố ý chỉ xuất COMPONENT, không xuất hằng số: xuất lẫn lộn cả hai làm hỏng hot-reload
  * của Vite và sinh cảnh báo `react(only-export-components)`. Nơi dùng chỉ việc cắm component vào
- * `content` của `<LabelList>`, không phải tự ráp màu và cỡ chữ.
+ * `content` của `<LabelList>`.
  */
 
-/** Màu chữ của nhãn nằm NGOÀI mark — cùng tông với nhãn trục, không cạnh tranh với màu của mark. */
-const VALUE_LABEL_COLOR = '#595959'
-const VALUE_LABEL_SIZE = 11
+/*
+ * Các ngưỡng hình học dưới đây đo cho chữ 11px (`--chart-text-value` trong charts.css). Đổi cỡ chữ
+ * ở đó thì phải đo lại ở đây.
+ */
 
 /**
  * Chiều cao tối thiểu để một đoạn cột chứa nổi chữ bên trong.
@@ -25,9 +29,8 @@ const VALUE_LABEL_SIZE = 11
 const MIN_INNER_LABEL_HEIGHT = 16
 
 /**
- * Bề rộng ước lượng của một chữ số ở cỡ {@link VALUE_LABEL_SIZE} cộng phần đệm hai bên — dùng cho
- * cột NẰM NGANG, nơi thứ quyết định chữ có lọt trong đoạn hay không là bề rộng chứ không phải
- * chiều cao.
+ * Bề rộng ước lượng của một chữ số 11px cộng phần đệm hai bên — dùng cho thanh NẰM NGANG, nơi thứ
+ * quyết định chữ có lọt trong đoạn hay không là bề rộng chứ không phải chiều cao.
  */
 const DIGIT_WIDTH = 7
 const INNER_LABEL_PADDING_X = 6
@@ -35,18 +38,11 @@ const INNER_LABEL_PADDING_X = 6
 /** Khe giữa mép cột nằm ngang và nhãn bị đẩy ra ngoài. */
 const THIN_LABEL_GAP = 2
 
-/**
- * Viền trắng quanh chữ để đọc được khi nhãn nằm đè lên mark khác.
- *
- * `paintOrder: 'stroke'` bắt SVG vẽ viền TRƯỚC rồi mới vẽ ruột chữ; thiếu nó thì viền phủ lên
- * chính nét chữ và chữ bị dày bệt lại.
- */
-const HALO = {
-  stroke: '#ffffff',
-  strokeWidth: 3,
-  paintOrder: 'stroke' as const,
-  strokeLinejoin: 'round' as const,
-}
+/** Khe giữa đỉnh cột (hoặc đầu thanh ngang) và nhãn tổng / phần trăm. */
+const END_LABEL_GAP = 6
+
+const LABEL_INSIDE = 'chart-value-label chart-value-label--inside'
+const LABEL_HALO = 'chart-value-label chart-value-label--halo'
 
 /** Hình học Recharts truyền cho `content` của `<LabelList>` — mọi trường đều có thể vắng. */
 interface LabelGeometry {
@@ -115,6 +111,7 @@ export function StackedSegmentLabel({
   if (count <= 0) {
     return null
   }
+  const thinStyle = thinColor ? { fill: thinColor } : undefined
   const boxHeight = toNumber(height)
   if (layout === 'horizontal') {
     const boxWidth = toNumber(width)
@@ -127,8 +124,7 @@ export function StackedSegmentLabel({
           y={toNumber(y) + boxHeight / 2}
           textAnchor="middle"
           dominantBaseline="central"
-          fontSize={VALUE_LABEL_SIZE}
-          fill="#ffffff"
+          className={LABEL_INSIDE}
         >
           {count}
         </text>
@@ -141,9 +137,8 @@ export function StackedSegmentLabel({
         y={above ? toNumber(y) - THIN_LABEL_GAP : toNumber(y) + boxHeight + THIN_LABEL_GAP}
         textAnchor="middle"
         dominantBaseline={above ? 'text-after-edge' : 'text-before-edge'}
-        fontSize={VALUE_LABEL_SIZE}
-        fill={thinColor ?? VALUE_LABEL_COLOR}
-        {...HALO}
+        className={LABEL_HALO}
+        style={thinStyle}
       >
         {count}
       </text>
@@ -156,26 +151,42 @@ export function StackedSegmentLabel({
       y={toNumber(y) + boxHeight / 2}
       textAnchor="middle"
       dominantBaseline="central"
-      fontSize={VALUE_LABEL_SIZE}
-      fill={fitsInside ? '#ffffff' : (thinColor ?? VALUE_LABEL_COLOR)}
-      {...(fitsInside ? {} : HALO)}
+      className={fitsInside ? LABEL_INSIDE : LABEL_HALO}
+      style={fitsInside ? undefined : thinStyle}
     >
       {count}
     </text>
   )
 }
 
-/** Tổng của cả cột chồng, đặt ngay trên đỉnh cột. Gắn vào đoạn TRÊN CÙNG mới ra đúng đỉnh. */
-export function StackTotalLabel({ x, y, width, value }: LabelGeometry) {
+interface StackTotalLabelProps extends LabelGeometry {
+  /** `vertical`: trên đỉnh cột đứng (mặc định). `horizontal`: ngay sau đầu thanh nằm ngang. */
+  layout?: 'vertical' | 'horizontal'
+}
+
+/**
+ * Tổng của cả cột chồng, đặt ở đầu tự do của đoạn ngoài cùng. Dùng cùng `stackTotalOn` (chartTheme):
+ * mỗi chuỗi gắn một nhãn, chỉ đoạn khác 0 ngoài cùng nhận được giá trị — các đoạn khác nhận
+ * `undefined` và không vẽ gì.
+ */
+export function StackTotalLabel({ x, y, width, height, value, layout = 'vertical' }: StackTotalLabelProps) {
+  if (value == null) {
+    return null
+  }
+  if (layout === 'horizontal') {
+    return (
+      <text
+        x={toNumber(x) + toNumber(width) + END_LABEL_GAP}
+        y={toNumber(y) + toNumber(height) / 2}
+        dominantBaseline="central"
+        className={LABEL_HALO}
+      >
+        {toNumber(value)}
+      </text>
+    )
+  }
   return (
-    <text
-      x={toNumber(x) + toNumber(width) / 2}
-      y={toNumber(y) - 6}
-      textAnchor="middle"
-      fontSize={VALUE_LABEL_SIZE}
-      fill={VALUE_LABEL_COLOR}
-      {...HALO}
-    >
+    <text x={toNumber(x) + toNumber(width) / 2} y={toNumber(y) - END_LABEL_GAP} textAnchor="middle" className={LABEL_HALO}>
       {toNumber(value)}
     </text>
   )
@@ -184,14 +195,7 @@ export function StackTotalLabel({ x, y, width, value }: LabelGeometry) {
 /** Phần trăm đặt trên đỉnh cột. */
 export function BarTopPercentLabel({ x, y, width, value }: LabelGeometry) {
   return (
-    <text
-      x={toNumber(x) + toNumber(width) / 2}
-      y={toNumber(y) - 6}
-      textAnchor="middle"
-      fontSize={VALUE_LABEL_SIZE}
-      fill={VALUE_LABEL_COLOR}
-      {...HALO}
-    >
+    <text x={toNumber(x) + toNumber(width) / 2} y={toNumber(y) - END_LABEL_GAP} textAnchor="middle" className={LABEL_HALO}>
       {formatPercent(value)}
     </text>
   )
@@ -205,14 +209,7 @@ export function BarTopPercentLabel({ x, y, width, value }: LabelGeometry) {
  */
 export function LinePercentLabel({ x, y, value }: LabelGeometry) {
   return (
-    <text
-      x={toNumber(x)}
-      y={toNumber(y) - 10}
-      textAnchor="middle"
-      fontSize={VALUE_LABEL_SIZE}
-      fill={VALUE_LABEL_COLOR}
-      {...HALO}
-    >
+    <text x={toNumber(x)} y={toNumber(y) - 10} textAnchor="middle" className={LABEL_HALO}>
       {formatPercent(value)}
     </text>
   )

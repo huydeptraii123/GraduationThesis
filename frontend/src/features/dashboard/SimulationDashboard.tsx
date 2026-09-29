@@ -36,55 +36,31 @@ import {
   wasteRatioPercent,
   type ShortageByMaterial,
 } from './demandAggregates'
-import { StackedSegmentLabel } from '../../components/chartLabels'
-import { CHART_SURFACE, DOOR_SET_STATUSES, DOOR_SET_STATUS_COLOR, type DoorSetStatus } from './simulationSeries'
+import { ChartLegend, ChartTooltip } from '../../components/charts/ChartParts'
+import { StackTotalLabel, StackedSegmentLabel } from '../../components/charts/chartLabels'
+import {
+  BAR_SIZE,
+  CHART_MARGIN,
+  CHART_SURFACE,
+  DONUT,
+  HORIZONTAL_BAR_SIZE,
+  SEGMENT_GAP,
+  horizontalChartHeight,
+  stackTotalOn,
+  type LegendEntry,
+} from '../../components/charts/chartTheme'
+import { DOOR_SET_STATUSES, DOOR_SET_STATUS_COLOR, type DoorSetStatus } from './simulationSeries'
 
 interface Props {
   simulation: CuttingPlanPreviewResponse
 }
 
-/** Chiều cao tối thiểu của hàng biểu đồ — hàng chỉ cao hơn khi biểu đồ theo model cần thêm chỗ. */
-const CHART_HEIGHT = 300
-
-/** Cột mảnh hơn ô của nó — phần trống còn lại là khoảng thở, không phải chỗ để nới cột ra. */
-const MAX_BAR_SIZE = 24
-
-/**
- * Mỗi dòng của biểu đồ theo model: thanh 16px trong ô 52px, để khe giữa hai thanh liền nhau là 36px.
- *
- * Khe đó phải chứa được HAI nhãn cùng lúc: nhãn đoạn hẹp của dòng trên đẩy xuống dưới, nhãn đoạn
- * hẹp của dòng dưới đẩy lên trên, và cả hai cùng nằm sát trục khi đoạn chỉ 1–2 bộ cửa. Đo thật mỗi
- * nhãn cao 16px cộng 2px khe với thanh, hai nhãn là 36px — khe hẹp hơn thì chúng đè lên nhau.
- */
-const MODEL_BAR_SIZE = 16
-const MODEL_ROW_HEIGHT = 52
-
-/** Phần không thuộc dòng nào: trục số bên dưới, chú giải và lề trên. */
-const MODEL_CHART_CHROME = 72
-
-/** Khe hở vẽ bằng màu nền để hai đoạn của cột chồng tách nhau mà không cần viền quanh mark. */
-const SEGMENT_GAP = 2
-
-const AXIS_TICK = { fontSize: 12, fill: '#595959' }
-const GRID_COLOR = '#f0f0f0'
-
 function formatDeliveryDate(iso: string): string {
   return dayjs(iso).format('DD/MM/YYYY')
 }
 
-function formatDoorSets(value: unknown): string {
-  return `${Number(value ?? 0)} bộ cửa`
-}
-
-/**
- * Chú giải dựng tay thay vì để Recharts tự suy từ các `Bar`: thứ tự tự suy chạy ngược chiều xếp
- * chồng, và một trạng thái vắng mặt trong dữ liệu sẽ biến mất khỏi chú giải — người đọc mất hẳn
- * lời giải nghĩa của màu còn lại.
- */
-interface LegendEntry {
-  id: string
-  label: string
-  color: string
+function formatDoorSets(value: number): string {
+  return `${value} bộ cửa`
 }
 
 const STATUS_LEGEND: LegendEntry[] = DOOR_SET_STATUSES.map((status) => ({
@@ -92,37 +68,6 @@ const STATUS_LEGEND: LegendEntry[] = DOOR_SET_STATUSES.map((status) => ({
   label: status,
   color: DOOR_SET_STATUS_COLOR[status],
 }))
-
-/**
- * Chữ của chú giải mặc trang phục của chữ (ghi màu mực phụ), chỉ ô vuông nhỏ bên cạnh mang màu của
- * chuỗi số liệu — tô màu chuỗi lên chính dòng chữ làm nó khó đọc và khiến màu thành dấu hiệu duy
- * nhất phân biệt hai trạng thái.
- */
-function StatusLegend({ entries }: { entries: LegendEntry[] }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'center',
-        flexWrap: 'wrap',
-        gap: 16,
-        paddingTop: 4,
-        fontSize: 12,
-        color: '#595959',
-      }}
-    >
-      {entries.map((entry) => (
-        <span key={entry.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span
-            aria-hidden
-            style={{ width: 10, height: 10, borderRadius: 2, background: entry.color, display: 'inline-block' }}
-          />
-          {entry.label}
-        </span>
-      ))}
-    </div>
-  )
-}
 
 /**
  * Chú giải vành khuyên mang luôn con số và tỷ lệ: `Đủ nan TP 32 (22.22%)` — đúng khuôn chữ của
@@ -148,7 +93,7 @@ export function SimulationDashboard({ simulation }: Props) {
   const donutLegend = buildDonutLegend(statusSlices, doorSetCount)
   // Cả hàng dùng chung một chiều cao: chỉ nới riêng biểu đồ theo model thì hai thẻ bên cạnh lùn
   // hơn và hàng lệch mép dưới.
-  const rowChartHeight = Math.max(CHART_HEIGHT, byModelRows.length * MODEL_ROW_HEIGHT + MODEL_CHART_CHROME)
+  const rowChartHeight = horizontalChartHeight(byModelRows.length)
 
   if (doorSetCount === 0) {
     return (
@@ -191,21 +136,14 @@ export function SimulationDashboard({ simulation }: Props) {
         <Col span={10}>
           <Card size="small" title="Số bộ cửa Open theo ngày giao hàng &amp; tình trạng đáp ứng nan">
             <ResponsiveContainer width="100%" height={rowChartHeight}>
-              <BarChart data={byDate} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke={GRID_COLOR} />
+              <BarChart data={byDate} margin={CHART_MARGIN}>
+                <CartesianGrid vertical={false} />
                 {/* Nhiều ngày giao thì thưa bớt nhãn thay vì để chúng chồng lên nhau — mốc đầu và
                     mốc cuối luôn giữ lại để người đọc biết trục trải từ đâu tới đâu. */}
-                <XAxis
-                  dataKey="label"
-                  tick={AXIS_TICK}
-                  tickLine={false}
-                  axisLine={{ stroke: GRID_COLOR }}
-                  interval="preserveStartEnd"
-                  minTickGap={24}
-                />
-                <YAxis allowDecimals={false} tick={AXIS_TICK} tickLine={false} axisLine={false} />
-                <RechartsTooltip formatter={formatDoorSets} />
-                <Legend content={<StatusLegend entries={STATUS_LEGEND} />} />
+                <XAxis dataKey="label" tickLine={false} interval="preserveStartEnd" minTickGap={24} />
+                <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
+                <RechartsTooltip content={<ChartTooltip formatValue={formatDoorSets} />} />
+                <Legend content={<ChartLegend entries={STATUS_LEGEND} />} />
                 {DOOR_SET_STATUSES.map((status, index) => (
                   <Bar
                     key={status}
@@ -213,12 +151,10 @@ export function SimulationDashboard({ simulation }: Props) {
                     name={status}
                     stackId="doorSets"
                     fill={DOOR_SET_STATUS_COLOR[status]}
-                    maxBarSize={MAX_BAR_SIZE}
+                    maxBarSize={BAR_SIZE}
                     // Khe hở giữa hai đoạn vẽ bằng nét cùng màu nền, không phải viền quanh mark.
                     stroke={CHART_SURFACE}
                     strokeWidth={SEGMENT_GAP}
-                    // Bo 4px ở đầu tự do của cột, vuông ở chân trục — chỉ đoạn trên cùng có đầu tự do.
-                    radius={index === DOOR_SET_STATUSES.length - 1 ? [4, 4, 0, 0] : undefined}
                   >
                     {/* Đoạn quá mỏng thì nhãn không nằm lọt trong đoạn và hai nhãn liền nhau
                         đè lên nhau — đẩy lệch ngang mỗi chuỗi một hướng, xem chartLabels. */}
@@ -231,9 +167,7 @@ export function SimulationDashboard({ simulation }: Props) {
                         />
                       }
                     />
-                    {index === DOOR_SET_STATUSES.length - 1 && (
-                      <LabelList dataKey="total" position="top" fill="#595959" fontSize={12} />
-                    )}
+                    <LabelList dataKey={stackTotalOn(DOOR_SET_STATUSES, index)} content={<StackTotalLabel />} />
                   </Bar>
                 ))}
               </BarChart>
@@ -245,8 +179,8 @@ export function SimulationDashboard({ simulation }: Props) {
           <Card size="small" title="Số bộ cửa Open theo model">
             <ResponsiveContainer width="100%" height={rowChartHeight}>
               <BarChart data={byModelRows} layout="vertical" margin={{ top: 8, right: 32, left: 8, bottom: 0 }}>
-                <CartesianGrid horizontal={false} stroke={GRID_COLOR} />
-                <XAxis type="number" allowDecimals={false} tick={AXIS_TICK} tickLine={false} axisLine={false} />
+                <CartesianGrid horizontal={false} />
+                <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} />
                 <YAxis
                   type="category"
                   dataKey="label"
@@ -254,12 +188,10 @@ export function SimulationDashboard({ simulation }: Props) {
                   // Mặc định Recharts tự bỏ nhãn sắp chồng nhau — chính cách dòng lớn nhất từng
                   // mất tên. Chiều cao nay nới theo số dòng nên mọi nhãn đều có chỗ, bắt hiện hết.
                   interval={0}
-                  tick={AXIS_TICK}
                   tickLine={false}
-                  axisLine={{ stroke: GRID_COLOR }}
                 />
-                <RechartsTooltip formatter={formatDoorSets} />
-                <Legend content={<StatusLegend entries={STATUS_LEGEND} />} />
+                <RechartsTooltip content={<ChartTooltip formatValue={formatDoorSets} />} />
+                <Legend content={<ChartLegend entries={STATUS_LEGEND} />} />
                 {DOOR_SET_STATUSES.map((status, index) => (
                   <Bar
                     key={status}
@@ -267,10 +199,9 @@ export function SimulationDashboard({ simulation }: Props) {
                     name={status}
                     stackId="doorSets"
                     fill={DOOR_SET_STATUS_COLOR[status]}
-                    maxBarSize={MODEL_BAR_SIZE}
+                    maxBarSize={HORIZONTAL_BAR_SIZE}
                     stroke={CHART_SURFACE}
                     strokeWidth={SEGMENT_GAP}
-                    radius={index === DOOR_SET_STATUSES.length - 1 ? [0, 4, 4, 0] : undefined}
                   >
                     {/* Đoạn quá hẹp thì nhãn ra trên/dưới thanh, mỗi chuỗi một phía — xem chartLabels. */}
                     <LabelList
@@ -283,9 +214,10 @@ export function SimulationDashboard({ simulation }: Props) {
                         />
                       }
                     />
-                    {index === DOOR_SET_STATUSES.length - 1 && (
-                      <LabelList dataKey="total" position="right" fill="#595959" fontSize={12} />
-                    )}
+                    <LabelList
+                      dataKey={stackTotalOn(DOOR_SET_STATUSES, index)}
+                      content={<StackTotalLabel layout="horizontal" />}
+                    />
                   </Bar>
                 ))}
               </BarChart>
@@ -301,8 +233,7 @@ export function SimulationDashboard({ simulation }: Props) {
                   data={statusSlices}
                   dataKey="count"
                   nameKey="status"
-                  innerRadius={55}
-                  outerRadius={85}
+                  {...DONUT}
                   // Khe hở giữa hai lát, cùng kỹ thuật với cột chồng.
                   stroke={CHART_SURFACE}
                   strokeWidth={SEGMENT_GAP}
@@ -311,10 +242,10 @@ export function SimulationDashboard({ simulation }: Props) {
                     <Cell key={slice.status} fill={DOOR_SET_STATUS_COLOR[slice.status]} />
                   ))}
                 </Pie>
-                <RechartsTooltip formatter={formatDoorSets} />
+                <RechartsTooltip content={<ChartTooltip formatValue={formatDoorSets} />} />
                 {/* Số và tỷ lệ nằm ở chú giải chứ không phải nhãn ngoài vành khuyên: khối này hẹp
                     nhất hàng, nhãn ngoài dài như "Đủ nan TP 32 (22.22%)" bị cắt cụt ở cả hai mép. */}
-                <Legend content={<StatusLegend entries={donutLegend} />} />
+                <Legend content={<ChartLegend entries={donutLegend} />} />
               </PieChart>
             </ResponsiveContainer>
           </Card>

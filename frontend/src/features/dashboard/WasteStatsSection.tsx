@@ -1,4 +1,4 @@
-import { Card, Col, Empty, Row } from 'antd'
+import { Card, Col, Empty, Row, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useMemo } from 'react'
 import {
@@ -18,7 +18,20 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { BarTopPercentLabel, LinePercentLabel } from '../../components/chartLabels'
+import { ChartLegend, ChartTooltip } from '../../components/charts/ChartParts'
+import { BarTopPercentLabel, LinePercentLabel } from '../../components/charts/chartLabels'
+import {
+  BAR_SIZE,
+  CHART_HEIGHT,
+  CHART_MARGIN,
+  CHART_SURFACE,
+  DONUT,
+  REMAINDER_COLOR,
+  SEGMENT_GAP,
+  WASTE_RATIO_COLOR,
+  WASTE_RATIO_POINT_COLOR,
+  type LegendEntry,
+} from '../../components/charts/chartTheme'
 import { SLAT_GROUP_LABEL } from '../inventory/constants'
 import { REMAINDER_TYPE_LABEL } from '../cutting-plans/remainderLabels'
 import type { RemainderType } from '../cutting-plans/types'
@@ -42,13 +55,6 @@ const TARGET_WASTE_RATIO_PERCENT = 5
  */
 const HIDDEN_REMAINDER_TYPE: RemainderType = 'WASTE'
 
-/** Cùng bảng màu với sơ đồ phôi (CuttingBarDiagram) để người dùng không phải học lại nghĩa của màu. */
-const REMAINDER_COLOR: Record<RemainderType, string> = {
-  DISCARDED: '#8c8c8c',
-  WASTE: '#d46b08',
-  RESTOCK: '#237804',
-}
-
 /** Mô tả đúng ngưỡng nghiệp vụ để biểu đồ tự giải thích, không cần tra tài liệu. */
 const REMAINDER_HINT: Record<RemainderType, string> = {
   DISCARDED: 'dưới 30cm',
@@ -56,12 +62,13 @@ const REMAINDER_HINT: Record<RemainderType, string> = {
   RESTOCK: 'trên 3m',
 }
 
-const WASTE_BAR_COLOR = '#d46b08'
-const ORDER_DOT_COLOR = '#faad14'
-
-
 /** Một ngày, tính bằng mili giây — đơn vị đệm hai đầu trục thời gian. */
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
+
+const TREND_LEGEND: LegendEntry[] = [
+  { id: 'order', label: 'Từng bộ cửa', color: WASTE_RATIO_POINT_COLOR, shape: 'circle' },
+  { id: 'day', label: 'Tỷ lệ phế chung theo ngày', color: WASTE_RATIO_COLOR, shape: 'line' },
+]
 
 function formatMeters(value: number): string {
   return `${Number(value ?? 0).toFixed(2)} m`
@@ -69,15 +76,6 @@ function formatMeters(value: number): string {
 
 function formatPercent(value: number): string {
   return `${Number(value ?? 0).toFixed(1)}%`
-}
-
-/**
- * Nhãn quanh vành khuyên: số mét kèm tỷ trọng, tên loại để ở chú giải bên dưới nên không lặp lại
- * ở đây — nhãn ngắn thì đường dẫn không kéo nhãn ra khỏi mép thẻ.
- */
-function renderRemainderSliceLabel(entry: { value?: number; percent?: number }): string {
-  const percent = ((entry.percent ?? 0) * 100).toFixed(1)
-  return `${formatMeters(entry.value ?? 0)} (${percent}%)`
 }
 
 interface OrderPoint {
@@ -96,34 +94,6 @@ interface DayPoint {
   stockUsedM: number
 }
 
-/**
- * Chú giải cho biểu đồ xu hướng. Recharts 3 đã bỏ prop `payload` của `<Legend>` nên muốn cố định
- * nội dung chú giải thì phải truyền qua `content`.
- */
-function TrendLegend() {
-  const entries = [
-    { color: ORDER_DOT_COLOR, text: 'Từng bộ cửa', shape: 'circle' as const },
-    { color: WASTE_BAR_COLOR, text: 'Tỷ lệ phế chung theo ngày', shape: 'line' as const },
-  ]
-  return (
-    <div style={{ display: 'flex', gap: 16, justifyContent: 'center', fontSize: 12 }}>
-      {entries.map((entry) => (
-        <span key={entry.text} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span
-            style={{
-              width: entry.shape === 'line' ? 14 : 8,
-              height: entry.shape === 'line' ? 2 : 8,
-              borderRadius: entry.shape === 'line' ? 0 : '50%',
-              background: entry.color,
-            }}
-          />
-          {entry.text}
-        </span>
-      ))}
-    </div>
-  )
-}
-
 interface TrendTooltipProps {
   active?: boolean
   payload?: { name?: string; payload?: OrderPoint | DayPoint }[]
@@ -131,14 +101,15 @@ interface TrendTooltipProps {
 
 /**
  * Hai chuỗi dữ liệu nằm chung một biểu đồ nên tooltip phải tự phân biệt: điểm của một bộ cửa có
- * `label`, điểm gộp theo ngày có `orderCount`.
+ * `label`, điểm gộp theo ngày có `orderCount`. Cấu trúc riêng nhưng mặc chung class của
+ * `ChartTooltip` (charts.css) nên trông y hệt tooltip các biểu đồ khác.
  */
 function TrendTooltip({ active, payload }: TrendTooltipProps) {
   if (!active || !payload?.length) {
     return null
   }
   return (
-    <div style={{ background: '#fff', border: '1px solid #d9d9d9', borderRadius: 4, padding: '6px 10px', fontSize: 12 }}>
+    <div className="chart-tooltip">
       {payload.map((entry, index) => {
         const point = entry.payload
         if (!point) {
@@ -146,14 +117,14 @@ function TrendTooltip({ active, payload }: TrendTooltipProps) {
         }
         const isDay = 'orderCount' in point
         return (
-          <div key={index} style={{ marginBottom: index === payload.length - 1 ? 0 : 6 }}>
-            <div style={{ fontWeight: 600 }}>
+          <div key={index} className="chart-tooltip__group">
+            <div className="chart-tooltip__title">
               {isDay
                 ? `${dayjs(point.ts).format('DD/MM/YYYY')} — ${point.orderCount} bộ cửa`
                 : (point as OrderPoint).label}
             </div>
             <div>Tỷ lệ phế: {formatPercent(point.wasteRatioPercent)}</div>
-            <div style={{ color: '#8c8c8c' }}>
+            <div className="chart-tooltip__note">
               {formatMeters(point.wasteM)} phế / {formatMeters(point.stockUsedM)} tiêu hao
             </div>
           </div>
@@ -237,6 +208,14 @@ export function WasteStatsSection({ data }: Props) {
     [data.remainderBreakdown],
   )
   const breakdownTotal = breakdown.reduce((sum, row) => sum + row.value, 0)
+  // Số mét và tỷ trọng nằm ở chú giải như vành khuyên trang chủ, không làm nhãn ngoài lát.
+  const breakdownLegend: LegendEntry[] = breakdown.map((row) => ({
+    id: row.key,
+    label: `${row.name}: ${formatMeters(row.value)} (${
+      breakdownTotal > 0 ? ((row.value / breakdownTotal) * 100).toFixed(1) : '0.0'
+    }%)`,
+    color: REMAINDER_COLOR[row.key],
+  }))
 
   const byGroup = useMemo(
     () =>
@@ -255,25 +234,32 @@ export function WasteStatsSection({ data }: Props) {
         <Card
           size="small"
           title="Xu hướng tỷ lệ phế theo ngày giao"
-          extra={<span style={{ fontSize: 12, color: '#8c8c8c' }}>mục tiêu ≤ {TARGET_WASTE_RATIO_PERCENT}%</span>}
+          extra={<Typography.Text type="secondary">mục tiêu ≤ {TARGET_WASTE_RATIO_PERCENT}%</Typography.Text>}
         >
           {orderPoints.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có bộ cửa nào được cắt" />
           ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart margin={{ top: 22, right: 12, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
+            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+              <ComposedChart margin={CHART_MARGIN}>
+                <CartesianGrid vertical={false} />
                 <XAxis
                   dataKey="ts"
                   type="number"
                   scale="time"
                   domain={timeDomain}
+                  tickLine={false}
                   tickFormatter={(value: number) => dayjs(value).format('DD/MM')}
                 />
-                <YAxis unit="%" />
-                <RechartsTooltip content={<TrendTooltip />} cursor={{ strokeDasharray: '3 3' }} />
-                <Legend content={<TrendLegend />} />
-                <Scatter name="Từng bộ cửa" data={orderPoints} dataKey="wasteRatioPercent" fill={ORDER_DOT_COLOR} />
+                <YAxis unit="%" tickLine={false} axisLine={false} />
+                <RechartsTooltip content={<TrendTooltip />} />
+                {/* Recharts 3 đã bỏ prop `payload` của `<Legend>` nên chú giải cố định phải đi qua `content`. */}
+                <Legend content={<ChartLegend entries={TREND_LEGEND} />} />
+                <Scatter
+                  name="Từng bộ cửa"
+                  data={orderPoints}
+                  dataKey="wasteRatioPercent"
+                  fill={WASTE_RATIO_POINT_COLOR}
+                />
                 {/* Chỉ đường gộp theo ngày mang nhãn số: 64 chấm bộ cửa dồn vào 5 ngày nên ghi
                     số lên từng chấm sẽ chồng đè thành vệt, không đọc nổi con số nào. Người xem
                     tổng quát cần đúng con số của từng ngày, còn chi tiết từng bộ cửa thì di chuột. */}
@@ -282,7 +268,7 @@ export function WasteStatsSection({ data }: Props) {
                   data={dayPoints}
                   type="monotone"
                   dataKey="wasteRatioPercent"
-                  stroke={WASTE_BAR_COLOR}
+                  stroke={WASTE_RATIO_COLOR}
                   strokeWidth={2}
                   dot={{ r: 3 }}
                 >
@@ -299,23 +285,22 @@ export function WasteStatsSection({ data }: Props) {
           {breakdownTotal === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa phát sinh phần dư nào" />
           ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+              <PieChart>
                 <Pie
                   data={breakdown}
                   dataKey="value"
                   nameKey="name"
-                  innerRadius={44}
-                  outerRadius={70}
-                  label={renderRemainderSliceLabel}
-                  labelLine
+                  {...DONUT}
+                  stroke={CHART_SURFACE}
+                  strokeWidth={SEGMENT_GAP}
                 >
                   {breakdown.map((row) => (
                     <Cell key={row.key} fill={REMAINDER_COLOR[row.key]} />
                   ))}
                 </Pie>
-                <Legend />
-                <RechartsTooltip formatter={(value) => formatMeters(Number(value ?? 0))} />
+                <Legend content={<ChartLegend entries={breakdownLegend} />} />
+                <RechartsTooltip content={<ChartTooltip formatValue={formatMeters} />} />
               </PieChart>
             </ResponsiveContainer>
           )}
@@ -327,23 +312,22 @@ export function WasteStatsSection({ data }: Props) {
           {byGroup.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa tiêu hao vật tư nào" />
           ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={byGroup} margin={{ top: 22, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis unit="%" />
+            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+              <BarChart data={byGroup} margin={CHART_MARGIN}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="name" tickLine={false} />
+                <YAxis unit="%" tickLine={false} axisLine={false} />
                 <RechartsTooltip
-                  formatter={(value, _name, entry) => {
-                    const row = entry?.payload as (typeof byGroup)[number] | undefined
-                    return [
-                      `${formatPercent(Number(value ?? 0))} (${formatMeters(row?.totalM ?? 0)} phế / ${formatMeters(
-                        row?.stockUsedM ?? 0,
-                      )} tiêu hao)`,
-                      'Tỷ lệ phế',
-                    ]
-                  }}
+                  content={
+                    <ChartTooltip
+                      formatValue={formatPercent}
+                      note={(row) =>
+                        `${formatMeters(Number(row.totalM))} phế / ${formatMeters(Number(row.stockUsedM))} tiêu hao`
+                      }
+                    />
+                  }
                 />
-                <Bar dataKey="wasteRatioPercent" name="Tỷ lệ phế" fill={WASTE_BAR_COLOR}>
+                <Bar dataKey="wasteRatioPercent" name="Tỷ lệ phế" fill={WASTE_RATIO_COLOR} maxBarSize={BAR_SIZE}>
                   <LabelList dataKey="wasteRatioPercent" content={<BarTopPercentLabel />} />
                 </Bar>
               </BarChart>
