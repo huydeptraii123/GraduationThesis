@@ -45,12 +45,13 @@ export const REMAINDER_TINT: Record<Exclude<RemainderType, 'DISCARDED'>, string>
 }
 
 /**
- * Tỷ lệ phế đi theo thang xám của phần dư bị bỏ — phế chủ yếu là mẩu dưới 30cm. Không dùng lại cam
- * của phần dư 30cm–3m như trước: cùng một màu mà ở biểu đồ này là "lãng phí", biểu đồ kia là "phế".
+ * Tỷ lệ phế mang một màu riêng không trùng nghĩa với màu nào khác trên biểu đồ. Không dùng lại cam
+ * của phần dư 30cm–3m như trước (cùng một màu mà ở biểu đồ này là "lãng phí", biểu đồ kia là
+ * "phế"), và không dùng xám: đã thử, trên màn thật một chuỗi xám đậm trông như biểu đồ bị tắt màu.
  */
-export const WASTE_RATIO_COLOR = '#595959'
+export const WASTE_RATIO_COLOR = '#722ed1'
 /** Chấm từng bộ cửa nhạt hơn đường gộp theo ngày để đường nổi lên trên. */
-export const WASTE_RATIO_POINT_COLOR = '#bfbfbf'
+export const WASTE_RATIO_POINT_COLOR = '#b37feb'
 
 /** Màu con số chỉ tiêu tốt/xấu (tỷ lệ phế so với mục tiêu) ở ô chỉ số cạnh biểu đồ. */
 export const KPI_TONE = {
