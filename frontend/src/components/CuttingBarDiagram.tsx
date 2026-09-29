@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { CHART_SURFACE, CHART_TRACK, REMAINDER_COLOR, REMAINDER_TINT } from './charts/chartTheme'
 
 export type RemainderType = 'DISCARDED' | 'WASTE' | 'RESTOCK'
 
@@ -28,11 +29,6 @@ const REMAINDER_LABEL: Record<RemainderType, ((meters: string) => string) | null
   RESTOCK: (meters) => `⬇ Nhập kho ${meters} m`,
 }
 
-const REMAINDER_LABEL_COLOR: Record<RemainderType, string> = {
-  DISCARDED: '#000000',
-  WASTE: '#d46b08',
-  RESTOCK: '#237804',
-}
 
 function buildTicks(sourceLengthMm: number): string[] {
   const ticks: string[] = []
@@ -71,9 +67,11 @@ export function CuttingBarDiagram({ sourceLengthMm, pieces, remainderMm, remaind
   const remainderX = cursor
   const remainderWidth = VIEWBOX_WIDTH - cursor
 
+  // Cùng bộ màu phần dư với biểu đồ tròn "Cơ cấu phần dư" (chartTheme): phần bỏ tô đặc, hai loại
+  // còn lại tô vân sọc để phân biệt được cả khi in trắng đen.
   const remainderFill =
     remainderType === 'DISCARDED'
-      ? '#d9dadb'
+      ? REMAINDER_COLOR.DISCARDED
       : `url(#${remainderType === 'RESTOCK' ? restockPatternId : wastePatternId})`
   const remainderMeters = (remainderMm / 1000).toFixed(2)
   const remainderLabel = REMAINDER_LABEL[remainderType]?.(remainderMeters) ?? null
@@ -96,16 +94,16 @@ export function CuttingBarDiagram({ sourceLengthMm, pieces, remainderMm, remaind
       >
         <defs>
           <pattern id={restockPatternId} width={8} height={8} patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-            <rect width={8} height={8} fill="#d9f7be" fillOpacity={0.75} />
-            <line x1={0} y1={0} x2={0} y2={8} stroke="#52c41a" strokeWidth={3} />
+            <rect width={8} height={8} fill={REMAINDER_TINT.RESTOCK} />
+            <line x1={0} y1={0} x2={0} y2={8} stroke={REMAINDER_COLOR.RESTOCK} strokeWidth={3} />
           </pattern>
           <pattern id={wastePatternId} width={8} height={8} patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-            <rect width={8} height={8} fill="#ffe7ba" fillOpacity={0.8} />
-            <line x1={0} y1={0} x2={0} y2={8} stroke="#fa8c16" strokeWidth={3} />
+            <rect width={8} height={8} fill={REMAINDER_TINT.WASTE} />
+            <line x1={0} y1={0} x2={0} y2={8} stroke={REMAINDER_COLOR.WASTE} strokeWidth={3} />
           </pattern>
         </defs>
 
-        <rect x={0} y={0} width={VIEWBOX_WIDTH} height={BAR_HEIGHT} fill="#f0f0f0" />
+        <rect x={0} y={0} width={VIEWBOX_WIDTH} height={BAR_HEIGHT} fill={CHART_TRACK} />
 
         {segments.map((segment) => (
           <g key={segment.key}>
@@ -114,11 +112,8 @@ export function CuttingBarDiagram({ sourceLengthMm, pieces, remainderMm, remaind
               <text
                 x={segment.x + segment.width / 2}
                 y={BAR_HEIGHT / 2 + 5}
-                fill="#ffffff"
-                fontSize={13}
-                fontWeight={600}
-                fontFamily="-apple-system, sans-serif"
                 textAnchor="middle"
+                className="chart-bar-piece-label"
               >
                 {segment.label}
               </text>
@@ -136,18 +131,16 @@ export function CuttingBarDiagram({ sourceLengthMm, pieces, remainderMm, remaind
                   y={12}
                   width={pillWidth}
                   height={28}
-                  rx={4}
-                  fill="#ffffff"
+                  fill={CHART_SURFACE}
                   fillOpacity={0.92}
                 />
                 <text
                   x={remainderX + remainderWidth / 2}
                   y={30}
-                  fill={REMAINDER_LABEL_COLOR[remainderType]}
-                  fontSize={12}
-                  fontWeight={700}
-                  fontFamily="-apple-system, sans-serif"
                   textAnchor="middle"
+                  className="chart-bar-remainder-label"
+                  // Màu chữ là màu của loại phần dư (dữ liệu), nên đi qua style chứ không qua CSS.
+                  style={{ fill: REMAINDER_COLOR[remainderType] }}
                 >
                   {remainderLabel}
                 </text>
@@ -156,9 +149,9 @@ export function CuttingBarDiagram({ sourceLengthMm, pieces, remainderMm, remaind
           </g>
         )}
       </svg>
-      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, fontSize: 10, color: 'rgba(0,0,0,0.45)' }}>
+      <div className="chart-bar-ticks">
         {ticks.map((tick, index) => (
-          <span key={tick} style={index === ticks.length - 1 ? { fontWeight: 600, textAlign: 'right' } : undefined}>
+          <span key={tick} className={index === ticks.length - 1 ? 'chart-bar-ticks__end' : undefined}>
             {tick}
           </span>
         ))}

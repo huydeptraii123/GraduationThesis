@@ -15,7 +15,22 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { StackTotalLabel, StackedSegmentLabel } from '../../components/chartLabels'
+import { ChartLegend, ChartTooltip } from '../../components/charts/ChartParts'
+import { StackTotalLabel, StackedSegmentLabel } from '../../components/charts/chartLabels'
+import {
+  BAR_SIZE,
+  CHART_HEIGHT,
+  CHART_MARGIN,
+  CHART_SURFACE,
+  DONUT,
+  HORIZONTAL_BAR_SIZE,
+  KPI_TONE,
+  SEGMENT_GAP,
+  SUFFICIENCY_COLOR,
+  horizontalChartHeight,
+  stackTotalOn,
+  type LegendEntry,
+} from '../../components/charts/chartTheme'
 import { localPagination } from '../../api/pagination'
 import type { CuttingBatch, CuttingBatchOrderRow } from './cuttingBatches'
 import type { CuttingPlanResponse } from './types'
@@ -29,12 +44,56 @@ interface Props {
 // Ngưỡng hiển thị tham khảo cho PLANNER, không phải ràng buộc hệ thống kiểm tra hay chặn.
 const TARGET_WASTE_RATIO_PERCENT = 5
 
-const SUFFICIENT_COLOR = '#52c41a'
-const SHORTAGE_COLOR = '#f5222d'
+const SUFFICIENT_LABEL = 'Đủ vật tư'
+const SHORTAGE_LABEL = 'Thiếu vật tư'
+/** Thứ tự xếp chồng của hai chuỗi — đủ ở chân cột, thiếu ở ngoài. */
+const STACK_KEYS = ['sufficient', 'shortage'] as const
 
-/** Nhãn quanh vành khuyên: số bộ cửa kèm tỷ trọng; tên loại đã có ở chú giải nên không lặp lại. */
-function renderShareSliceLabel(entry: { value?: number; percent?: number }): string {
-  return `${entry.value ?? 0} bộ (${((entry.percent ?? 0) * 100).toFixed(1)}%)`
+const STATUS_LEGEND: LegendEntry[] = [
+  { id: 'sufficient', label: SUFFICIENT_LABEL, color: SUFFICIENCY_COLOR.sufficient },
+  { id: 'shortage', label: SHORTAGE_LABEL, color: SUFFICIENCY_COLOR.short },
+]
+
+/** Bề rộng cột tên mẫu cửa; tên dài hơn thì cắt bớt, tên đầy đủ nằm ở tooltip. */
+const DOOR_PRODUCT_AXIS_WIDTH = 220
+const DOOR_PRODUCT_LABEL_MAX = 34
+/** Nhiều mẫu cửa thì cuộn trong khung thay vì kéo dài cả trang. */
+const DOOR_PRODUCT_MAX_HEIGHT = 360
+
+function formatDoorSets(value: number): string {
+  return `${value} bộ cửa`
+}
+
+function shortenLabel(label: string): string {
+  return label.length > DOOR_PRODUCT_LABEL_MAX ? `${label.slice(0, DOOR_PRODUCT_LABEL_MAX - 1)}…` : label
+}
+
+interface SufficiencyBucket {
+  label: string
+  sufficient: number
+  shortage: number
+  /** Tổng phải tính sẵn: LabelList chỉ đọc được trường có thật trong dữ liệu. */
+  total: number
+}
+
+/** Đếm đủ/thiếu theo một khóa gộp, giữ thứ tự xuất hiện đầu tiên. */
+function countBySufficiency(
+  rows: CuttingBatchOrderRow[],
+  keyOf: (row: CuttingBatchOrderRow) => string,
+): SufficiencyBucket[] {
+  const buckets = new Map<string, SufficiencyBucket>()
+  rows.forEach((row) => {
+    const key = keyOf(row)
+    const bucket = buckets.get(key) ?? { label: key, sufficient: 0, shortage: 0, total: 0 }
+    if (row.hasShortage) {
+      bucket.shortage += 1
+    } else {
+      bucket.sufficient += 1
+    }
+    bucket.total += 1
+    buckets.set(key, bucket)
+  })
+  return Array.from(buckets.values())
 }
 
 export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
@@ -42,36 +101,34 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
   const sufficientCount = orderRows.filter((row) => !row.hasShortage).length
   const shortageCount = orderRows.filter((row) => row.hasShortage).length
 
-  const byDeliveryDate = useMemo(() => {
-    const buckets = new Map<string, { date: string; sufficient: number; shortage: number }>()
-    orderRows.forEach((row) => {
-      const bucket = buckets.get(row.reqdDeliveryDate) ?? { date: row.reqdDeliveryDate, sufficient: 0, shortage: 0 }
-      if (row.hasShortage) {
-        bucket.shortage += 1
-      } else {
-        bucket.sufficient += 1
-      }
-      buckets.set(row.reqdDeliveryDate, bucket)
-    })
-    return Array.from(buckets.values())
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map((bucket) => ({
-        ...bucket,
-        label: dayjs(bucket.date).format('DD/MM'),
-        // Tổng cột phải tính sẵn ở đây: LabelList chỉ đọc được trường có thật trong dữ liệu.
-        total: bucket.sufficient + bucket.shortage,
-      }))
-  }, [orderRows])
+  const byDeliveryDate = useMemo(
+    () =>
+      countBySufficiency(
+        [...orderRows].sort((a, b) => a.reqdDeliveryDate.localeCompare(b.reqdDeliveryDate)),
+        (row) => dayjs(row.reqdDeliveryDate).format('DD/MM/YYYY'),
+      ),
+    [orderRows],
+  )
 
-  const byDoorProduct = useMemo(() => {
-    const counts = new Map<string, number>()
-    orderRows.forEach((row) => {
-      counts.set(row.doorProductName, (counts.get(row.doorProductName) ?? 0) + 1)
-    })
-    const entries = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
-    const max = entries.length > 0 ? entries[0][1] : 0
-    return entries.map(([name, count]) => ({ name, count, percent: max > 0 ? (count / max) * 100 : 0 }))
-  }, [orderRows])
+  const byDoorProduct = useMemo(
+    () => countBySufficiency(orderRows, (row) => row.doorProductName).sort((a, b) => b.total - a.total),
+    [orderRows],
+  )
+
+  // Cùng khuôn chữ với vành khuyên trang chủ: tên, số bộ, tỷ lệ hai chữ số thập phân.
+  const donutLegend: LegendEntry[] = [
+    { ...STATUS_LEGEND[0], count: sufficientCount },
+    { ...STATUS_LEGEND[1], count: shortageCount },
+  ]
+    .filter((entry) => entry.count > 0)
+    .map(({ count, ...entry }) => ({
+      ...entry,
+      label: `${entry.label} ${count} (${orderRows.length > 0 ? ((count / orderRows.length) * 100).toFixed(2) : '0.00'}%)`,
+    }))
+  const donutSlices = [
+    { name: SUFFICIENT_LABEL, value: sufficientCount, color: SUFFICIENCY_COLOR.sufficient },
+    { name: SHORTAGE_LABEL, value: shortageCount, color: SUFFICIENCY_COLOR.short },
+  ].filter((slice) => slice.value > 0)
 
   const shortagesByMaterial = useMemo(() => {
     const groups = new Map<
@@ -108,27 +165,29 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
               value={wasteRatioPercent}
               precision={1}
               suffix="%"
-              styles={{ content: { color: wasteRatioPercent > TARGET_WASTE_RATIO_PERCENT ? '#cf1322' : '#3f8600' } }}
+              styles={{
+                content: { color: wasteRatioPercent > TARGET_WASTE_RATIO_PERCENT ? KPI_TONE.bad : KPI_TONE.good },
+              }}
             />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
             <Statistic
-              title="Đủ vật tư"
+              title={SUFFICIENT_LABEL}
               value={sufficientCount}
               suffix={`/ ${orderRows.length}`}
-              styles={{ content: { color: SUFFICIENT_COLOR } }}
+              styles={{ content: { color: SUFFICIENCY_COLOR.sufficient } }}
             />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
             <Statistic
-              title="Thiếu vật tư"
+              title={SHORTAGE_LABEL}
               value={shortageCount}
               suffix={`/ ${orderRows.length}`}
-              styles={{ content: { color: SHORTAGE_COLOR } }}
+              styles={{ content: { color: SUFFICIENCY_COLOR.short } }}
             />
           </Card>
         </Col>
@@ -137,27 +196,42 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
       <Row gutter={16} style={{ marginTop: 16 }}>
         <Col span={14}>
           <Card size="small" title="Số bộ cửa theo ngày giao yêu cầu">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={byDeliveryDate} margin={{ top: 22, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="label" />
-                <YAxis allowDecimals={false} />
-                <RechartsTooltip />
-                <Legend />
-                <Bar dataKey="sufficient" name="Đủ vật tư" stackId="orders" fill={SUFFICIENT_COLOR}>
+            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+              <BarChart data={byDeliveryDate} margin={CHART_MARGIN}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="label" tickLine={false} interval="preserveStartEnd" minTickGap={24} />
+                <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
+                <RechartsTooltip content={<ChartTooltip formatValue={formatDoorSets} />} />
+                <Legend content={<ChartLegend entries={STATUS_LEGEND} />} />
+                <Bar
+                  dataKey="sufficient"
+                  name={SUFFICIENT_LABEL}
+                  stackId="orders"
+                  fill={SUFFICIENCY_COLOR.sufficient}
+                  maxBarSize={BAR_SIZE}
+                  stroke={CHART_SURFACE}
+                  strokeWidth={SEGMENT_GAP}
+                >
                   <LabelList
                     dataKey="sufficient"
-                    content={<StackedSegmentLabel thinOffsetX={-20} thinColor={SUFFICIENT_COLOR} />}
+                    content={<StackedSegmentLabel thinOffsetX={-20} thinColor={SUFFICIENCY_COLOR.sufficient} />}
                   />
+                  <LabelList dataKey={stackTotalOn(STACK_KEYS, 0)} content={<StackTotalLabel />} />
                 </Bar>
-                {/* Nhãn tổng gắn vào đoạn TRÊN CÙNG của cột chồng: gắn vào đoạn dưới thì nó nằm
-                    giữa thân cột chứ không phải trên đỉnh. */}
-                <Bar dataKey="shortage" name="Thiếu vật tư" stackId="orders" fill={SHORTAGE_COLOR}>
+                <Bar
+                  dataKey="shortage"
+                  name={SHORTAGE_LABEL}
+                  stackId="orders"
+                  fill={SUFFICIENCY_COLOR.short}
+                  maxBarSize={BAR_SIZE}
+                  stroke={CHART_SURFACE}
+                  strokeWidth={SEGMENT_GAP}
+                >
                   <LabelList
                     dataKey="shortage"
-                    content={<StackedSegmentLabel thinOffsetX={20} thinColor={SHORTAGE_COLOR} />}
+                    content={<StackedSegmentLabel thinOffsetX={20} thinColor={SUFFICIENCY_COLOR.short} />}
                   />
-                  <LabelList dataKey="total" content={<StackTotalLabel />} />
+                  <LabelList dataKey={stackTotalOn(STACK_KEYS, 1)} content={<StackTotalLabel />} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -165,25 +239,22 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
         </Col>
         <Col span={10}>
           <Card size="small" title="Tỷ trọng đủ/thiếu vật tư">
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+              <PieChart>
                 <Pie
-                  data={[
-                    { name: 'Đủ vật tư', value: sufficientCount },
-                    { name: 'Thiếu vật tư', value: shortageCount },
-                  ]}
+                  data={donutSlices}
                   dataKey="value"
                   nameKey="name"
-                  innerRadius={44}
-                  outerRadius={70}
-                  label={renderShareSliceLabel}
-                  labelLine
+                  {...DONUT}
+                  stroke={CHART_SURFACE}
+                  strokeWidth={SEGMENT_GAP}
                 >
-                  <Cell fill={SUFFICIENT_COLOR} />
-                  <Cell fill={SHORTAGE_COLOR} />
+                  {donutSlices.map((slice) => (
+                    <Cell key={slice.name} fill={slice.color} />
+                  ))}
                 </Pie>
-                <Legend />
-                <RechartsTooltip />
+                <RechartsTooltip content={<ChartTooltip formatValue={formatDoorSets} />} />
+                <Legend content={<ChartLegend entries={donutLegend} />} />
               </PieChart>
             </ResponsiveContainer>
           </Card>
@@ -191,20 +262,65 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
       </Row>
 
       <Card size="small" title="Số bộ cửa theo mẫu cửa" style={{ marginTop: 16 }}>
-        {/* Cuộn trong khung thay vì kéo dài trang: một lần chạy có thể gồm hàng chục mẫu cửa. */}
-        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-        {byDoorProduct.map((row) => (
-          <div key={row.name} style={{ marginBottom: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-              <span>{row.name}</span>
-              <span>{row.count} bộ</span>
-            </div>
-            <div style={{ background: '#f0f0f0', borderRadius: 4, height: 8 }}>
-              <div style={{ width: `${row.percent}%`, background: '#1677ff', height: 8, borderRadius: 4 }} />
-            </div>
-          </div>
-        ))}
+        {/* Cùng kiểu với "Số bộ cửa Open theo model" ở trang chủ. Cuộn trong khung thay vì kéo dài
+            trang: một lần chạy có thể gồm hàng chục mẫu cửa; chú giải nằm ngoài khung cuộn để
+            không trôi mất theo. */}
+        <div style={{ maxHeight: DOOR_PRODUCT_MAX_HEIGHT, overflowY: 'auto' }}>
+          <ResponsiveContainer width="100%" height={horizontalChartHeight(byDoorProduct.length)}>
+            <BarChart data={byDoorProduct} layout="vertical" margin={{ top: 8, right: 32, left: 8, bottom: 0 }}>
+              <CartesianGrid horizontal={false} />
+              <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} />
+              <YAxis
+                type="category"
+                dataKey="label"
+                width={DOOR_PRODUCT_AXIS_WIDTH}
+                interval={0}
+                tickLine={false}
+                tickFormatter={shortenLabel}
+              />
+              <RechartsTooltip content={<ChartTooltip formatValue={formatDoorSets} />} />
+              <Bar
+                dataKey="sufficient"
+                name={SUFFICIENT_LABEL}
+                stackId="doorProducts"
+                fill={SUFFICIENCY_COLOR.sufficient}
+                maxBarSize={HORIZONTAL_BAR_SIZE}
+                stroke={CHART_SURFACE}
+                strokeWidth={SEGMENT_GAP}
+              >
+                <LabelList
+                  dataKey="sufficient"
+                  content={
+                    <StackedSegmentLabel
+                      layout="horizontal"
+                      thinSide="above"
+                      thinColor={SUFFICIENCY_COLOR.sufficient}
+                    />
+                  }
+                />
+                <LabelList dataKey={stackTotalOn(STACK_KEYS, 0)} content={<StackTotalLabel layout="horizontal" />} />
+              </Bar>
+              <Bar
+                dataKey="shortage"
+                name={SHORTAGE_LABEL}
+                stackId="doorProducts"
+                fill={SUFFICIENCY_COLOR.short}
+                maxBarSize={HORIZONTAL_BAR_SIZE}
+                stroke={CHART_SURFACE}
+                strokeWidth={SEGMENT_GAP}
+              >
+                <LabelList
+                  dataKey="shortage"
+                  content={
+                    <StackedSegmentLabel layout="horizontal" thinSide="below" thinColor={SUFFICIENCY_COLOR.short} />
+                  }
+                />
+                <LabelList dataKey={stackTotalOn(STACK_KEYS, 1)} content={<StackTotalLabel layout="horizontal" />} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
+        <ChartLegend entries={STATUS_LEGEND} />
       </Card>
 
       {shortagesByMaterial.length > 0 && (

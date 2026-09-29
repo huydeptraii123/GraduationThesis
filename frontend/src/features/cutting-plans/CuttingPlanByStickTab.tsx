@@ -1,6 +1,8 @@
-import { Card, Pagination, Space, Table, Tag, Typography } from 'antd'
+import { Card, Pagination, Space, Table, Tag } from 'antd'
 import { useMemo, useState } from 'react'
 import { CuttingBarDiagram } from '../../components/CuttingBarDiagram'
+import { ChartLegend } from '../../components/charts/ChartParts'
+import { REMAINDER_COLOR, type LegendEntry } from '../../components/charts/chartTheme'
 import { localPagination } from '../../api/pagination'
 import { expandDetailToPieces } from './expandDetailToPieces'
 import { REMAINDER_TYPE_LABEL } from './remainderLabels'
@@ -27,6 +29,12 @@ function StatusChip({ detail }: { detail: CuttingPlanDetailResponse }) {
   }
   return <Tag>Hiệu suất {efficiency}%</Tag>
 }
+
+/** Chỉ hai loại phần dư thuật toán sinh ra; loại 30cm–3m không bao giờ xuất hiện (xem WasteStatsSection). */
+const REMAINDER_LEGEND: LegendEntry[] = [
+  { id: 'DISCARDED', label: 'Bỏ (<30cm)', color: REMAINDER_COLOR.DISCARDED },
+  { id: 'RESTOCK', label: 'Nhập kho (>3m)', color: REMAINDER_COLOR.RESTOCK },
+]
 
 /** Số thẻ phôi vẽ mỗi trang. Mỗi thẻ là một SVG, nên số này là thứ quyết định trang có mượt không. */
 const STICKS_PER_PAGE = 10
@@ -75,20 +83,14 @@ export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
 
   return (
     <div>
+      {/* Chú giải chung kiểu với mọi biểu đồ khác: ô màu + chữ, màu phần dư lấy đúng màu sơ đồ vẽ. */}
       <Card size="small" style={{ marginBottom: 16 }}>
-        <Space size={12} wrap>
-          <Typography.Text strong>Đơn hàng trên trang này:</Typography.Text>
-          {legend.map((entry) => (
-            <Tag key={entry.label} color={entry.color}>
-              {entry.label}
-            </Tag>
-          ))}
-          <Typography.Text strong style={{ marginLeft: 16 }}>
-            Phần dư:
-          </Typography.Text>
-          <Tag>Bỏ (&lt;30cm)</Tag>
-          <Tag color="success">Nhập kho (&gt;3m)</Tag>
-        </Space>
+        <ChartLegend
+          align="start"
+          title="Đơn hàng trên trang này:"
+          entries={legend.map((entry) => ({ id: entry.label, label: entry.label, color: entry.color }))}
+        />
+        <ChartLegend align="start" title="Phần dư:" entries={REMAINDER_LEGEND} />
       </Card>
 
       <Pagination
