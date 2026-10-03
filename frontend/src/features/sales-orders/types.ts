@@ -9,6 +9,12 @@ export interface CustomerResponse {
   customerName: string
 }
 
+/**
+ * Trạng thái xử lý do backend suy ra lúc đọc (không phải cột lưu): hai giá trị đầu chỉ có ở đơn chưa
+ * duyệt, hai giá trị sau chỉ có ở đơn đã duyệt.
+ */
+export type SalesOrderProcessingStatus = 'PENDING' | 'BLOCKED' | 'SUFFICIENT' | 'SHORTAGE'
+
 export interface SalesOrderResponse {
   id: number
   ycsx: string
@@ -25,6 +31,7 @@ export interface SalesOrderResponse {
   chieuRongDh: number
   /** ISO yyyy-MM-dd. */
   reqdDeliveryDate: string
+  processingStatus: SalesOrderProcessingStatus
 }
 
 export interface SalesOrderRequest {
