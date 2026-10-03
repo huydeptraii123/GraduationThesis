@@ -20,9 +20,13 @@ Kịch bản nào chưa gắn được vào (A) hoặc (B) thì không được 
 | Cơ sở dữ liệu | MySQL 8.0 (Docker), lược đồ do Flyway dựng từ 14 phiên bản di trú |
 | Máy chủ ứng dụng | Spring Boot, JDK 23 |
 | Giao diện | React + TypeScript + Ant Design, kiểm bằng trình duyệt thật điều khiển tự động |
-| Kiểm thử tự động | **431 ca, 0 thất bại, 0 lỗi** trên 23 lớp kiểm thử |
+| Kiểm thử tự động | **437 ca, 0 thất bại, 0 lỗi** trên 24 lớp kiểm thử |
 
-Dữ liệu dùng cho nhóm (B) là bộ dữ liệu thật của doanh nghiệp, **nhập lại từ đầu trên một lược đồ trống** ngay trước đợt kiểm thử này, để mọi con số trong tài liệu thuộc về cùng một lần nhập và cùng một phiên bản mã nguồn (ngoại lệ là TC-CHT-07, đo lại trên phiên bản giao diện mới hơn — xem mục 4.14 — và các lượt kiểm tra tự động ở mục 4.13, vốn gắn với từng phiên bản được đẩy lên):
+Dữ liệu dùng cho nhóm (B) là bộ dữ liệu thật của doanh nghiệp, **nhập lại từ đầu trên một lược đồ trống** ngay trước đợt kiểm thử này, để mọi con số trong tài liệu thuộc về cùng một lần nhập và cùng một phiên bản mã nguồn. Có ba ngoại lệ:
+
+- TC-CHT-07, đo lại trên phiên bản giao diện mới hơn (xem mục 4.14).
+- Các lượt kiểm tra tự động ở mục 4.13, vốn gắn với từng phiên bản được đẩy lên.
+- Ba ca TC-SO-07 đến TC-SO-09 (bộ lọc theo trạng thái xử lý, bổ sung sau đợt nhập dữ liệu này), cùng tổng số ca kiểm thử tự động ở bảng trên và ở mục 6. Cả ba ca đều thuộc nhóm (A) nên không dùng số liệu nào của bộ dữ liệu thật.
 
 | Nguồn | Nhập vào | Đối chiếu với file nguồn |
 |---|---|---|
@@ -43,7 +47,7 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 | Phân quyền theo vai trò (TC-PERM) | 6 | 6 | 0 |
 | Nhập dữ liệu từ Excel (TC-IMP) | 9 | 9 | 0 |
 | Tồn kho và định mức (TC-DAT) | 7 | 7 | 0 |
-| Đơn hàng (TC-SO) | 6 | 6 | 0 |
+| Đơn hàng (TC-SO) | 9 | 9 | 0 |
 | Thuật toán cắt (TC-ALG) | 12 | 12 | 0 |
 | Tính phương án cắt (TC-SIM) | 6 | 6 | 0 |
 | Duyệt phương án cắt (TC-APR) | 9 | 9 | 0 |
@@ -53,7 +57,7 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 | Triển khai đóng gói (TC-DEP) | 8 | 8 | 0 |
 | Kiểm tra tự động khi đẩy mã (TC-CI) | 7 | 7 | 0 |
 | Biểu đồ thống kê và nhãn số (TC-CHT) | 7 | 7 | 0 |
-| **Tổng** | **106** | **106** | **0** |
+| **Tổng** | **109** | **109** | **0** |
 
 ## 4. Kịch bản kiểm thử theo nhóm
 
@@ -115,6 +119,9 @@ Trong đợt kiểm thử có **hai thời điểm đo** khác nhau, và mỗi �
 | TC-SO-04 | Nhập lại file đơn hàng chứa **đơn đã duyệt** | Không đặt lại trạng thái đã duyệt của đơn đó | Đạt | (A) `SalesOrderImportServiceTest.importFromExcel_doesNotResetApprovedPlanOfAlreadyApprovedOrder` |
 | TC-SO-05 | Nhập lại file có **dữ liệu khác** cho một đơn đã duyệt | Giữ nguyên đơn và báo xung đột cho người dùng | Đạt | (A) `SalesOrderImportServiceTest.importFromExcel_doesNotOverwriteApprovedOrderAndReportsConflict` |
 | TC-SO-06 | Nhập lại file có dữ liệu **y hệt** cho đơn đã duyệt | Bỏ qua im lặng, không báo xung đột giả | Đạt | (A) `SalesOrderImportServiceTest.importFromExcel_reportsNoConflictWhenApprovedOrderDataIsUnchanged` |
+| TC-SO-07 | Lọc đơn theo **trạng thái xử lý**; bốn đơn, mỗi đơn một trạng thái (chưa xử lý, đang bị chặn, đủ vật tư, thiếu vật tư) | Mỗi giá trị lọc ra **đúng một đơn đúng định danh**; không lọc thì trạng thái trả về trên từng dòng của cả bốn đơn khớp với bộ lọc. Đơn đã duyệt giữ kết quả của lần duyệt đó, kể cả khi định mức bị xóa về sau. Tạo hoặc sửa đơn trả về trạng thái theo mẫu cửa đơn mang sau thao tác | Đạt | (A) `SalesOrderServiceTest.getPage_filtersByProcessingStatusAndNarrowsResult`, `SalesOrderServiceTest.processingStatus_approvedOrderKeepsPlanOutcomeEvenAfterBomRemoved`, `SalesOrderServiceTest.createAndUpdate_returnProcessingStatusOfCurrentDoorProduct` |
+| TC-SO-08 | "Đang bị chặn" dùng **đúng luật định mức** mà chức năng tính và duyệt phương án dùng để loại đơn khỏi phạm vi xử lý; mười mẫu cửa phủ từng điều kiện con của "dòng định mức dùng được", gồm cả hai trường hợp nan chính chỉ có một trong hai hệ số | Với từng đơn, "chưa xử lý" trùng khớp với việc đơn qua được điều kiện định mức của phạm vi tính và phạm vi duyệt (ca này nới mốc ngày giao và hạn mức 70 đơn để chỉ còn điều kiện định mức); bản đếm của phạm vi duyệt ra đúng số đơn của bản liệt kê | Đạt | (A) `SalesOrderServiceTest.processingStatus_blockedMatchesProcessingScopeRule` |
+| TC-SO-09 | Tham số trạng thái gửi qua đường gọi danh sách đơn hàng | Tham số **thu hẹp thật** số đơn trả về; giá trị không hợp lệ bị từ chối (mã 400) thay vì bị bỏ qua rồi trả toàn bộ danh sách | Đạt | (A) `SalesOrderControllerTest.getAll_processingStatusParameterNarrowsResult`, `SalesOrderControllerTest.getAll_unknownProcessingStatusIsRejected` |
 
 ### 4.6. Thuật toán cắt
 
@@ -235,9 +242,9 @@ Số liệu dưới đây lấy từ lượt chạy đầu tiên, trên đúng p
 
 Điểm đáng nói của TC-CI-02: bộ kiểm thử này dựng cơ sở dữ liệu thật trong vùng chứa chứ không dùng cơ sở dữ liệu trong bộ nhớ, nên việc nó chạy được trên một máy chưa hề được chuẩn bị gì là bằng chứng rằng **toàn bộ phụ thuộc môi trường đã được khai báo trong mã nguồn**, không có bước cài đặt tay nào còn sót lại trong đầu người làm.
 
-Một lưu ý khi đọc lại nhóm này: máy sạch **không có bộ dữ liệu của doanh nghiệp** — bộ dữ liệu đó không được đưa lên kho mã vì lý do bảo mật. Ba ca kiểm thử nhập liệu có gắn điều kiện tiên quyết vào tệp dữ liệu thật vì vậy tự bỏ qua, và **đúng 3 ca bỏ qua** là con số quan sát được. Chênh lệch giữa **428 ca của chính lượt chạy đó** và 425 ca thật sự chạy hoàn toàn nằm ở ba ca đó, không phải ở đâu khác. Mục 2 ghi 431 vì bộ kiểm thử có thêm ba ca sau lượt chạy này — hai con số thuộc hai phiên bản mã nguồn khác nhau nên không trừ thẳng cho nhau được. Xem thêm mục 6.
+Một lưu ý khi đọc lại nhóm này: máy sạch **không có bộ dữ liệu của doanh nghiệp** — bộ dữ liệu đó không được đưa lên kho mã vì lý do bảo mật. Ba ca kiểm thử nhập liệu có gắn điều kiện tiên quyết vào tệp dữ liệu thật vì vậy tự bỏ qua, và **đúng 3 ca bỏ qua** là con số quan sát được. Chênh lệch giữa **428 ca của chính lượt chạy đó** và 425 ca thật sự chạy hoàn toàn nằm ở ba ca đó, không phải ở đâu khác. Mục 2 ghi 437 vì bộ kiểm thử có thêm chín ca sau lượt chạy này — hai con số thuộc hai phiên bản mã nguồn khác nhau nên không trừ thẳng cho nhau được. Xem thêm mục 6.
 
-Bảng trên thuộc về **lượt chạy đầu tiên**, và mã nguồn đã đổi thêm vài lần kể từ đó. Lượt chạy gần nhất — trên phiên bản mã nguồn mới nhất, cũng là phiên bản TC-CHT-07 đo lại — **cũng kết luận thành công ở cả ba công việc**: máy chủ ứng dụng 81 giây (riêng bước chạy kiểm thử 69 giây), dựng ảnh triển khai 91 giây, giao diện 19 giây. Số ca đạt và số ca bỏ qua của lượt đó **cố ý không ghi ở đây**: chúng chỉ nằm trong nhật ký chạy, mà nhật ký đòi đăng nhập kể cả với kho mã công khai, nên chưa quan sát được. Con số tương ứng, đo tại chỗ, có ở mục 6.
+Bảng trên thuộc về **lượt chạy đầu tiên**, và mã nguồn đã đổi thêm vài lần kể từ đó. Lượt chạy gần nhất đã đối chiếu — trên phiên bản TC-CHT-07 đo lại — **cũng kết luận thành công ở cả ba công việc**: máy chủ ứng dụng 81 giây (riêng bước chạy kiểm thử 69 giây), dựng ảnh triển khai 91 giây, giao diện 19 giây. Số ca đạt và số ca bỏ qua của lượt đó **cố ý không ghi ở đây**: chúng chỉ nằm trong nhật ký chạy, mà nhật ký đòi đăng nhập kể cả với kho mã công khai, nên chưa quan sát được. Mục 6 có số ca đạt và số ca bỏ qua đo tại chỗ, nhưng trên một phiên bản mới hơn nữa (thêm sáu ca kiểm thử tự động của TC-SO-07 đến TC-SO-09), nên đó không phải số đối ứng của lượt chạy này.
 
 ### 4.14. Biểu đồ thống kê và nhãn số
 
@@ -245,7 +252,7 @@ Nhóm này kiểm phần trình bày số liệu — thứ doanh nghiệp đọc
 
 Một lưu ý khi đối chiếu: biểu đồ xu hướng có **64 điểm chứ không phải 70**, dù đợt duyệt gồm 70 bộ cửa. Sáu bộ cửa còn lại thiếu toàn bộ số thanh cần cắt nên không phát sinh mét phế nào để quy về; vẽ chúng ở mức 0% sẽ nói rằng chúng cắt hoàn hảo, ngược hẳn sự thật. Mọi số liệu (B) dưới đây đọc trên **phương án đã duyệt** (70 bộ cửa), tức đo sau đợt duyệt — không phải trên 112 bộ cửa còn lại trong hàng chờ. Ngoại lệ duy nhất là phần trang chủ của TC-CHT-07: hai biểu đồ ở đó vẽ trên bản tính của 112 bộ cửa còn lại, cùng thời điểm với TC-SIM-06.
 
-TC-CHT-07 cũng là ca duy nhất trong tài liệu được **đo lại trên một phiên bản giao diện mới hơn** mục 2 mô tả: biểu đồ số bộ cửa theo model đã đổi cách trình bày sau đợt đo ban đầu, nên kết luận cũ về nhãn của nó không còn tự động đúng. Phép đo lại chạy trên lượt nhập lại dữ liệu thứ ba, và dữ liệu đó tương đương với dữ liệu của các ca còn lại nhờ tính tái lập ở TC-NFR-08.
+TC-CHT-07 cũng là ca duy nhất trong tài liệu được **đo lại trên một phiên bản giao diện mới hơn** phiên bản của số liệu (B) ở mục 2: biểu đồ số bộ cửa theo model đã đổi cách trình bày sau đợt đo ban đầu, nên kết luận cũ về nhãn của nó không còn tự động đúng. Phép đo lại chạy trên lượt nhập lại dữ liệu thứ ba, và dữ liệu đó tương đương với dữ liệu của các ca còn lại nhờ tính tái lập ở TC-NFR-08.
 
 Ba biểu đồ được nhắc ở TC-CHT-01 đến TC-CHT-06 — tỷ lệ phế theo nhóm thanh nan, cơ cấu phần dư, và xu hướng tỷ lệ phế — đều nằm trong khu thống kê trên màn hình danh sách phương án cắt. Riêng TC-CHT-07 trải trên cả ba màn hình có biểu đồ: màn tính phương án, màn danh sách phương án, và tab tổng quan của một phương án cụ thể.
 
@@ -276,7 +283,7 @@ Hai tỷ lệ phế trên **không so sánh trực tiếp được với nhau**:
 
 ### 5.1. Thời gian phản hồi của các màn hình danh sách
 
-Mỗi đường gọi được làm nóng một lượt (bỏ kết quả) rồi đo năm lượt liên tiếp, trên cùng máy với máy chủ ứng dụng và cơ sở dữ liệu chạy cục bộ. Cột *quy mô* ghi khối lượng dữ liệu mà đường gọi đó thực sự phải xử lý; với các dòng có điều kiện lọc, nó ghi dạng *số bản ghi chọn ra / tổng số bản ghi* để thấy phép lọc có thu hẹp tập dữ liệu thật hay không.
+Mỗi đường gọi được làm nóng một lượt (bỏ kết quả) rồi đo năm lượt liên tiếp, trên cùng máy với máy chủ ứng dụng và cơ sở dữ liệu chạy cục bộ. Cột *quy mô* ghi khối lượng dữ liệu mà đường gọi đó thực sự phải xử lý; với các dòng có điều kiện lọc, nó ghi dạng *số bản ghi chọn ra / tổng số bản ghi* để thấy phép lọc có thu hẹp tập dữ liệu thật hay không. Năm dòng của màn đơn hàng đo trên phiên bản chưa có cột trạng thái xử lý (xem hạn chế 15).
 
 | Màn hình / thao tác | Quy mô | Trung vị | Khoảng đo |
 |---|---|---|---|
@@ -317,7 +324,7 @@ Thứ ba, trong bảng có **bốn đường cố ý không phân trang** — da
 - **Nhóm (B) cho triển khai đóng gói (TC-DEP)**: dựng ba dịch vụ bằng một lệnh từ tệp mô tả trong mã nguồn, rồi gọi **qua cổng của Nginx**, không gọi thẳng máy chủ ứng dụng.
 - **Nhóm (B) cho kiểm tra tự động (TC-CI)**: không cần thao tác gì — đẩy mã lên nhánh chính là quy trình tự chạy.
 
-**Một điểm phải lưu ý khi chạy lại nhóm (A) ở nơi khác.** Bộ dữ liệu của doanh nghiệp không được đưa lên kho mã, nên trên máy không có sẵn bộ dữ liệu đó thì **ba ca kiểm thử nhập liệu tự bỏ qua** thay vì thất bại: chúng có điều kiện tiên quyết là sự tồn tại của tệp dữ liệu thật. Đây là cách cố ý — một ca không chạy được vì thiếu dữ liệu đầu vào thì báo "đã bỏ qua" trung thực hơn là báo thất bại. Người chạy lại vì vậy nên đối chiếu **cả số ca đạt lẫn số ca bỏ qua**, đừng chỉ nhìn tổng. Con số cụ thể: **428 trên 431 ca đạt, 3 ca bỏ qua**, không ca nào thất bại — đo bằng cách chạy lại trọn bộ kiểm thử từ một bản sao mã nguồn đặt ở nơi không có bộ dữ liệu bên cạnh. Việc bỏ qua **đúng ba ca** chứ không phải con số khác là hành vi ổn định của bộ kiểm thử khi thiếu dữ liệu đầu vào, không phải đặc thù của một máy: nó cũng là con số quan sát được trên máy của dịch vụ kiểm tra tự động (TC-CI-02).
+**Một điểm phải lưu ý khi chạy lại nhóm (A) ở nơi khác.** Bộ dữ liệu của doanh nghiệp không được đưa lên kho mã, nên trên máy không có sẵn bộ dữ liệu đó thì **ba ca kiểm thử nhập liệu tự bỏ qua** thay vì thất bại: chúng có điều kiện tiên quyết là sự tồn tại của tệp dữ liệu thật. Đây là cách cố ý — một ca không chạy được vì thiếu dữ liệu đầu vào thì báo "đã bỏ qua" trung thực hơn là báo thất bại. Người chạy lại vì vậy nên đối chiếu **cả số ca đạt lẫn số ca bỏ qua**, đừng chỉ nhìn tổng. Con số cụ thể: **434 trên 437 ca đạt, 3 ca bỏ qua**, không ca nào thất bại — đo bằng cách chạy lại trọn bộ kiểm thử từ một bản sao mã nguồn đặt ở nơi không có bộ dữ liệu bên cạnh. Việc bỏ qua **đúng ba ca** chứ không phải con số khác là hành vi ổn định của bộ kiểm thử khi thiếu dữ liệu đầu vào, không phải đặc thù của một máy: nó cũng là con số quan sát được trên máy của dịch vụ kiểm tra tự động (TC-CI-02).
 
 ## 7. Hạn chế đã biết của đợt kiểm thử
 
@@ -334,3 +341,5 @@ Thứ ba, trong bảng có **bốn đường cố ý không phân trang** — da
 11. **Nhánh từ chối vì phạm vi rỗng không bấm tới được từ giao diện.** Nút Duyệt bị vô hiệu ngay khi phạm vi không còn đơn nào, và một phạm vi đang có đơn chỉ rỗng đi khi dữ liệu thay đổi — mà thay đổi đó làm lệch dấu vân trạng thái nên hệ thống từ chối vì lý do "dữ liệu đã đổi" trước. Nhánh này tồn tại cho lời gọi trực tiếp tới máy chủ và cho thẻ trình duyệt mở từ trước, nên TC-APR-08 chỉ kiểm được bằng lời gọi trực tiếp.
 12. **Tệp bảng tính xuất ra không trùng nhau tới từng byte giữa hai lần chạy**, kể cả khi dữ liệu y hệt: khuôn dạng bảng tính nhúng mốc thời gian tạo tệp. Vì vậy mọi phép đối chiếu hai tệp xuất — trong TC-RPT-06 cũng như TC-DEP-07 — đều so trên **nội dung ô và số dòng**, không so trên byte. Tính tái lập khẳng định ở TC-NFR-08 cũng phải hiểu theo nghĩa nội dung.
 13. **Số đo về cách biểu đồ hiển thị con số (TC-CHT-07) lấy bằng cách đọc toạ độ của từng nhãn trên trình duyệt điều khiển tự động.** Phép đo chạy lại được nhưng không chạy cùng mỗi lần biên dịch như nhóm (A) — cùng giới hạn với hạn chế 5 — và nó chỉ khẳng định được cho đúng phân bố số liệu đang có: một bộ dữ liệu khác có thể tạo ra đoạn cột mỏng ở vị trí khác, nên kết luận "không nhãn nào đè nhau" phải hiểu là đúng với lần đo này chứ không phải một bảo đảm cho mọi dữ liệu. Phép đo cũng chỉ phủ các biểu đồ **vẽ nhãn thẳng lên hình**; biểu đồ tròn trên màn tính phương án đưa số và tỷ lệ vào chú giải thay vì lên lát, nên không có nhãn nào để đo va chạm. Và "đè nhau" ở đây là giữa **hai nhãn số** với nhau: hai nhãn của đoạn cột mỏng nằm sát chân cột có hộp chữ chạm vào nhãn ngày của trục hoành 2–3px — phần chạm là khoảng đệm của dòng chữ, nét chữ của hai bên vẫn tách rời, nhưng phép đo theo hộp bao không tự phân biệt được hai trường hợp này. Riêng biểu đồ số bộ cửa theo model, lúc đo chỉ có **3 dòng** vì phần lớn nhóm vật tư đã rời hàng chờ sau đợt duyệt; trường hợp nhiều nhóm vật tư — biểu đồ gộp phần đuôi thành một dòng "Khác" và tự nới chiều cao theo số dòng — vì vậy **chưa được đo trên dữ liệu thật**.
+14. **Trạng thái "đang bị chặn" chỉ xét nhóm vật tư của dòng định mức và việc dòng đó có đủ tham số hay không, không xét giá trị tính ra** (TC-SO-08). Đây cũng chính là luật mà chức năng tính phương án dùng để đếm đơn bị chặn. Hệ quả: nếu một mẫu cửa có đủ hệ số nhưng hệ số đó cho ra 0 nan, đơn của nó vẫn hiện "chưa xử lý", dù mỗi lượt duyệt đều để nó lại hàng chờ. Trường hợp này không có trong bộ dữ liệu đợt kiểm thử, và lượt duyệt ghi cảnh báo vào nhật ký máy chủ cho đúng đơn đó.
+15. **Số đo thời gian của màn đơn hàng ở mục 5.1 lấy trên phiên bản chưa có cột trạng thái xử lý.** Nay mỗi trang danh sách tốn thêm tối đa hai truy vấn để suy ra trạng thái của các đơn trên trang, và năm dòng đo của màn đơn hàng ở mục 5.1 **chưa được đo lại** trên cùng bộ dữ liệu. Thao tác lọc theo trạng thái cũng chưa có số đo nào: nó không tốn thêm truy vấn, nhưng câu truy vấn chính và câu đếm có thêm truy vấn con.
