@@ -1,5 +1,6 @@
 package com.slatcut.cutting.controller;
 
+import com.slatcut.cutting.domain.SalesOrderProcessingStatus;
 import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.SalesOrderRequest;
 import com.slatcut.cutting.dto.SalesOrderResponse;
@@ -36,6 +37,10 @@ public class SalesOrderController {
     /**
      * Sắp xếp mặc định trùng với thứ tự ưu tiên cắt của nghiệp vụ (ngày giao, rồi ycsx, rồi bộ cửa)
      * nên người lập kế hoạch nhìn trang đầu là thấy ngay các đơn gấp nhất.
+     *
+     * <p>{@code processingStatus} nhận đúng tên hằng của {@link SalesOrderProcessingStatus}; giá trị
+     * khác bị Spring từ chối bằng 400 thay vì bị bỏ qua — bỏ qua im lặng sẽ trả về toàn bộ danh sách
+     * mà người dùng vẫn tưởng là đã lọc.
      */
     @GetMapping
     public PageResponse<SalesOrderResponse> getAll(
@@ -43,9 +48,10 @@ public class SalesOrderController {
             @RequestParam(required = false) Long customerId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate deliveryFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate deliveryTo,
+            @RequestParam(required = false) SalesOrderProcessingStatus processingStatus,
             @PageableDefault(size = 20, sort = {"reqdDeliveryDate", "ycsx", "item"},
                     direction = Sort.Direction.ASC) Pageable pageable) {
-        return service.getPage(keyword, customerId, deliveryFrom, deliveryTo, pageable);
+        return service.getPage(keyword, customerId, deliveryFrom, deliveryTo, processingStatus, pageable);
     }
 
     @GetMapping("/{id}")
