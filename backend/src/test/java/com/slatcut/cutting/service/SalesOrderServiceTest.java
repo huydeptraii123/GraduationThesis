@@ -2,10 +2,12 @@ package com.slatcut.cutting.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.slatcut.cutting.AbstractIntegrationTest;
 import com.slatcut.cutting.config.ConflictException;
 import com.slatcut.cutting.config.ResourceNotFoundException;
+import com.slatcut.cutting.domain.BomItem;
 import com.slatcut.cutting.domain.Customer;
 import com.slatcut.cutting.domain.CuttingPlan;
 import com.slatcut.cutting.domain.CuttingPlanDetail;
@@ -14,12 +16,14 @@ import com.slatcut.cutting.domain.CuttingPlanStatus;
 import com.slatcut.cutting.domain.DoorProduct;
 import com.slatcut.cutting.domain.RemainderType;
 import com.slatcut.cutting.domain.SalesOrder;
+import com.slatcut.cutting.domain.SalesOrderProcessingStatus;
 import com.slatcut.cutting.domain.ShortageRecord;
 import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
 import com.slatcut.cutting.dto.PageResponse;
 import com.slatcut.cutting.dto.SalesOrderRequest;
 import com.slatcut.cutting.dto.SalesOrderResponse;
+import com.slatcut.cutting.repository.BomItemRepository;
 import com.slatcut.cutting.repository.CustomerRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailItemRepository;
 import com.slatcut.cutting.repository.CuttingPlanDetailRepository;
@@ -31,6 +35,10 @@ import com.slatcut.cutting.repository.SlatMaterialRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
@@ -65,6 +73,12 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
 
     @Autowired
     private ShortageRecordRepository shortageRecordRepository;
+
+    @Autowired
+    private BomItemRepository bomItemRepository;
+
+    /** Mã thanh nan cho từng dòng định mức tạo trong test — mỗi dòng một loại thanh riêng. */
+    private long slatMaterialCode = 70_410_000L;
 
     private Customer persistCustomer(long code, String name) {
         Customer entity = new Customer();
@@ -236,7 +250,7 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
         persistOrder("HY90007", 1, 1000900008L, 1, customer, doorProduct);
         persistOrder("HY90007", 2, 1000900009L, 1, customer, doorProduct);
 
-        assertThat(service.getPage("HY90007", null, null, null, PageRequest.of(0, 20)).content())
+        assertThat(service.getPage("HY90007", null, null, null, null, PageRequest.of(0, 20)).content())
                 .extracting(SalesOrderResponse::ycsx)
                 .contains("HY90007");
     }
@@ -258,11 +272,11 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
         }
         Pageable byPriority = PageRequest.of(0, 10, Sort.by("reqdDeliveryDate", "ycsx", "item"));
 
-        PageResponse<SalesOrderResponse> first = service.getPage("Khách phân trang", null, null, null, byPriority);
+        PageResponse<SalesOrderResponse> first = service.getPage("Khách phân trang", null, null, null, null, byPriority);
         PageResponse<SalesOrderResponse> second =
-                service.getPage("Khách phân trang", null, null, null, byPriority.withPage(1));
+                service.getPage("Khách phân trang", null, null, null, null, byPriority.withPage(1));
         PageResponse<SalesOrderResponse> last =
-                service.getPage("Khách phân trang", null, null, null, byPriority.withPage(2));
+                service.getPage("Khách phân trang", null, null, null, null, byPriority.withPage(2));
 
         assertThat(first.totalElements()).isEqualTo(25);
         assertThat(first.totalPages()).isEqualTo(3);
@@ -285,13 +299,196 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
         Pageable firstPage = PageRequest.of(0, 20);
 
         PageResponse<SalesOrderResponse> byCustomer =
-                service.getPage(null, target.getId(), null, null, firstPage);
+                service.getPage(null, target.getId(), null, null, null, firstPage);
         PageResponse<SalesOrderResponse> byRange = service.getPage(
-                null, target.getId(), LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 30), firstPage);
+                null, target.getId(), LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 30), null, firstPage);
 
         assertThat(byCustomer.totalElements()).isEqualTo(2);
         assertThat(byRange.totalElements()).isEqualTo(1);
         assertThat(byRange.content().getFirst().ycsx()).isEqualTo("LOC0002");
+    }
+
+    /**
+     * Mỗi đơn một trạng thái; lọc theo từng giá trị phải ra ĐÚNG đơn đó, và cột trạng thái của cả
+     * bốn đơn khi không lọc phải nói cùng một điều với bộ lọc. Khẳng định trên id chứ không chỉ trên
+     * số lượng: một bộ lọc bị bỏ qua vẫn có thể tình cờ ra đúng số dòng.
+     */
+    @Test
+    void getPage_filtersByProcessingStatusAndNarrowsResult() {
+        Customer customer = persistCustomer(91300001L, "Khách trạng thái");
+        DoorProduct withBom = persistDoorProduct(83300001L, "#11");
+        persistBomItem(withBom, SlatGroup.BOTTOM_BAR, null, null, null);
+        DoorProduct withoutBom = persistDoorProduct(83300002L, "#11");
+        SalesOrder pending = persistOrder("TTXL001", 1, 1001300001L, 1, customer, withBom);
+        SalesOrder blocked = persistOrder("TTXL002", 1, 1001300002L, 1, customer, withoutBom);
+        SalesOrder sufficient = persistOrder("TTXL003", 1, 1001300003L, 1, customer, withBom);
+        SalesOrder shortage = persistOrder("TTXL004", 1, 1001300004L, 1, customer, withBom);
+        CuttingPlan plan = persistCuttingPlan();
+        SlatMaterial bottomBar = persistSlatMaterial(70400001L);
+        persistCuttingPlanDetailItem(persistCuttingPlanDetail(plan, bottomBar), sufficient);
+        persistShortageRecord(plan, shortage, bottomBar);
+        approve(plan, sufficient, shortage);
+        Pageable firstPage = PageRequest.of(0, 20);
+
+        Map<SalesOrderProcessingStatus, SalesOrder> expected = Map.of(
+                SalesOrderProcessingStatus.PENDING, pending,
+                SalesOrderProcessingStatus.BLOCKED, blocked,
+                SalesOrderProcessingStatus.SUFFICIENT, sufficient,
+                SalesOrderProcessingStatus.SHORTAGE, shortage);
+        expected.forEach((status, order) -> assertThat(
+                        service.getPage("TTXL", null, null, null, status, firstPage).content())
+                .as("lọc %s", status)
+                .extracting(SalesOrderResponse::id, SalesOrderResponse::processingStatus)
+                .containsExactly(tuple(order.getId(), status)));
+
+        assertThat(service.getPage("TTXL", null, null, null, null, firstPage).content())
+                .extracting(SalesOrderResponse::ycsx, SalesOrderResponse::processingStatus)
+                .containsExactlyInAnyOrder(
+                        tuple("TTXL001", SalesOrderProcessingStatus.PENDING),
+                        tuple("TTXL002", SalesOrderProcessingStatus.BLOCKED),
+                        tuple("TTXL003", SalesOrderProcessingStatus.SUFFICIENT),
+                        tuple("TTXL004", SalesOrderProcessingStatus.SHORTAGE));
+    }
+
+    /**
+     * "Đang bị chặn" ở màn đơn hàng phải dùng ĐÚNG luật mà hai chức năng tính và duyệt phương án dùng
+     * để loại đơn khỏi phạm vi xử lý. Luật đó có ba bản JPQL ở SalesOrderRepository (phạm vi tính,
+     * phạm vi duyệt, bản đếm của phạm vi duyệt) và một bản Criteria ở bộ lọc, nên bốn bản có thể lệch
+     * nhau. Mỗi mẫu cửa dưới đây ứng với một nhánh của điều kiện "dòng định mức dùng được"; với từng
+     * đơn, "Chưa xử lý" phải trùng khớp với việc đơn có nằm trong cả hai phạm vi hay không, và bản đếm
+     * phải ra đúng số dòng của bản liệt kê. Mồi nhử: MAIN_SLAT chỉ có MỘT trong hai hệ số — mỗi hệ số
+     * một mẫu cửa, vì thiếu một trong hai là bản nào bỏ sót điều kiện của hệ số còn lại vẫn qua được
+     * test (vẫn bị chặn); và mẫu cửa trộn dòng bị bỏ qua với một dòng dùng được (một dòng là đủ để
+     * chưa bị chặn).
+     */
+    @Test
+    void processingStatus_blockedMatchesProcessingScopeRule() {
+        Customer customer = persistCustomer(91300002L, "Khách luật chặn");
+        BigDecimal slope = new BigDecimal("4.1700");
+        BigDecimal intercept = new BigDecimal("1.0300");
+        BigDecimal offset = new BigDecimal("0.0750");
+        Map<SalesOrder, SalesOrderProcessingStatus> expected = new LinkedHashMap<>();
+
+        DoorProduct mainMissingCoefficients = persistDoorProduct(83300011L, "#12");
+        persistBomItem(mainMissingCoefficients, SlatGroup.MAIN_SLAT, null, null, null);
+        DoorProduct mainSlopeOnly = persistDoorProduct(83300012L, "#12");
+        persistBomItem(mainSlopeOnly, SlatGroup.MAIN_SLAT, slope, null, null);
+        DoorProduct mainInterceptOnly = persistDoorProduct(83300010L, "#12");
+        persistBomItem(mainInterceptOnly, SlatGroup.MAIN_SLAT, null, intercept, null);
+        DoorProduct railMissingOffset = persistDoorProduct(83300013L, "#12");
+        persistBomItem(railMissingOffset, SlatGroup.RAIL, null, null, null);
+        DoorProduct otherOnly = persistDoorProduct(83300014L, "#12");
+        persistBomItem(otherOnly, SlatGroup.OTHER, slope, intercept, offset);
+        DoorProduct mainComplete = persistDoorProduct(83300015L, "#12");
+        persistBomItem(mainComplete, SlatGroup.MAIN_SLAT, slope, intercept, null);
+        DoorProduct railWithOffset = persistDoorProduct(83300016L, "#12");
+        persistBomItem(railWithOffset, SlatGroup.RAIL, null, null, offset);
+        DoorProduct subSlat = persistDoorProduct(83300017L, "#12");
+        persistBomItem(subSlat, SlatGroup.SUB_SLAT, null, null, null);
+        DoorProduct bottomBar = persistDoorProduct(83300018L, "#12");
+        persistBomItem(bottomBar, SlatGroup.BOTTOM_BAR, null, null, null);
+        DoorProduct mixed = persistDoorProduct(83300019L, "#12");
+        persistBomItem(mixed, SlatGroup.OTHER, null, null, null);
+        persistBomItem(mixed, SlatGroup.RAIL, null, null, null);
+        persistBomItem(mixed, SlatGroup.SUB_SLAT, null, null, null);
+
+        int item = 0;
+        for (Map.Entry<DoorProduct, SalesOrderProcessingStatus> entry : Map.of(
+                        mainMissingCoefficients, SalesOrderProcessingStatus.BLOCKED,
+                        mainSlopeOnly, SalesOrderProcessingStatus.BLOCKED,
+                        mainInterceptOnly, SalesOrderProcessingStatus.BLOCKED,
+                        railMissingOffset, SalesOrderProcessingStatus.BLOCKED,
+                        otherOnly, SalesOrderProcessingStatus.BLOCKED,
+                        mainComplete, SalesOrderProcessingStatus.PENDING,
+                        railWithOffset, SalesOrderProcessingStatus.PENDING,
+                        subSlat, SalesOrderProcessingStatus.PENDING,
+                        bottomBar, SalesOrderProcessingStatus.PENDING,
+                        mixed, SalesOrderProcessingStatus.PENDING)
+                .entrySet()) {
+            item++;
+            expected.put(
+                    persistOrder("LUATCHAN", item, 1001300100L + item, 1, customer, entry.getKey()),
+                    entry.getValue());
+        }
+
+        Map<Long, SalesOrderProcessingStatus> actual =
+                service.getPage("LUATCHAN", null, null, null, null, PageRequest.of(0, 20)).content().stream()
+                        .collect(Collectors.toMap(SalesOrderResponse::id, SalesOrderResponse::processingStatus));
+        Set<Long> inProcessingScope = salesOrderRepository.findUnapproved().stream()
+                .map(SalesOrder::getId)
+                .collect(Collectors.toSet());
+        LocalDate farCutoff = LocalDate.of(2099, 12, 31);
+        Set<Long> inApprovalScope =
+                salesOrderRepository.findUnprocessedInScope(farCutoff, PageRequest.of(0, 10_000)).stream()
+                        .map(SalesOrder::getId)
+                        .collect(Collectors.toSet());
+
+        expected.forEach((order, status) -> {
+            String doorProduct = "mẫu cửa " + order.getDoorProduct().getMaterial();
+            assertThat(actual.get(order.getId())).as(doorProduct).isEqualTo(status);
+            assertThat(inProcessingScope.contains(order.getId()))
+                    .as("%s: cột trạng thái và phạm vi của chức năng tính phải cùng một kết luận", doorProduct)
+                    .isEqualTo(status == SalesOrderProcessingStatus.PENDING);
+            assertThat(inApprovalScope.contains(order.getId()))
+                    .as("%s: cột trạng thái và phạm vi của chức năng duyệt phải cùng một kết luận", doorProduct)
+                    .isEqualTo(status == SalesOrderProcessingStatus.PENDING);
+        });
+        assertThat(salesOrderRepository.countUnprocessedInScope(farCutoff))
+                .as("bản đếm của truy vấn phạm vi duyệt phải đếm đúng tập mà bản liệt kê trả về")
+                .isEqualTo(inApprovalScope.size());
+    }
+
+    /**
+     * Đơn đã duyệt mang kết quả của chính lần duyệt đó. Định mức của mẫu cửa bị xóa SAU khi duyệt
+     * không được kéo đơn về "Đang bị chặn": nan đã cắt xong, việc thiếu định mức bây giờ chỉ chặn
+     * các đơn chưa duyệt.
+     */
+    @Test
+    void processingStatus_approvedOrderKeepsPlanOutcomeEvenAfterBomRemoved() {
+        Customer customer = persistCustomer(91300003L, "Khách đã duyệt");
+        DoorProduct doorProduct = persistDoorProduct(83300021L, "#13");
+        BomItem bomItem = persistBomItem(doorProduct, SlatGroup.SUB_SLAT, null, null, null);
+        SalesOrder sufficient = persistOrder("DADUYET", 1, 1001300201L, 1, customer, doorProduct);
+        SalesOrder shortage = persistOrder("DADUYET", 2, 1001300202L, 1, customer, doorProduct);
+        CuttingPlan plan = persistCuttingPlan();
+        SlatMaterial material = persistSlatMaterial(70400002L);
+        persistCuttingPlanDetailItem(persistCuttingPlanDetail(plan, material), sufficient);
+        persistShortageRecord(plan, shortage, material);
+        approve(plan, sufficient, shortage);
+
+        bomItemRepository.delete(bomItem);
+        bomItemRepository.flush();
+
+        assertThat(service.getPage("DADUYET", null, null, null, null, PageRequest.of(0, 20)).content())
+                .extracting(SalesOrderResponse::item, SalesOrderResponse::processingStatus)
+                .containsExactlyInAnyOrder(
+                        tuple(1, SalesOrderProcessingStatus.SUFFICIENT),
+                        tuple(2, SalesOrderProcessingStatus.SHORTAGE));
+        assertThat(service.getPage(
+                                "DADUYET", null, null, null, SalesOrderProcessingStatus.BLOCKED, PageRequest.of(0, 20))
+                        .totalElements())
+                .isZero();
+    }
+
+    /**
+     * Tạo và sửa đơn cũng trả về trạng thái — theo mẫu cửa đơn đang mang SAU thao tác, kể cả khi
+     * thao tác sửa vừa đổi mẫu cửa trong cùng giao dịch và chưa ghi xuống CSDL.
+     */
+    @Test
+    void createAndUpdate_returnProcessingStatusOfCurrentDoorProduct() {
+        Customer customer = persistCustomer(91300004L, "Khách tạo sửa");
+        DoorProduct withBom = persistDoorProduct(83300031L, "#14");
+        persistBomItem(withBom, SlatGroup.BOTTOM_BAR, null, null, null);
+        DoorProduct withoutBom = persistDoorProduct(83300032L, "#14");
+
+        SalesOrderResponse created =
+                service.create(request("TAOSUA", 1, 1001300301L, 1, customer.getId(), withoutBom.getId()));
+        SalesOrderResponse updated = service.update(
+                created.id(), request("TAOSUA", 1, 1001300301L, 1, customer.getId(), withBom.getId()));
+
+        assertThat(created.processingStatus()).isEqualTo(SalesOrderProcessingStatus.BLOCKED);
+        assertThat(updated.processingStatus()).isEqualTo(SalesOrderProcessingStatus.PENDING);
+        assertThat(service.getById(created.id()).processingStatus()).isEqualTo(SalesOrderProcessingStatus.PENDING);
     }
 
     @Test
@@ -440,11 +637,38 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
     }
 
     private SlatMaterial persistSlatMaterial(long code) {
+        return persistSlatMaterial(code, SlatGroup.BOTTOM_BAR);
+    }
+
+    private SlatMaterial persistSlatMaterial(long code, SlatGroup slatGroup) {
         SlatMaterial entity = new SlatMaterial();
         entity.setSlatMaterial(code);
         entity.setSlatMaterialName("Thanh nan " + code);
-        entity.setSlatGroup(SlatGroup.BOTTOM_BAR);
+        entity.setSlatGroup(slatGroup);
         return slatMaterialRepository.save(entity);
+    }
+
+    /** Một dòng định mức trên một loại thanh nan riêng, với đúng các hệ số được truyền (null = thiếu). */
+    private BomItem persistBomItem(
+            DoorProduct doorProduct,
+            SlatGroup slatGroup,
+            BigDecimal slatCountSlope,
+            BigDecimal slatCountIntercept,
+            BigDecimal heightOffsetM) {
+        BomItem entity = new BomItem();
+        entity.setDoorProduct(doorProduct);
+        entity.setSlatMaterial(persistSlatMaterial(++slatMaterialCode, slatGroup));
+        entity.setSlatCountSlope(slatCountSlope);
+        entity.setSlatCountIntercept(slatCountIntercept);
+        entity.setHeightOffsetM(heightOffsetM);
+        return bomItemRepository.save(entity);
+    }
+
+    private void approve(CuttingPlan plan, SalesOrder... orders) {
+        for (SalesOrder order : orders) {
+            order.setApprovedPlan(plan);
+            salesOrderRepository.saveAndFlush(order);
+        }
     }
 
     private CuttingPlan persistCuttingPlan() {
