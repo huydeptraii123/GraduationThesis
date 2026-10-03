@@ -1,5 +1,5 @@
 import { PlusOutlined, SearchOutlined, UploadOutlined, WarningOutlined } from '@ant-design/icons'
-import { App, Button, DatePicker, Input, Select, Space, Table, Tag } from 'antd'
+import { App, Button, DatePicker, Input, Select, Space, Table, Tag, Tooltip } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useMemo, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
@@ -11,9 +11,43 @@ import type { DoorProductResponse } from '../bom/types'
 import { ImportSalesOrdersModal } from './ImportSalesOrdersModal'
 import { SalesOrderFormDrawer } from './SalesOrderFormDrawer'
 import { deleteSalesOrder, listSalesOrders } from './salesOrdersApi'
-import type { CustomerResponse, SalesOrderResponse } from './types'
+import type { CustomerResponse, SalesOrderProcessingStatus, SalesOrderResponse } from './types'
 
 const { RangePicker } = DatePicker
+
+/**
+ * Nhãn và màu của từng trạng thái xử lý — một bảng dùng chung cho cả ô lọc lẫn cột, để hai chỗ
+ * không gọi cùng một trạng thái bằng hai tên. Màu theo mockup: chưa xử lý xám, thiếu đỏ, đủ xanh;
+ * "Đang bị chặn" không có trong mockup (đặc tả bổ sung sau) nên dùng màu cảnh báo.
+ */
+const PROCESSING_STATUS: Record<SalesOrderProcessingStatus, { label: string; color: string; hint?: string }> = {
+  PENDING: { label: 'Chưa xử lý', color: 'default' },
+  BLOCKED: {
+    label: 'Đang bị chặn',
+    color: 'warning',
+    hint: 'Mẫu cửa chưa có định mức dùng được nên đơn chưa vào được phạm vi xử lý — cần ADMIN khai báo định mức.',
+  },
+  SUFFICIENT: { label: 'Đủ vật tư', color: 'success' },
+  SHORTAGE: { label: 'Thiếu vật tư', color: 'error' },
+}
+
+const PROCESSING_STATUS_OPTIONS = (Object.keys(PROCESSING_STATUS) as SalesOrderProcessingStatus[]).map((value) => ({
+  value,
+  label: PROCESSING_STATUS[value].label,
+}))
+
+const APPROVED_ORDER_LOCKED = 'Đơn đã thuộc một phương án cắt được duyệt nên không sửa hay xóa được.'
+
+/** Đơn đã duyệt là bất biến — backend từ chối sửa/xóa bằng 409, nên khóa nút ngay từ đây. */
+function isApproved(status: SalesOrderProcessingStatus): boolean {
+  return status === 'SUFFICIENT' || status === 'SHORTAGE'
+}
+
+function ProcessingStatusTag({ status }: { status: SalesOrderProcessingStatus }) {
+  const { label, color, hint } = PROCESSING_STATUS[status]
+  const tag = <Tag color={color}>{label}</Tag>
+  return hint ? <Tooltip title={hint}>{tag}</Tooltip> : tag
+}
 
 interface Props {
   /** Danh sách khách hàng đầy đủ — nguồn cho dropdown lọc và form. */
@@ -68,6 +102,7 @@ export function SalesOrderTable({
   const [keyword, setKeyword] = useState('')
   const [customerFilter, setCustomerFilter] = useState<number | null>(null)
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null)
+  const [statusFilter, setStatusFilter] = useState<SalesOrderProcessingStatus | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<SalesOrderResponse | null>(null)
@@ -91,12 +126,13 @@ export function SalesOrderTable({
         customerId: customerFilter,
         deliveryFrom,
         deliveryTo,
+        processingStatus: statusFilter,
       }),
-    [debouncedKeyword, customerFilter, deliveryFrom, deliveryTo],
+    [debouncedKeyword, customerFilter, deliveryFrom, deliveryTo, statusFilter],
   )
   const { data, loading, error, current, pageSize, handleTableChange, reload } = usePagedList(
     load,
-    [debouncedKeyword, customerFilter, deliveryFrom, deliveryTo],
+    [debouncedKeyword, customerFilter, deliveryFrom, deliveryTo, statusFilter],
     { errorMessage: 'Không tải được danh sách đơn hàng.' },
   )
 
@@ -109,6 +145,7 @@ export function SalesOrderTable({
     setKeyword('')
     setCustomerFilter(null)
     setDateRange(null)
+    setStatusFilter(null)
   }
 
   function confirmDelete(order: SalesOrderResponse) {
@@ -156,7 +193,15 @@ export function SalesOrderTable({
             value={customerFilter}
             onChange={(value) => setCustomerFilter(value ?? null)}
           />
-          {(keyword || customerFilter || dateRange) && <Button onClick={resetFilters}>Xóa lọc</Button>}
+          <Select
+            allowClear
+            placeholder="Trạng thái: Tất cả"
+            style={{ width: 180 }}
+            options={PROCESSING_STATUS_OPTIONS}
+            value={statusFilter}
+            onChange={(value) => setStatusFilter(value ?? null)}
+          />
+          {(keyword || customerFilter || dateRange || statusFilter) && <Button onClick={resetFilters}>Xóa lọc</Button>}
         </Space>
         <Space wrap>
           {canImport && (
@@ -225,27 +270,37 @@ export function SalesOrderTable({
             title: 'Ngày giao yêu cầu',
             render: (_, order) => <DeliveryBadge date={order.reqdDeliveryDate} />,
           },
+          {
+            title: 'Trạng thái',
+            render: (_, order) => <ProcessingStatusTag status={order.processingStatus} />,
+          },
           ...(canEdit
             ? [
                 {
                   title: 'Hành động',
                   width: 140,
-                  render: (_: unknown, order: SalesOrderResponse) => (
-                    <Space>
-                      <Button
-                        size="small"
-                        onClick={() => {
-                          setEditing(order)
-                          setFormOpen(true)
-                        }}
-                      >
-                        Sửa
-                      </Button>
-                      <Button size="small" danger onClick={() => confirmDelete(order)}>
-                        Xóa
-                      </Button>
-                    </Space>
-                  ),
+                  render: (_: unknown, order: SalesOrderResponse) => {
+                    const locked = isApproved(order.processingStatus)
+                    return (
+                      <Tooltip title={locked ? APPROVED_ORDER_LOCKED : undefined}>
+                        <Space>
+                          <Button
+                            size="small"
+                            disabled={locked}
+                            onClick={() => {
+                              setEditing(order)
+                              setFormOpen(true)
+                            }}
+                          >
+                            Sửa
+                          </Button>
+                          <Button size="small" danger disabled={locked} onClick={() => confirmDelete(order)}>
+                            Xóa
+                          </Button>
+                        </Space>
+                      </Tooltip>
+                    )
+                  },
                 },
               ]
             : []),

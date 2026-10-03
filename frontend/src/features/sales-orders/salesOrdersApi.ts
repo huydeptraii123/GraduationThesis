@@ -1,6 +1,12 @@
 import { httpClient } from '../../api/httpClient'
 import type { Page, PageParams } from '../../api/pagination'
-import type { CustomerResponse, SalesOrderImportResult, SalesOrderRequest, SalesOrderResponse } from './types'
+import type {
+  CustomerResponse,
+  SalesOrderImportResult,
+  SalesOrderProcessingStatus,
+  SalesOrderRequest,
+  SalesOrderResponse,
+} from './types'
 
 // Tái dùng client GET /api/v1/door-products đã có ở màn BOM, không viết lại.
 export { listDoorProducts } from '../bom/bomApi'
@@ -18,6 +24,8 @@ export interface SalesOrderFilterParams extends PageParams {
   /** Định dạng YYYY-MM-DD; backend nhận bằng @DateTimeFormat(iso = DATE). */
   deliveryFrom?: string | null
   deliveryTo?: string | null
+  /** Tên hằng đúng như enum backend; giá trị lạ bị từ chối bằng 400 chứ không bị bỏ qua. */
+  processingStatus?: SalesOrderProcessingStatus | null
 }
 
 export function listSalesOrders(params: SalesOrderFilterParams): Promise<Page<SalesOrderResponse>> {
