@@ -1156,16 +1156,16 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Khoá điều kiện lọc phạm vi khớp với các quy tắc bỏ qua của CuttingDemandService.
+     * Khoá điều kiện lọc phạm vi khớp với các quy tắc bỏ qua bộ cửa của CuttingDemandService.
      *
-     * <p>Chỉ hỏi "mẫu cửa có dòng định mức nào không" là chưa đủ: CuttingDemandService còn bỏ qua
-     * TỪNG DÒNG một, nên mẫu cửa có định mức mà mọi dòng đều bị bỏ qua vẫn sinh 0 nhu cầu cắt và
-     * kẹt vòng lặp y hệt trường hợp không có dòng nào. Mỗi kịch bản dưới đây ứng với đúng 1 nhánh
-     * {@code return Optional.empty()} trong CuttingDemandService.buildDemand — thêm nhánh mới ở đó
-     * mà quên sửa truy vấn phạm vi thì test này là nơi phát hiện ra.
+     * <p>Chỉ hỏi "mẫu cửa có dòng định mức nào không" là chưa đủ: CuttingDemandService còn bỏ qua cả
+     * bộ cửa khi một dòng định mức thiếu tham số, nên mẫu cửa có định mức như vậy vẫn sinh 0 nhu cầu
+     * cắt và kẹt vòng lặp y hệt trường hợp không có dòng nào. Mỗi kịch bản dưới đây ứng với một nhánh
+     * bỏ qua trong CuttingDemandService.buildDemands/buildDemand — thêm nhánh mới ở đó mà quên sửa
+     * truy vấn phạm vi thì test này là nơi phát hiện ra.
      */
     @Test
-    void generate_excludesOrdersWhoseEveryBomRowIsSkippedByDemandRules() {
+    void generate_excludesOrdersWhoseBomCannotYieldCompleteDemand() {
         Customer customer = persistCustomer();
 
         // (1) MAIN_SLAT thiếu hệ số tính số nan — đúng 69/527 dòng trong dữ liệu thật của doanh nghiệp.
@@ -1185,17 +1185,30 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistBomItem(onlyOtherGroup, persistSlatMaterial(SlatGroup.OTHER));
         persistSalesOrder("HY9" + (counter + 1), onlyOtherGroup, customer, new BigDecimal("2.000"), LocalDate.now());
 
+        // (4) Nan chính thiếu hệ số, nhưng thanh đáy và nan phụ đủ tham số và CÓ SẴN tồn kho — đúng
+        // hình dạng định mức của mẫu cửa chiếm phần lớn sổ đơn trong dữ liệu thật. Theo luật cũ (bỏ
+        // riêng dòng hỏng) đơn này được duyệt với trạng thái "đủ nan" dù nan chính chưa từng được tính.
+        DoorProduct mainSlatIncomplete = persistDoorProduct();
+        persistBomItem(mainSlatIncomplete, persistSlatMaterial(SlatGroup.MAIN_SLAT));
+        for (SlatGroup cuttable : List.of(SlatGroup.BOTTOM_BAR, SlatGroup.SUB_SLAT)) {
+            SlatMaterial material = persistSlatMaterial(cuttable);
+            persistBomItem(mainSlatIncomplete, material);
+            persistInventoryBatch(material, 2000, 1);
+        }
+        persistSalesOrder(
+                "HY9" + (counter + 1), mainSlatIncomplete, customer, new BigDecimal("2.000"), LocalDate.now());
+
         assertThat(service.countPendingMissingBom())
-                .as("cả 3 đơn đều không sinh được nhu cầu cắt nên phải đếm là đang bị chặn")
-                .isEqualTo(3);
+                .as("cả 4 đơn đều không sinh được nhu cầu cắt đầy đủ nên phải đếm là đang bị chặn")
+                .isEqualTo(4);
 
         assertThatThrownBy(this::approvePlan)
-                .as("không đơn nào trong 3 kịch bản được đưa vào phạm vi xử lý")
+                .as("không đơn nào trong 4 kịch bản được đưa vào phạm vi xử lý")
                 .isInstanceOf(UnprocessableRequestException.class);
 
         assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
         assertThat(shortageRecordRepository.findAll()).isEmpty();
-        assertThat(service.countPendingMissingBom()).isEqualTo(3);
+        assertThat(service.countPendingMissingBom()).isEqualTo(4);
     }
 
     /**

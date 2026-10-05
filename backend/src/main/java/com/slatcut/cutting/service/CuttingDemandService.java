@@ -60,6 +60,19 @@ public class CuttingDemandService {
                         order.getDoorProduct().getId());
                 continue;
             }
+            Optional<BomItem> incomplete =
+                    bomItems.stream().filter(CuttingDemandService::lacksCutParameters).findFirst();
+            if (incomplete.isPresent()) {
+                log.warn(
+                        "Bỏ qua đơn hàng ycsx={} item={}: dòng định mức id={} (nhóm {}) của mẫu cửa id={} thiếu"
+                                + " tham số tính đoạn cắt, tính các dòng còn lại sẽ ra nhu cầu cắt không đầy đủ",
+                        order.getYcsx(),
+                        order.getItem(),
+                        incomplete.get().getId(),
+                        incomplete.get().getSlatMaterial().getSlatGroup(),
+                        order.getDoorProduct().getId());
+                continue;
+            }
             for (BomItem bomItem : bomItems) {
                 buildDemand(order, bomItem).ifPresent(demands::add);
             }
@@ -67,6 +80,29 @@ public class CuttingDemandService {
         return demands;
     }
 
+    /**
+     * Dòng định mức thuộc nhóm có công thức cắt nhưng thiếu tham số của chính công thức đó: MAIN_SLAT
+     * thiếu một trong hai hệ số tính số nan, RAIL thiếu {@code heightOffsetM}. Mẫu cửa có dù chỉ một
+     * dòng như vậy thì cả bộ cửa bị bỏ qua chứ không riêng dòng đó — mỗi dòng định mức là một thành
+     * phần bắt buộc, nên tính các dòng còn lại sẽ ra một bộ cửa "đủ nan" trong khi nan chính của nó
+     * chưa từng được tính. Nhóm OTHER không tính ở đây: nó không cắt từ thanh tồn kho (xem
+     * {@link #buildDemand}).
+     *
+     * <p><b>Luật này có hai bản sao phải sửa theo</b>: hằng {@code SalesOrderRepository.HAS_COMPLETE_BOM}
+     * (phạm vi của hai chức năng tính và duyệt) và {@code SalesOrderSpecifications.hasCompleteBom}
+     * (trạng thái "đang bị chặn" ở màn đơn hàng). Nhờ chúng, đơn như vậy không bao giờ vào tới đây
+     * từ hai chức năng kia — kiểm tra ở đây là lớp chặn cuối để hàm này tự nó không bao giờ trả về
+     * nhu cầu cắt thiếu thành phần.
+     */
+    private static boolean lacksCutParameters(BomItem bomItem) {
+        return switch (bomItem.getSlatMaterial().getSlatGroup()) {
+            case MAIN_SLAT -> bomItem.getSlatCountSlope() == null || bomItem.getSlatCountIntercept() == null;
+            case RAIL -> bomItem.getHeightOffsetM() == null;
+            case SUB_SLAT, BOTTOM_BAR, OTHER -> false;
+        };
+    }
+
+    /** Gọi sau {@link #lacksCutParameters}: mọi tham số mà công thức của nhóm cần đều đã có. */
     private Optional<CuttingDemand> buildDemand(SalesOrder order, BomItem bomItem) {
         SlatGroup slatGroup = bomItem.getSlatMaterial().getSlatGroup();
         BigDecimal cutDimM;
@@ -74,10 +110,6 @@ public class CuttingDemandService {
 
         switch (slatGroup) {
             case MAIN_SLAT -> {
-                if (bomItem.getSlatCountSlope() == null || bomItem.getSlatCountIntercept() == null) {
-                    logSkipped(order, bomItem, "MAIN_SLAT thiếu slatCountSlope/slatCountIntercept");
-                    return Optional.empty();
-                }
                 BigDecimal productionWidthM = bomItem.getWidthOffsetM() != null
                         ? order.getChieuRongDh().subtract(bomItem.getWidthOffsetM())
                         : order.getChieuRongDh().multiply(WIDTH_FALLBACK_RATIO);
@@ -91,10 +123,6 @@ public class CuttingDemandService {
                 quantity = 1;
             }
             case RAIL -> {
-                if (bomItem.getHeightOffsetM() == null) {
-                    logSkipped(order, bomItem, "RAIL thiếu heightOffsetM");
-                    return Optional.empty();
-                }
                 cutDimM = order.getChieuCaoDh().subtract(bomItem.getHeightOffsetM());
                 quantity = 2;
             }

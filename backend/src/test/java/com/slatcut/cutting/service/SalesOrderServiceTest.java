@@ -354,12 +354,19 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
      * "Đang bị chặn" ở màn đơn hàng phải dùng ĐÚNG luật mà hai chức năng tính và duyệt phương án dùng
      * để loại đơn khỏi phạm vi xử lý. Luật đó có ba bản JPQL ở SalesOrderRepository (phạm vi tính,
      * phạm vi duyệt, bản đếm của phạm vi duyệt) và một bản Criteria ở bộ lọc, nên bốn bản có thể lệch
-     * nhau. Mỗi mẫu cửa dưới đây ứng với một nhánh của điều kiện "dòng định mức dùng được"; với từng
-     * đơn, "Chưa xử lý" phải trùng khớp với việc đơn có nằm trong cả hai phạm vi hay không, và bản đếm
-     * phải ra đúng số dòng của bản liệt kê. Mồi nhử: MAIN_SLAT chỉ có MỘT trong hai hệ số — mỗi hệ số
-     * một mẫu cửa, vì thiếu một trong hai là bản nào bỏ sót điều kiện của hệ số còn lại vẫn qua được
-     * test (vẫn bị chặn); và mẫu cửa trộn dòng bị bỏ qua với một dòng dùng được (một dòng là đủ để
-     * chưa bị chặn).
+     * nhau. Ba bản JPQL nay ghép chung một hằng nên chỉ còn có thể lệch với bản Criteria, nhưng test vẫn
+     * hỏi đủ cả ba truy vấn. Mỗi mẫu cửa dưới đây ứng với một điều kiện con của "định mức đầy đủ"; với
+     * từng đơn, "Chưa xử lý" phải trùng khớp với việc đơn có nằm trong cả hai phạm vi hay không, và bản
+     * đếm phải ra đúng số dòng của bản liệt kê. Mồi nhử:
+     * <ul>
+     *   <li>MAIN_SLAT chỉ có MỘT trong hai hệ số, mỗi hệ số một mẫu cửa: bản nào bỏ sót điều kiện của
+     *       một hệ số thì đúng mẫu cửa đó lọt thành "Chưa xử lý".
+     *   <li>Dòng thiếu tham số đi KÈM dòng dùng được (nan chính hỏng + thanh đáy/nan phụ — hình dạng
+     *       định mức chiếm phần lớn sổ đơn thật; hai dòng nan chính một đủ một thiếu; ray hỏng + nan
+     *       phụ): vẫn bị chặn, vì một dòng hỏng là nhu cầu cả bộ cửa không đầy đủ.
+     *   <li>Dòng OTHER không tham số đi kèm nan phụ: KHÔNG bị chặn — bản nào coi OTHER là dòng hỏng
+     *       thì mẫu này lộ ra.
+     * </ul>
      */
     @Test
     void processingStatus_blockedMatchesProcessingScopeRule() {
@@ -387,23 +394,36 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
         persistBomItem(subSlat, SlatGroup.SUB_SLAT, null, null, null);
         DoorProduct bottomBar = persistDoorProduct(83300018L, "#12");
         persistBomItem(bottomBar, SlatGroup.BOTTOM_BAR, null, null, null);
-        DoorProduct mixed = persistDoorProduct(83300019L, "#12");
-        persistBomItem(mixed, SlatGroup.OTHER, null, null, null);
-        persistBomItem(mixed, SlatGroup.RAIL, null, null, null);
-        persistBomItem(mixed, SlatGroup.SUB_SLAT, null, null, null);
+        DoorProduct railBrokenWithSub = persistDoorProduct(83300019L, "#12");
+        persistBomItem(railBrokenWithSub, SlatGroup.OTHER, null, null, null);
+        persistBomItem(railBrokenWithSub, SlatGroup.RAIL, null, null, null);
+        persistBomItem(railBrokenWithSub, SlatGroup.SUB_SLAT, null, null, null);
+        DoorProduct mainBrokenWithSubAndBottom = persistDoorProduct(83300009L, "#12");
+        persistBomItem(mainBrokenWithSubAndBottom, SlatGroup.MAIN_SLAT, null, null, null);
+        persistBomItem(mainBrokenWithSubAndBottom, SlatGroup.BOTTOM_BAR, null, null, null);
+        persistBomItem(mainBrokenWithSubAndBottom, SlatGroup.SUB_SLAT, null, null, null);
+        DoorProduct mainOneOfTwoBroken = persistDoorProduct(83300008L, "#12");
+        persistBomItem(mainOneOfTwoBroken, SlatGroup.MAIN_SLAT, slope, intercept, null);
+        persistBomItem(mainOneOfTwoBroken, SlatGroup.MAIN_SLAT, null, null, null);
+        DoorProduct otherWithSub = persistDoorProduct(83300007L, "#12");
+        persistBomItem(otherWithSub, SlatGroup.OTHER, null, null, null);
+        persistBomItem(otherWithSub, SlatGroup.SUB_SLAT, null, null, null);
 
         int item = 0;
-        for (Map.Entry<DoorProduct, SalesOrderProcessingStatus> entry : Map.of(
-                        mainMissingCoefficients, SalesOrderProcessingStatus.BLOCKED,
-                        mainSlopeOnly, SalesOrderProcessingStatus.BLOCKED,
-                        mainInterceptOnly, SalesOrderProcessingStatus.BLOCKED,
-                        railMissingOffset, SalesOrderProcessingStatus.BLOCKED,
-                        otherOnly, SalesOrderProcessingStatus.BLOCKED,
-                        mainComplete, SalesOrderProcessingStatus.PENDING,
-                        railWithOffset, SalesOrderProcessingStatus.PENDING,
-                        subSlat, SalesOrderProcessingStatus.PENDING,
-                        bottomBar, SalesOrderProcessingStatus.PENDING,
-                        mixed, SalesOrderProcessingStatus.PENDING)
+        for (Map.Entry<DoorProduct, SalesOrderProcessingStatus> entry : Map.ofEntries(
+                        Map.entry(mainMissingCoefficients, SalesOrderProcessingStatus.BLOCKED),
+                        Map.entry(mainSlopeOnly, SalesOrderProcessingStatus.BLOCKED),
+                        Map.entry(mainInterceptOnly, SalesOrderProcessingStatus.BLOCKED),
+                        Map.entry(railMissingOffset, SalesOrderProcessingStatus.BLOCKED),
+                        Map.entry(otherOnly, SalesOrderProcessingStatus.BLOCKED),
+                        Map.entry(railBrokenWithSub, SalesOrderProcessingStatus.BLOCKED),
+                        Map.entry(mainBrokenWithSubAndBottom, SalesOrderProcessingStatus.BLOCKED),
+                        Map.entry(mainOneOfTwoBroken, SalesOrderProcessingStatus.BLOCKED),
+                        Map.entry(mainComplete, SalesOrderProcessingStatus.PENDING),
+                        Map.entry(railWithOffset, SalesOrderProcessingStatus.PENDING),
+                        Map.entry(subSlat, SalesOrderProcessingStatus.PENDING),
+                        Map.entry(bottomBar, SalesOrderProcessingStatus.PENDING),
+                        Map.entry(otherWithSub, SalesOrderProcessingStatus.PENDING))
                 .entrySet()) {
             item++;
             expected.put(

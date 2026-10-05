@@ -17,9 +17,9 @@ import java.util.List;
  * vì vậy phải đi kèm kết quả — nó là thứ duy nhất cho biết con số đang xem cũ tới mức nào.
  *
  * @param scopeOrders đơn hàng đã đưa vào lần tính này, giữ nguyên thứ tự ưu tiên đã sắp
- * @param blockedOrderCount số đơn chưa duyệt bị loại khỏi phạm vi vì mẫu cửa không có dòng định mức
- *     nào dùng được — đếm và hiển thị tách khỏi kết quả, vì đó là đơn đang BỊ CHẶN chờ khai báo
- *     định mức chứ không phải đơn đã được xem xét và thấy đủ vật tư
+ * @param blockedOrderCount số đơn chưa duyệt bị loại khỏi phạm vi vì định mức của mẫu cửa chưa đầy
+ *     đủ (xem {@code SalesOrderRepository.HAS_COMPLETE_BOM}) — đếm và hiển thị tách khỏi kết quả, vì
+ *     đó là đơn đang BỊ CHẶN chờ bổ sung định mức chứ không phải đơn đã được xem xét và thấy đủ vật tư
  * @param totalStockUsedM tồn kho thực tiêu hao, tức mẫu số của tỷ lệ phế
  * @param stockAtStart tồn kho của các loại thanh nan có mặt trong lần chạy, ngay TRƯỚC khi thuật
  *     toán tiêu thụ — báo cáo in nguyên danh sách này ở cột ảnh chụp tồn kho

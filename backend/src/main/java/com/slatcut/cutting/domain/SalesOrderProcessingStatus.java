@@ -14,9 +14,12 @@ package com.slatcut.cutting.domain;
  * {@code SalesOrderSpecifications.statusIs}, dùng chung cho cả bộ lọc lẫn cột hiển thị.
  */
 public enum SalesOrderProcessingStatus {
-    /** Chưa duyệt, mẫu cửa có định mức dùng được — đang chờ tới lượt trong hàng chờ. */
+    /** Chưa duyệt, định mức của mẫu cửa đầy đủ — đang chờ tới lượt trong hàng chờ. */
     PENDING,
-    /** Chưa duyệt, mẫu cửa không có dòng định mức nào dùng được — phải chờ ADMIN khai báo định mức. */
+    /**
+     * Chưa duyệt, định mức của mẫu cửa chưa đầy đủ (không có dòng nào tính được, hoặc có dòng thiếu
+     * tham số tính đoạn cắt) — phải chờ ADMIN bổ sung định mức.
+     */
     BLOCKED,
     /** Đã duyệt, phương án duyệt nó không ghi nhận thiếu loại thanh nào. */
     SUFFICIENT,
