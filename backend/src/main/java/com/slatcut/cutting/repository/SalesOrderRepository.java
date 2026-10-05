@@ -33,6 +33,47 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
     boolean existsByDoorProduct_Id(Long doorProductId);
 
     /**
+     * Điều kiện "mẫu cửa của đơn có định mức ĐẦY ĐỦ để tính nhu cầu cắt", viết một lần ở đây và
+     * ghép vào cả ba truy vấn phạm vi bên dưới (phạm vi duyệt, phạm vi tính, bản đếm của phạm vi
+     * duyệt) để ba bản không thể lệch nhau. Đơn chưa duyệt không thỏa điều kiện này là đơn ĐANG BỊ
+     * CHẶN chờ ADMIN bổ sung định mức.
+     *
+     * <p>Hai vế, đúng bằng hai nhánh bỏ qua bộ cửa của CuttingDemandService.buildDemands:
+     * <ul>
+     *   <li>Có ít nhất một dòng định mức thuộc nhóm có công thức cắt (mọi nhóm trừ OTHER) — không có
+     *       thì đơn sinh 0 nhu cầu cắt.
+     *   <li>KHÔNG có dòng nào thiếu tham số của chính công thức đó: MAIN_SLAT thiếu một trong hai hệ
+     *       số tính số nan, RAIL thiếu heightOffsetM. Mỗi dòng định mức là một thành phần bắt buộc của
+     *       bộ cửa, nên thiếu một dòng là nhu cầu cắt của cả bộ không đầy đủ: cứ tính các dòng còn lại
+     *       thì bộ cửa vẫn có thể hiện "đủ nan" trong khi nan chính chưa từng được tính. Dữ liệu thật
+     *       có đúng trường hợp này ở quy mô lớn — một mẫu cửa có cả hai dòng nan chính thiếu hệ số
+     *       chiếm phần lớn sổ đơn.
+     * </ul>
+     * Nhóm OTHER không có mặt ở vế nào: nó không cắt từ thanh tồn kho nên không làm đơn bị chặn.
+     * Vế đầu chỉ cần hỏi "có dòng ngoài OTHER không" vì vế sau đã bảo đảm mọi dòng như vậy đều đủ
+     * tham số.
+     *
+     * <p><b>Sửa CuttingDemandService.buildDemands thì phải sửa cả đây lẫn bản Criteria
+     * {@code SalesOrderSpecifications.hasCompleteBom}</b> (bộ lọc trạng thái ở màn đơn hàng, phải
+     * ghép được với điều kiện khác và phân trang nên không gọi lại được JPQL này).
+     * SalesOrderServiceTest.processingStatus_blockedMatchesProcessingScopeRule khoá các bản khỏi lệch
+     * nhau.
+     */
+    String HAS_COMPLETE_BOM = """
+            EXISTS (
+                  SELECT 1 FROM BomItem b JOIN b.slatMaterial sm
+                  WHERE b.doorProduct = so.doorProduct
+                    AND sm.slatGroup <> com.slatcut.cutting.domain.SlatGroup.OTHER)
+              AND NOT EXISTS (
+                  SELECT 1 FROM BomItem ib JOIN ib.slatMaterial ism
+                  WHERE ib.doorProduct = so.doorProduct AND (
+                       (ism.slatGroup = com.slatcut.cutting.domain.SlatGroup.MAIN_SLAT
+                          AND (ib.slatCountSlope IS NULL OR ib.slatCountIntercept IS NULL))
+                    OR (ism.slatGroup = com.slatcut.cutting.domain.SlatGroup.RAIL
+                          AND ib.heightOffsetM IS NULL)))
+            """;
+
+    /**
      * Phạm vi 1 lần DUYỆT phương án cắt (docs/requirements-functional.md Nhóm 3): đơn chưa
      * duyệt (approvedPlan IS NULL) có reqdDeliveryDate <= cutoffDate, sắp theo đúng thứ tự ưu tiên
      * (reqdDeliveryDate, ycsx, item). Gọi với Pageable.ofSize(70) để giới hạn "tối đa 70 đơn" ngay
@@ -42,14 +83,10 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
      * Chức năng "tính phương án cắt" cố ý bỏ cả hai để nhìn được bức tranh thiếu hụt của toàn bộ
      * đơn tồn.
      *
-     * <p>Điều kiện EXISTS ở cuối là bắt buộc: đơn sinh ra 0 nhu cầu cắt vẫn sẽ được gán
-     * approvedPlan nếu lọt vào phạm vi, tức bị đánh dấu "đã duyệt" trong khi không sản xuất được gì
-     * — nó là đơn ĐANG BỊ CHẶN chờ ADMIN khai báo định mức, không phải đơn đã xử lý xong. Không đủ
-     * nếu chỉ hỏi "mẫu cửa có dòng định mức nào không": CuttingDemandService còn bỏ qua từng dòng
-     * một (MAIN_SLAT thiếu hệ số tính số nan, RAIL thiếu heightOffsetM, nhóm OTHER không có công
-     * thức cắt), nên mẫu cửa có định mức mà mọi dòng đều bị bỏ qua vẫn phải bị loại y hệt. Điều
-     * kiện dưới đây phản chiếu đúng các quy tắc bỏ qua đó — <b>sửa CuttingDemandService.buildDemand
-     * thì phải sửa cả đây</b>, và CuttingPlanServiceTest có test khoá hai nơi khỏi lệch nhau.
+     * <p>Điều kiện định mức ở cuối ({@link #HAS_COMPLETE_BOM}) là bắt buộc: đơn sinh ra 0 nhu cầu
+     * cắt vẫn sẽ được gán approvedPlan nếu lọt vào phạm vi, tức bị đánh dấu "đã duyệt" trong khi
+     * không sản xuất được gì; còn đơn chỉ tính được một phần định mức thì bị duyệt với kết quả đủ/thiếu
+     * sai. Cả hai đều là đơn ĐANG BỊ CHẶN chờ ADMIN bổ sung định mức, không phải đơn đã xử lý xong.
      *
      * <p>Đơn bị loại ở đây được đếm riêng (xem {@link #countUnprocessedInScopeIgnoringBom}) và cảnh
      * báo trên trang chủ, không bị bỏ quên âm thầm.
@@ -71,29 +108,23 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
             JOIN FETCH so.doorProduct
             WHERE so.reqdDeliveryDate <= :cutoffDate
               AND so.approvedPlan IS NULL
-              AND EXISTS (
-                    SELECT 1 FROM BomItem b JOIN b.slatMaterial sm
-                    WHERE b.doorProduct = so.doorProduct AND (
-                         sm.slatGroup IN (com.slatcut.cutting.domain.SlatGroup.SUB_SLAT,
-                                          com.slatcut.cutting.domain.SlatGroup.BOTTOM_BAR)
-                      OR (sm.slatGroup = com.slatcut.cutting.domain.SlatGroup.MAIN_SLAT
-                            AND b.slatCountSlope IS NOT NULL AND b.slatCountIntercept IS NOT NULL)
-                      OR (sm.slatGroup = com.slatcut.cutting.domain.SlatGroup.RAIL
-                            AND b.heightOffsetM IS NOT NULL)))
+              AND
+            """ + HAS_COMPLETE_BOM + """
             ORDER BY so.reqdDeliveryDate ASC, so.ycsx ASC, so.item ASC
             """)
     List<SalesOrder> findUnprocessedInScope(@Param("cutoffDate") LocalDate cutoffDate, Pageable pageable);
 
     /**
-     * Phạm vi 1 lần TÍNH phương án cắt: toàn bộ đơn chưa duyệt sinh được ít nhất 1 nhu cầu cắt,
-     * KHÔNG lọc theo ngày giao và KHÔNG giới hạn số đơn (docs/requirements-functional.md Nhóm 3).
+     * Phạm vi 1 lần TÍNH phương án cắt: toàn bộ đơn chưa duyệt có định mức đầy đủ để tính nhu cầu
+     * cắt, KHÔNG lọc theo ngày giao và KHÔNG giới hạn số đơn (docs/requirements-functional.md Nhóm 3).
      * Bỏ hai giới hạn đó chính là giá trị của chức năng tính: nó trả lời được câu hỏi "với toàn bộ
      * đơn đang có và toàn bộ tồn kho hiện tại, còn thiếu loại thanh nan nào" — thứ mà một đợt duyệt
      * tối đa 70 đơn không bao giờ trả lời được.
      *
-     * <p>Điều kiện lọc định mức giữ y nguyên {@link #findUnprocessedInScope}: đơn không sinh được
-     * nhu cầu cắt nào thì đưa vào cũng chỉ ra 0 dòng kết quả, chỉ làm nhiễu báo cáo. Số đơn bị loại
-     * vì lý do này được đếm riêng và cảnh báo trên trang chủ.
+     * <p>Điều kiện lọc định mức là cùng hằng {@link #HAS_COMPLETE_BOM} với
+     * {@link #findUnprocessedInScope}: đơn không sinh được nhu cầu cắt nào thì đưa vào cũng chỉ ra 0
+     * dòng kết quả, còn đơn chỉ tính được một phần định mức thì ra trạng thái đủ/thiếu sai. Số đơn bị
+     * loại vì hai lý do này được đếm riêng và cảnh báo trên trang chủ.
      *
      * <p>JOIN FETCH customer/doorProduct ở đây mà {@link #findUnprocessedInScope} không có: query
      * này quét toàn bảng (không có hạn mức 70 đơn) và mọi dòng đều bị đọc tên khách hàng/mẫu cửa
@@ -105,15 +136,8 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
             JOIN FETCH so.customer
             JOIN FETCH so.doorProduct
             WHERE so.approvedPlan IS NULL
-              AND EXISTS (
-                    SELECT 1 FROM BomItem b JOIN b.slatMaterial sm
-                    WHERE b.doorProduct = so.doorProduct AND (
-                         sm.slatGroup IN (com.slatcut.cutting.domain.SlatGroup.SUB_SLAT,
-                                          com.slatcut.cutting.domain.SlatGroup.BOTTOM_BAR)
-                      OR (sm.slatGroup = com.slatcut.cutting.domain.SlatGroup.MAIN_SLAT
-                            AND b.slatCountSlope IS NOT NULL AND b.slatCountIntercept IS NOT NULL)
-                      OR (sm.slatGroup = com.slatcut.cutting.domain.SlatGroup.RAIL
-                            AND b.heightOffsetM IS NOT NULL)))
+              AND
+            """ + HAS_COMPLETE_BOM + """
             ORDER BY so.reqdDeliveryDate ASC, so.ycsx ASC, so.item ASC
             """)
     List<SalesOrder> findUnapproved();
@@ -143,23 +167,15 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
     /**
      * Cùng điều kiện "chưa duyệt và trong hạn giao" với {@link #findUnprocessedInScope} nhưng KHÔNG
      * giới hạn 70 đơn — dùng cho KPI tồn đọng ở trang chủ, nơi cần biết số đơn thật đang chờ chứ
-     * không phải số đơn lấy được trong 1 lần chạy. Sửa điều kiện ở 1 trong 2 query thì phải sửa cả
-     * hai.
+     * không phải số đơn lấy được trong 1 lần chạy. Điều kiện định mức dùng chung hằng
+     * {@link #HAS_COMPLETE_BOM}; hai điều kiện còn lại sửa ở 1 trong 2 query thì phải sửa cả hai.
      */
     @Query("""
             SELECT COUNT(DISTINCT so) FROM SalesOrder so
             WHERE so.reqdDeliveryDate <= :cutoffDate
               AND so.approvedPlan IS NULL
-              AND EXISTS (
-                    SELECT 1 FROM BomItem b JOIN b.slatMaterial sm
-                    WHERE b.doorProduct = so.doorProduct AND (
-                         sm.slatGroup IN (com.slatcut.cutting.domain.SlatGroup.SUB_SLAT,
-                                          com.slatcut.cutting.domain.SlatGroup.BOTTOM_BAR)
-                      OR (sm.slatGroup = com.slatcut.cutting.domain.SlatGroup.MAIN_SLAT
-                            AND b.slatCountSlope IS NOT NULL AND b.slatCountIntercept IS NOT NULL)
-                      OR (sm.slatGroup = com.slatcut.cutting.domain.SlatGroup.RAIL
-                            AND b.heightOffsetM IS NOT NULL)))
-            """)
+              AND
+            """ + HAS_COMPLETE_BOM)
     long countUnprocessedInScope(@Param("cutoffDate") LocalDate cutoffDate);
 
     /**
@@ -198,8 +214,8 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
 
     /**
      * Như {@link #countUnprocessedInScope} nhưng BỎ HẲN điều kiện về định mức. Số đơn bị loại vì
-     * thiếu định mức dùng được suy ra bằng phép trừ giữa hai con số, thay vì viết một điều kiện phủ
-     * định thứ ba — hai vế khi đó không thể lệch nhau dù quy tắc "dòng định mức dùng được" có đổi.
+     * định mức chưa đầy đủ suy ra bằng phép trừ giữa hai con số, thay vì viết một điều kiện phủ
+     * định thứ ba — hai vế khi đó không thể lệch nhau dù quy tắc "định mức đầy đủ" có đổi.
      */
     @Query("""
             SELECT COUNT(DISTINCT so) FROM SalesOrder so

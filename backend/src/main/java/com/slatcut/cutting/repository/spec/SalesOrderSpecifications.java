@@ -62,8 +62,8 @@ public final class SalesOrderSpecifications {
             return null;
         }
         return (root, query, cb) -> switch (status) {
-            case PENDING -> cb.and(cb.isNull(root.get("approvedPlan")), hasUsableBom(root, query, cb));
-            case BLOCKED -> cb.and(cb.isNull(root.get("approvedPlan")), cb.not(hasUsableBom(root, query, cb)));
+            case PENDING -> cb.and(cb.isNull(root.get("approvedPlan")), hasCompleteBom(root, query, cb));
+            case BLOCKED -> cb.and(cb.isNull(root.get("approvedPlan")), cb.not(hasCompleteBom(root, query, cb)));
             case SUFFICIENT -> cb.and(
                     cb.isNotNull(root.get("approvedPlan")), cb.not(hasShortageInApprovedPlan(root, query, cb)));
             case SHORTAGE -> cb.and(
@@ -77,34 +77,42 @@ public final class SalesOrderSpecifications {
     }
 
     /**
-     * Mẫu cửa của đơn có ít nhất một dòng định mức sinh được nhu cầu cắt.
+     * Mẫu cửa của đơn có định mức ĐẦY ĐỦ để tính nhu cầu cắt: có ít nhất một dòng ngoài nhóm OTHER,
+     * và không dòng nào thiếu tham số của công thức cắt (MAIN_SLAT thiếu hệ số tính số nan, RAIL
+     * thiếu {@code heightOffsetM}).
      *
-     * <p>Phản chiếu TỪNG điều kiện của mệnh đề {@code EXISTS} trong
-     * {@code SalesOrderRepository.findUnapproved()} — chính là luật mà chức năng tính phương án dùng
-     * để đếm số đơn bị chặn — và qua đó phản chiếu các nhánh bỏ qua dòng định mức của
-     * {@code CuttingDemandService.buildDemand}: MAIN_SLAT thiếu hệ số tính số nan, RAIL thiếu
-     * {@code heightOffsetM}, nhóm OTHER không có công thức cắt. <b>Sửa CuttingDemandService.buildDemand
-     * thì phải sửa cả truy vấn phạm vi ở repository lẫn ở đây</b>; SalesOrderServiceTest có test so
-     * trạng thái PENDING với đúng kết quả của truy vấn phạm vi để khóa hai nơi khỏi lệch nhau.
+     * <p>Bản Criteria của hằng {@code SalesOrderRepository.HAS_COMPLETE_BOM} — chính là luật mà hai
+     * chức năng tính và duyệt phương án dùng để loại đơn khỏi phạm vi xử lý — và qua đó phản chiếu
+     * các nhánh bỏ qua bộ cửa của {@code CuttingDemandService.buildDemands}. <b>Sửa
+     * CuttingDemandService.buildDemands thì phải sửa cả hằng ở repository lẫn ở đây</b>;
+     * SalesOrderServiceTest có test so trạng thái PENDING với đúng kết quả của truy vấn phạm vi để
+     * khóa các nơi khỏi lệch nhau.
      *
      * <p>Viết lại bằng Criteria chứ không gọi được truy vấn JPQL kia: bộ lọc phải ghép được với các
      * điều kiện khác và với phân trang trong cùng một câu truy vấn.
      */
-    private static Predicate hasUsableBom(Root<SalesOrder> root, CriteriaQuery<?> query, CriteriaBuilder cb) {
-        Subquery<Integer> usable = query.subquery(Integer.class);
-        Root<BomItem> bom = usable.from(BomItem.class);
+    private static Predicate hasCompleteBom(Root<SalesOrder> root, CriteriaQuery<?> query, CriteriaBuilder cb) {
+        Subquery<Integer> cuttable = query.subquery(Integer.class);
+        Root<BomItem> bom = cuttable.from(BomItem.class);
         Join<BomItem, SlatMaterial> material = bom.join("slatMaterial");
-        Path<SlatGroup> group = material.get("slatGroup");
-        usable.select(cb.literal(1)).where(
+        cuttable.select(cb.literal(1)).where(
                 cb.equal(bom.get("doorProduct"), root.get("doorProduct")),
+                cb.notEqual(material.get("slatGroup"), SlatGroup.OTHER));
+
+        Subquery<Integer> incomplete = query.subquery(Integer.class);
+        Root<BomItem> incompleteBom = incomplete.from(BomItem.class);
+        Path<SlatGroup> group = incompleteBom.join("slatMaterial").get("slatGroup");
+        incomplete.select(cb.literal(1)).where(
+                cb.equal(incompleteBom.get("doorProduct"), root.get("doorProduct")),
                 cb.or(
-                        group.in(SlatGroup.SUB_SLAT, SlatGroup.BOTTOM_BAR),
                         cb.and(
                                 cb.equal(group, SlatGroup.MAIN_SLAT),
-                                cb.isNotNull(bom.get("slatCountSlope")),
-                                cb.isNotNull(bom.get("slatCountIntercept"))),
-                        cb.and(cb.equal(group, SlatGroup.RAIL), cb.isNotNull(bom.get("heightOffsetM")))));
-        return cb.exists(usable);
+                                cb.or(
+                                        cb.isNull(incompleteBom.get("slatCountSlope")),
+                                        cb.isNull(incompleteBom.get("slatCountIntercept")))),
+                        cb.and(cb.equal(group, SlatGroup.RAIL), cb.isNull(incompleteBom.get("heightOffsetM")))));
+
+        return cb.and(cb.exists(cuttable), cb.not(cb.exists(incomplete)));
     }
 
     /**

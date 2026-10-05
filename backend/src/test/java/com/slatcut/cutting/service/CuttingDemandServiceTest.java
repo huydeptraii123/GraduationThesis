@@ -17,6 +17,7 @@ import com.slatcut.cutting.repository.SalesOrderRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -137,12 +138,65 @@ class CuttingDemandServiceTest extends AbstractIntegrationTest {
         assertThat(demand.quantity()).isEqualTo(4); // 1*4.000 + 0 = 4
     }
 
+    /**
+     * Nan chính thiếu hệ số thì bỏ qua CẢ bộ cửa, không riêng dòng đó: thanh đáy và nan phụ của bộ
+     * cửa đều đủ tham số nhưng vẫn không được sinh nhu cầu, vì một bộ cửa chỉ có thanh đáy với nan
+     * phụ sẽ hiện "đủ nan" trong khi nan chính chưa từng được tính. Đây đúng là hình dạng định mức
+     * của mẫu cửa chiếm phần lớn sổ đơn trong dữ liệu thật. Thiếu hệ số nào cũng vậy — mỗi hệ số
+     * một bộ cửa — và một bộ cửa đủ định mức gọi cùng lượt vẫn ra nhu cầu bình thường.
+     */
     @Test
-    void buildDemands_mainSlatMissingSlopeOrIntercept_skipsWithoutError() {
+    void buildDemands_mainSlatMissingSlopeOrIntercept_skipsWholeDoorSet() {
+        Customer customer = persistCustomer();
+        List<SalesOrder> incomplete = new ArrayList<>();
+        for (BigDecimal[] coefficients : new BigDecimal[][] {
+            {null, new BigDecimal("1.0000")}, {new BigDecimal("2.000000"), null}
+        }) {
+            DoorProduct doorProduct = persistDoorProduct();
+            persistBomItem(
+                    doorProduct,
+                    persistSlatMaterial(SlatGroup.MAIN_SLAT),
+                    new BigDecimal("0.024"),
+                    null,
+                    coefficients[0],
+                    coefficients[1]);
+            persistBomItem(doorProduct, persistSlatMaterial(SlatGroup.BOTTOM_BAR), null, null, null, null);
+            persistBomItem(doorProduct, persistSlatMaterial(SlatGroup.SUB_SLAT), null, null, null, null);
+            incomplete.add(
+                    persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("3.150")));
+        }
+        DoorProduct complete = persistDoorProduct();
+        SlatMaterial completeBottomBar = persistSlatMaterial(SlatGroup.BOTTOM_BAR);
+        persistBomItem(complete, completeBottomBar, null, null, null, null);
+        SalesOrder control = persistSalesOrder(complete, customer, new BigDecimal("2.500"), new BigDecimal("2.870"));
+
+        List<CuttingDemand> demands =
+                service.buildDemands(List.of(incomplete.get(0), control, incomplete.get(1)));
+
+        assertThat(demands)
+                .as("chỉ bộ cửa đủ định mức sinh nhu cầu; hai bộ thiếu hệ số nan chính bị bỏ trọn")
+                .extracting(CuttingDemand::ycsx, d -> d.slatMaterial().getId(), CuttingDemand::cutLengthMm)
+                .containsExactly(tuple(control.getYcsx(), completeBottomBar.getId(), 2870));
+    }
+
+    /**
+     * Mẫu cửa có hai dòng nan chính, một dòng đủ hệ số và một dòng thiếu: vẫn bỏ cả bộ cửa. Mọi dòng
+     * định mức đều là thành phần bắt buộc, nên dòng đủ hệ số tự nó không làm nhu cầu của bộ cửa đầy
+     * đủ trở lại.
+     */
+    @Test
+    void buildDemands_oneOfTwoMainSlatRowsMissingCoefficients_skipsWholeDoorSet() {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();
-        SlatMaterial slatMaterial = persistSlatMaterial(SlatGroup.MAIN_SLAT);
-        persistBomItem(doorProduct, slatMaterial, new BigDecimal("0.024"), null, null, new BigDecimal("1.0000"));
+        persistBomItem(
+                doorProduct,
+                persistSlatMaterial(SlatGroup.MAIN_SLAT),
+                new BigDecimal("0.024"),
+                null,
+                new BigDecimal("2.000000"),
+                new BigDecimal("1.0000"));
+        persistBomItem(
+                doorProduct, persistSlatMaterial(SlatGroup.MAIN_SLAT), new BigDecimal("0.024"), null, null, null);
         SalesOrder order = persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("3.150"));
 
         List<CuttingDemand> demands = service.buildDemands(List.of(order));
@@ -184,17 +238,38 @@ class CuttingDemandServiceTest extends AbstractIntegrationTest {
         assertThat(demand.quantity()).isEqualTo(2);
     }
 
+    /** Ray thiếu {@code heightOffsetM} cũng bỏ cả bộ cửa, kể cả khi thanh đáy của nó tính được. */
     @Test
-    void buildDemands_railMissingHeightOffset_skipsWithoutError() {
+    void buildDemands_railMissingHeightOffset_skipsWholeDoorSet() {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();
-        SlatMaterial slatMaterial = persistSlatMaterial(SlatGroup.RAIL);
-        persistBomItem(doorProduct, slatMaterial, null, null, null, null);
+        persistBomItem(doorProduct, persistSlatMaterial(SlatGroup.RAIL), null, null, null, null);
+        persistBomItem(doorProduct, persistSlatMaterial(SlatGroup.BOTTOM_BAR), null, null, null, null);
         SalesOrder order = persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("3.150"));
 
         List<CuttingDemand> demands = service.buildDemands(List.of(order));
 
         assertThat(demands).isEmpty();
+    }
+
+    /**
+     * Ngược lại, dòng nhóm OTHER không có tham số nào vẫn KHÔNG làm bỏ bộ cửa: nhóm này không cắt từ
+     * thanh tồn kho, nên thiếu tham số không làm nhu cầu cắt của bộ cửa thiếu đi thành phần nào.
+     */
+    @Test
+    void buildDemands_otherGroupRowWithoutParameters_doesNotSkipDoorSet() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        persistBomItem(doorProduct, persistSlatMaterial(SlatGroup.OTHER), null, null, null, null);
+        SlatMaterial subSlat = persistSlatMaterial(SlatGroup.SUB_SLAT);
+        persistBomItem(doorProduct, subSlat, null, null, null, null);
+        SalesOrder order = persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("3.150"));
+
+        List<CuttingDemand> demands = service.buildDemands(List.of(order));
+
+        assertThat(demands)
+                .extracting(d -> d.slatMaterial().getId(), CuttingDemand::cutLengthMm)
+                .containsExactly(tuple(subSlat.getId(), 3150));
     }
 
     @Test

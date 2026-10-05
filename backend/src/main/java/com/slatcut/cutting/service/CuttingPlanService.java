@@ -473,7 +473,8 @@ public class CuttingPlanService {
     }
 
     /**
-     * Số đơn trong hạn giao bị thuật toán bỏ qua vì mẫu cửa không có dòng định mức nào dùng được.
+     * Số đơn trong hạn giao bị thuật toán bỏ qua vì định mức của mẫu cửa chưa đầy đủ (xem
+     * {@code SalesOrderRepository.HAS_COMPLETE_BOM}).
      * Không phải "tồn đọng chờ tới lượt" mà là "đang bị chặn, cần ADMIN cấu hình" — nên đếm và hiển
      * thị tách khỏi {@link #countPendingInScope()}.
      *
