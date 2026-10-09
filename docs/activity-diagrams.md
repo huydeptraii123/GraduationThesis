@@ -48,7 +48,7 @@ Riêng luồng nhập tồn kho có thêm một hành vi không thể hiện ở
 
 ## 2. Luồng quản lý đơn hàng & BOM
 
-Áp dụng chung cho luồng quản lý đơn hàng (PLANNER và ADMIN đều thao tác được) và luồng quản lý định mức BOM (chỉ ADMIN) — cùng là thao tác CRUD cơ bản (xem/tìm-lọc, thêm mới, sửa, xóa) trên dữ liệu thường đã có sẵn trong hệ thống từ luồng nhập Excel ở mục 1, nhưng khác nhau ở tác nhân thực hiện, khóa nghiệp vụ dùng để kiểm tra trùng lặp khi thêm mới, và điều kiện lọc danh sách: đơn hàng lọc theo ngày giao yêu cầu, khách hàng hoặc trạng thái xử lý (bốn giá trị: chưa xử lý / đang bị chặn vì thiếu định mức / đủ vật tư / thiếu vật tư — việc đơn đã duyệt hay chưa đọc thẳng từ `approved_plan_id`, phần còn lại suy ra từ dữ liệu liên quan, xem `docs/domain-model.md` mục 3.3.1); BOM lọc theo mẫu cửa hoặc nhóm thanh nan.
+Áp dụng chung cho luồng quản lý đơn hàng (PLANNER và ADMIN đều thao tác được) và luồng quản lý định mức BOM (chỉ ADMIN) — cùng là thao tác CRUD cơ bản (xem/tìm-lọc, thêm mới, sửa, xóa) trên dữ liệu thường đã có sẵn trong hệ thống từ luồng nhập Excel ở mục 1, nhưng khác nhau ở tác nhân thực hiện, khóa nghiệp vụ dùng để kiểm tra trùng lặp khi thêm mới, và điều kiện lọc danh sách: đơn hàng lọc theo ngày giao yêu cầu, khách hàng hoặc trạng thái xử lý (bốn giá trị: chưa xử lý / đang bị chặn vì định mức chưa đầy đủ / đủ vật tư / thiếu vật tư — việc đơn đã duyệt hay chưa đọc thẳng từ `approved_plan_id`, phần còn lại suy ra từ dữ liệu liên quan, xem `docs/domain-model.md` mục 3.3.1); BOM lọc theo mẫu cửa hoặc nhóm thanh nan.
 
 ```mermaid
 flowchart TD
@@ -102,12 +102,12 @@ Cả hai sơ đồ bổ sung góc nhìn ra quyết định cho luồng đã có 
 flowchart TD
     A([Bắt đầu]) --> B{"Người dùng chọn<br/>chức năng nào?"}
 
-    B -- "Tính phương án cắt<br/>(PLANNER hoặc ADMIN)" --> C["Phạm vi: TOÀN BỘ đơn chưa duyệt<br/>(approved_plan_id rỗng và sinh được<br/>ít nhất 1 nhu cầu cắt);<br/>không giới hạn ngày giao, không giới hạn số đơn"]
+    B -- "Tính phương án cắt<br/>(PLANNER hoặc ADMIN)" --> C["Phạm vi: TOÀN BỘ đơn chưa duyệt<br/>(approved_plan_id rỗng và định mức<br/>của mẫu cửa đầy đủ);<br/>không giới hạn ngày giao, không giới hạn số đơn"]
     C --> D["Chạy thuật toán 4 mức ưu tiên<br/>(xem sơ đồ 3.2)"]
-    D --> E["Hiển thị mức tổng quan + mức chi tiết theo đơn hàng,<br/>kèm số đơn đang bị chặn vì mẫu cửa thiếu định mức;<br/>cho phép xuất Excel"]
+    D --> E["Hiển thị mức tổng quan + mức chi tiết theo đơn hàng,<br/>kèm số đơn đang bị chặn vì định mức mẫu cửa chưa đầy đủ;<br/>cho phép xuất Excel"]
     E --> Z1([Kết thúc — KHÔNG thay đổi dữ liệu nào])
 
-    B -- "Duyệt phương án cắt<br/>(chỉ PLANNER)" --> F["Trong CÙNG một lượt đọc: lấy phạm vi và ghi dấu vân trạng thái.<br/>Phạm vi = đơn chưa duyệt, sinh được ít nhất 1 nhu cầu cắt,<br/>reqd_delivery_date sớm hơn hoặc bằng t+3 ngày,<br/>tổng số đơn tối đa 70 (ngoài phạm vi → 'nhóm 99', chờ lần duyệt sau)"]
+    B -- "Duyệt phương án cắt<br/>(chỉ PLANNER)" --> F["Trong CÙNG một lượt đọc: lấy phạm vi và ghi dấu vân trạng thái.<br/>Phạm vi = đơn chưa duyệt, định mức của mẫu cửa đầy đủ,<br/>reqd_delivery_date sớm hơn hoặc bằng t+3 ngày,<br/>tổng số đơn tối đa 70 (ngoài phạm vi → 'nhóm 99', chờ lần duyệt sau)"]
     F --> G["Chạy thuật toán 4 mức ưu tiên<br/>(xem sơ đồ 3.2)"]
     G --> I["Trình phương án đề xuất kèm danh sách đợt cắt<br/>để PLANNER xem xét"]
     I --> J{"PLANNER chấp nhận<br/>phương án?"}
@@ -130,7 +130,7 @@ Dấu vân phủ đúng **tập đầu vào của thuật toán, không hơn kh�
 
 Dấu vân **không** thay được khóa dòng: nó bảo vệ khoảng thời gian PLANNER xem xét (tính bằng phút), chứ hai lượt duyệt chạy song song cùng đọc được dấu vân cũ thì cả hai đều vượt qua ô kiểm này. Ở quy mô hiện tại chỉ có một PLANNER thao tác tuần tự nên tình huống đó không xảy ra; chặn triệt để cần khóa dòng ngay lúc đọc tồn kho, nằm ngoài phạm vi hệ thống này.
 
-Lưu ý ở nhánh duyệt: `approved_plan_id` được gán cho **mọi** đơn trong phạm vi, kể cả đơn chỉ nhận kết quả thiếu vật tư — nếu chỉ gán cho đơn cắt được thì đơn thiếu vật tư sẽ quay lại hàng chờ và bị đưa vào lần duyệt sau, trong khi vật tư bù chưa kịp về. Ngoại lệ duy nhất là lớp phòng vệ cho kẽ hở của điều kiện lọc phạm vi: đơn lọt vào phạm vi nhưng rốt cuộc không để lại kết quả nào thì giữ nguyên ở hàng chờ thay vì đánh dấu đã duyệt (xem `docs/domain-model.md`). Còn đơn có mẫu cửa không sinh được nhu cầu cắt nào thì ngay từ đầu đã nằm ngoài phạm vi của cả hai nhánh (xem điều kiện lọc ở `docs/requirements-functional.md` Nhóm 3), nên không bị đánh dấu đã duyệt một cách oan uổng.
+Lưu ý ở nhánh duyệt: `approved_plan_id` được gán cho **mọi** đơn trong phạm vi, kể cả đơn chỉ nhận kết quả thiếu vật tư — nếu chỉ gán cho đơn cắt được thì đơn thiếu vật tư sẽ quay lại hàng chờ và bị đưa vào lần duyệt sau, trong khi vật tư bù chưa kịp về. Ngoại lệ duy nhất là lớp phòng vệ cho kẽ hở của điều kiện lọc phạm vi: đơn lọt vào phạm vi nhưng rốt cuộc không để lại kết quả nào thì giữ nguyên ở hàng chờ thay vì đánh dấu đã duyệt (xem `docs/domain-model.md`). Còn đơn có định mức mẫu cửa chưa đầy đủ — không sinh được nhu cầu cắt nào, hoặc chỉ sinh được một phần vì có dòng nan chính hay ray thiếu tham số — thì ngay từ đầu đã nằm ngoài phạm vi của cả hai nhánh (xem điều kiện lọc ở `docs/requirements-functional.md` Nhóm 3), nên không bị đánh dấu đã duyệt một cách oan uổng.
 
 ### 3.2. Thuật toán cắt 4 mức ưu tiên
 
