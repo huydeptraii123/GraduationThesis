@@ -58,7 +58,7 @@ sequenceDiagram
     U->>FE: Bấm "Tính phương án cắt"
     FE->>C: POST /api/v1/cutting-plans/simulate
     C->>SVC: simulate()
-    SVC->>DB: lấy TOÀN BỘ SalesOrder có approved_plan_id rỗng và sinh được ít nhất 1 nhu cầu cắt (KHÔNG lọc theo ngày giao, KHÔNG giới hạn số đơn)
+    SVC->>DB: lấy TOÀN BỘ SalesOrder có approved_plan_id rỗng và định mức mẫu cửa đầy đủ (KHÔNG lọc theo ngày giao, KHÔNG giới hạn số đơn)
     DB-->>SVC: rows
     SVC->>DS: buildDemands(orders)
     DS->>DB: BomItem của các doorProduct tương ứng
@@ -95,7 +95,7 @@ sequenceDiagram
 
     Note over SVC,DB: KHÔNG ghi gì xuống cơ sở dữ liệu — không lưu CuttingPlan, không trừ tồn kho, không gán approved_plan_id
 
-    SVC->>DB: đếm số đơn chưa duyệt bị loại khỏi phạm vi vì mẫu cửa thiếu định mức dùng được
+    SVC->>DB: đếm số đơn chưa duyệt bị loại khỏi phạm vi vì định mức mẫu cửa chưa đầy đủ
     DB-->>SVC: số đơn đang bị chặn
     SVC-->>C: CuttingPlanPreviewDto (kèm số đơn đang bị chặn)
     C-->>FE: CuttingPlanPreviewDto
@@ -127,7 +127,7 @@ sequenceDiagram
     U->>FE: Mở màn hình "Duyệt phương án cắt"
     FE->>C: GET /api/v1/cutting-plans/approval-preview
     C->>SVC: approvalPreview()
-    SVC->>DB: trong CÙNG một lượt đọc — lấy SalesOrder có approved_plan_id rỗng và sinh được ít nhất 1 nhu cầu cắt, reqd_delivery_date <= t+3, giới hạn tối đa 70 đơn (ngoài phạm vi -> "nhóm 99", chờ lần duyệt sau), đồng thời đọc dấu vân trạng thái của bốn nguồn dữ liệu thuật toán sẽ đọc (đơn chưa duyệt trong hạn giao, tồn kho, định mức, danh mục thanh nan)
+    SVC->>DB: trong CÙNG một lượt đọc — lấy SalesOrder có approved_plan_id rỗng và định mức mẫu cửa đầy đủ, reqd_delivery_date <= t+3, giới hạn tối đa 70 đơn (ngoài phạm vi -> "nhóm 99", chờ lần duyệt sau), đồng thời đọc dấu vân trạng thái của bốn nguồn dữ liệu thuật toán sẽ đọc (đơn chưa duyệt trong hạn giao, tồn kho, định mức, danh mục thanh nan)
     DB-->>SVC: rows + stateFingerprint
     SVC->>CS: computePlan(demands, pool) — 4 mức ưu tiên, chi tiết xem sơ đồ 2a
     CS-->>SVC: CuttingPlanResult
@@ -202,7 +202,12 @@ productionWidthM = zChieuRongDh - widthOffsetM
 
 > **Đã xác nhận lại trực tiếp với doanh nghiệp (hướng đi chính thức)**: định mức BOM (offset, hệ số `slatCountSlope`/`slatCountIntercept`) do đội kỹ thuật cung cấp trực tiếp thành thông số cố định, **không phải suy luận bằng hồi quy thống kê từ dữ liệu lịch sử** như bản thiết kế trước (từng có thêm bước kiểm tra độ tin cậy `slatCountR2 >= 0.5` và một công thức fallback riêng cho Nan chính dựa trên `dinhMucMPerM2`) — 2 cơ chế đó đã bị loại bỏ hoàn toàn, không còn `slatCountR2`/`dinhMucMPerM2` trong schema (xem `docs/domain-model.md` mục `bom_item`).
 
-**Bước 4 — Fallback toàn phần**: khi `slatGroup = OTHER`, hoặc khi một `BomItem` cụ thể **chưa được đội kỹ thuật cung cấp công thức cắt riêng** (thiếu offset/hệ số cần thiết để tính `cutDimM`/`requiredPieces` ở trên), hệ thống **không tự suy ra được độ dài đoạn cần cắt** — chỉ có tổng độ dài ước tính `= dinhMucTbMPerBoCua` (mét/bộ cửa). Vì thuật toán cắt 1D cần biết độ dài từng đoạn cụ thể (không chỉ tổng mét), các `BomItem` rơi vào trường hợp này **không sinh được `CuttingDemand` tự động** — cần ghi log cảnh báo và loại khỏi phạm vi thuật toán ở giai đoạn khóa luận này, chờ ADMIN bổ sung công thức riêng (do kỹ thuật cung cấp) nếu phát sinh thực tế (tới nay dữ liệu thật cho thấy đây là thiểu số).
+**Bước 4 — Fallback toàn phần**: khi `slatGroup = OTHER`, hoặc khi một `BomItem` cụ thể **chưa được đội kỹ thuật cung cấp công thức cắt riêng** (thiếu hệ số hay độ trừ mà công thức ở trên bắt buộc phải có; riêng `widthOffsetM` của nan chính thì không bắt buộc vì đã có fallback ở Bước 1), hệ thống **không tự suy ra được độ dài đoạn cần cắt** — chỉ có tổng độ dài ước tính `= dinhMucTbMPerBoCua` (mét/bộ cửa). Vì thuật toán cắt 1D cần biết độ dài từng đoạn cụ thể (không chỉ tổng mét), các `BomItem` rơi vào trường hợp này **không sinh được `CuttingDemand` tự động**. Hai trường hợp được xử lý khác nhau:
+
+- Dòng nhóm OTHER: theo thiết kế không cắt từ thanh tồn kho, nên chỉ riêng dòng đó bị bỏ qua; các dòng khác của bộ cửa vẫn sinh nhu cầu bình thường.
+- Dòng thuộc nhóm có công thức cắt nhưng thiếu tham số của chính công thức đó (nan chính thiếu `slatCountSlope`/`slatCountIntercept`, ray thiếu `heightOffsetM`): **cả bộ cửa** bị bỏ qua, ghi log cảnh báo, và đơn hàng tương ứng bị loại khỏi phạm vi thuật toán như một đơn **đang bị chặn** cho tới khi ADMIN bổ sung tham số. Không được tính tiếp trên các dòng còn lại: mỗi dòng định mức là một thành phần bắt buộc của bộ cửa, nên bộ cửa chỉ được tính thanh đáy và nan phụ sẽ ra trạng thái "đủ vật tư" sai trong khi nan chính chưa từng được tính.
+
+Tính theo số dòng định mức, trường hợp thiếu tham số là thiểu số (khoảng 13% số dòng nan chính trong dữ liệu thật). Nhưng tính theo số đơn hàng thì không: một mẫu cửa có cả hai dòng nan chính thiếu hệ số chiếm phần lớn sổ đơn của bộ dữ liệu thật — đây là lý do việc chặn ở mức bộ cửa là cần thiết chứ không phải chi tiết phụ.
 
 `CuttingDemand.cutLength = cutDimM` (quy đổi mm), `CuttingDemand.quantity = requiredPieces` (không nhân thêm với "số lượng đặt hàng" vì mỗi `SalesOrder` đã luôn là đúng 1 bộ cửa — xem điểm 1, mục 3.3.1).
 
