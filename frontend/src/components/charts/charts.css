@@ -174,8 +174,9 @@
 /* ---- Sơ đồ phôi (CuttingBarDiagram) -------------------------------------------------------- */
 
 /*
- * Cỡ chữ trong sơ đồ phôi tính theo đơn vị của viewBox (rộng 1000), không phải pixel màn hình —
- * sơ đồ co giãn theo bề rộng thẻ nên chữ co giãn theo.
+ * Sơ đồ phôi đo bề rộng khung chứa rồi đặt viewBox đúng bằng bề rộng đó (1 đơn vị = 1 pixel), nên
+ * cỡ chữ dưới đây là pixel thật. Ngưỡng ẩn nhãn trong CuttingBarDiagram.tsx ước lượng bề rộng chữ
+ * theo đúng các cỡ này — đổi cỡ ở đây thì phải đổi hằng số ở đó.
  */
 .chart-bar-piece-label {
   font-family: var(--chart-font);
@@ -190,16 +191,18 @@
   font-weight: 700;
 }
 
-.chart-bar-ticks {
-  display: flex;
-  justify-content: space-between;
-  padding-top: 4px;
-  font-family: var(--chart-font);
-  font-size: var(--chart-text-axis);
-  color: var(--chart-ink-muted);
+/* Thang trục vẽ trong cùng SVG với thanh để hai bên dùng chung một hệ tọa độ. */
+.chart-bar-tick {
+  stroke: var(--chart-axis);
+  stroke-width: 1;
 }
 
-.chart-bar-ticks__end {
+.chart-bar-tick-label {
+  font-family: var(--chart-font);
+  font-size: var(--chart-text-axis);
+  fill: var(--chart-ink-muted);
+}
+
+.chart-bar-tick-label--end {
   font-weight: 600;
-  text-align: right;
 }
