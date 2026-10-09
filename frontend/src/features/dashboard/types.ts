@@ -39,7 +39,7 @@ export interface OrderWastePointResponse {
 
 export interface DashboardResponse {
   pendingOrderCount: number
-  /** Đơn bị bỏ qua vì mẫu cửa chưa có định mức — cần ADMIN cấu hình. */
+  /** Đơn bị bỏ qua vì định mức của mẫu cửa chưa đầy đủ (chưa có hoặc thiếu tham số) — cần ADMIN bổ sung. */
   ordersMissingBomCount: number
   scopeCutoffDate: string
   readyBatchCount: number

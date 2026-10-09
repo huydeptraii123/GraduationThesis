@@ -168,8 +168,8 @@ export function CuttingPlanApprovalPage() {
           type="warning"
           showIcon
           style={{ marginTop: 16 }}
-          title={`${preview.plan.blockedOrderCount} đơn trong hạn giao đang bị bỏ qua vì mẫu cửa chưa có định mức BOM dùng được.`}
-          description="Những đơn này không nằm trong phạm vi duyệt và sẽ ở lại hàng chờ cho tới khi định mức được khai báo."
+          title={`${preview.plan.blockedOrderCount} đơn trong hạn giao đang bị bỏ qua vì định mức BOM của mẫu cửa chưa đầy đủ.`}
+          description="Mẫu cửa của những đơn này chưa có định mức, hoặc có dòng định mức thiếu tham số tính đoạn cắt. Chúng không nằm trong phạm vi duyệt và sẽ ở lại hàng chờ cho tới khi định mức được bổ sung."
         />
       )}
 
