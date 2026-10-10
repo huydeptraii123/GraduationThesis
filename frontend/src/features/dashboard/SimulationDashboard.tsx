@@ -50,6 +50,7 @@ import {
   type LegendEntry,
 } from '../../components/charts/chartTheme'
 import { DOOR_SET_STATUSES, DOOR_SET_STATUS_COLOR, type DoorSetStatus } from './simulationSeries'
+import { formatMeters } from '../../utils/formatMeters'
 
 interface Props {
   simulation: CuttingPlanPreviewResponse
@@ -275,9 +276,11 @@ export function SimulationDashboard({ simulation }: Props) {
             },
             {
               title: 'Tổng độ dài thiếu',
-              dataIndex: 'missingLengthM',
+              dataIndex: 'missingLengthMm',
               align: 'right',
-              render: (value: number) => `${value.toFixed(1)} m`,
+              // Đúng tới milimet như file Excel và màn báo thiếu vật tư — doanh nghiệp lập kế hoạch
+              // sản xuất bù theo chính con số này.
+              render: (value: number) => `${formatMeters(value)} m`,
             },
             { title: 'Số bộ cửa ảnh hưởng', dataIndex: 'affectedDoorSetCount', align: 'right' },
           ]}

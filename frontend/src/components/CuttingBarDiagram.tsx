@@ -1,4 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react'
+import { formatMeters } from '../utils/formatMeters'
 import { CHART_SURFACE, CHART_TRACK, REMAINDER_COLOR, REMAINDER_TINT } from './charts/chartTheme'
 
 export type RemainderType = 'DISCARDED' | 'WASTE' | 'RESTOCK'
@@ -40,10 +41,12 @@ const REMAINDER_LABEL: Record<RemainderType, ((meters: string) => string) | null
 
 function buildTicks(sourceLengthMm: number): string[] {
   const ticks: string[] = []
-  for (let i = 0; i <= TICK_COUNT; i++) {
-    const meters = (sourceLengthMm * i) / TICK_COUNT / 1000
-    ticks.push(i === TICK_COUNT ? `${meters.toFixed(1)}m (Chuẩn)` : `${meters.toFixed(1)}m`)
+  for (let i = 0; i < TICK_COUNT; i++) {
+    // Mốc giữa là vạch chia đều (độ dài phôi × i/6), không phải số đo — một chữ số là đủ đọc thang.
+    ticks.push(`${((sourceLengthMm * i) / TICK_COUNT / 1000).toFixed(1)}m`)
   }
+  // Mốc cuối chính là độ dài phôi: ghi đúng tới milimet như tiêu đề thẻ và file Excel, không làm tròn.
+  ticks.push(`${formatMeters(sourceLengthMm)}m (Chuẩn)`)
   return ticks
 }
 
@@ -129,7 +132,7 @@ export function CuttingBarDiagram({ sourceLengthMm, pieces, remainderMm, remaind
     remainderType === 'DISCARDED'
       ? REMAINDER_COLOR.DISCARDED
       : `url(#${remainderType === 'RESTOCK' ? restockPatternId : wastePatternId})`
-  const remainderMeters = (remainderMm / 1000).toFixed(2)
+  const remainderMeters = formatMeters(remainderMm)
   const remainderLabel = REMAINDER_LABEL[remainderType]?.(remainderMeters) ?? null
   // So sánh trực tiếp với độ rộng pill ước lượng (không dùng một ngưỡng cố định rồi co hẹp pill
   // lại) — co hẹp pill mà vẫn hiện chữ cỡ đầy đủ từng làm chữ tràn ra ngoài pill khi
@@ -151,7 +154,7 @@ export function CuttingBarDiagram({ sourceLengthMm, pieces, remainderMm, remaind
         // cùng một SVG.
         preserveAspectRatio="xMinYMin meet"
         role="img"
-        aria-label={`Phôi dài ${(sourceLengthMm / 1000).toFixed(2)} m, ${pieces.length} đoạn cắt, phần dư ${remainderMeters} m`}
+        aria-label={`Phôi dài ${formatMeters(sourceLengthMm)} m, ${pieces.length} đoạn cắt, phần dư ${remainderMeters} m`}
       >
         <defs>
           <pattern id={restockPatternId} width={8} height={8} patternTransform="rotate(45)" patternUnits="userSpaceOnUse">

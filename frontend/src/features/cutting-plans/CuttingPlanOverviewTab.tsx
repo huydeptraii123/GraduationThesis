@@ -32,7 +32,9 @@ import {
   type LegendEntry,
 } from '../../components/charts/chartTheme'
 import { localPagination } from '../../api/pagination'
+import { formatMeters } from '../../utils/formatMeters'
 import type { CuttingBatch, CuttingBatchOrderRow } from './cuttingBatches'
+import { shortageTotalMm } from './shortageLengths'
 import type { CuttingPlanResponse } from './types'
 
 interface Props {
@@ -133,17 +135,17 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
   const shortagesByMaterial = useMemo(() => {
     const groups = new Map<
       number,
-      { slatMaterialName: string; missingQuantity: number; missingLengthM: number; affectedOrders: Set<string> }
+      { slatMaterialName: string; missingQuantity: number; missingLengthMm: number; affectedOrders: Set<string> }
     >()
     plan.shortages.forEach((shortage) => {
       const group = groups.get(shortage.slatMaterialId) ?? {
         slatMaterialName: shortage.slatMaterialName,
         missingQuantity: 0,
-        missingLengthM: 0,
+        missingLengthMm: 0,
         affectedOrders: new Set<string>(),
       }
       group.missingQuantity += shortage.missingQuantity
-      group.missingLengthM += shortage.missingLengthM
+      group.missingLengthMm += shortageTotalMm(shortage)
       group.affectedOrders.add(`${shortage.ycsx}/${shortage.item}`)
       groups.set(shortage.slatMaterialId, group)
     })
@@ -335,9 +337,9 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
               { title: 'SL đoạn thiếu', dataIndex: 'missingQuantity', align: 'right' },
               {
                 title: 'Tổng độ dài thiếu',
-                dataIndex: 'missingLengthM',
+                dataIndex: 'missingLengthMm',
                 align: 'right',
-                render: (value: number) => `${value.toFixed(2)} m`,
+                render: (value: number) => `${formatMeters(value)} m`,
               },
               {
                 title: 'Đơn hàng liên quan',
@@ -379,7 +381,7 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
                   { title: 'Khách hàng', dataIndex: 'customerName' },
                   {
                     title: 'Kích thước',
-                    render: (_, order) => `${order.chieuCaoDh.toFixed(3)} × ${order.chieuRongDh.toFixed(3)} m`,
+                    render: (_, order) => `${formatMeters(order.chieuCaoDh * 1000)} × ${formatMeters(order.chieuRongDh * 1000)} m`,
                   },
                   {
                     title: 'Hạn giao hàng',

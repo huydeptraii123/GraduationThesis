@@ -2,7 +2,9 @@ import { SearchOutlined } from '@ant-design/icons'
 import { Button, Card, Col, Input, Row, Select, Space, Statistic, Table, Tag } from 'antd'
 import { useMemo, useState } from 'react'
 import { localPagination } from '../../api/pagination'
+import { formatMeters } from '../../utils/formatMeters'
 import { REMAINDER_TYPE_LABEL } from './remainderLabels'
+import { shortageCutLengthMm } from './shortageLengths'
 import type { CuttingPlanResponse } from './types'
 
 interface Props {
@@ -28,7 +30,7 @@ function buildRows(plan: CuttingPlanResponse): DemandRow[] {
   const rows: DemandRow[] = []
 
   plan.details.forEach((detail) => {
-    const cutDescription = `Phôi ${(detail.sourceLengthMm / 1000).toFixed(2)}m → dư ${(detail.remainderMm / 1000).toFixed(2)}m (${REMAINDER_TYPE_LABEL[detail.remainderType]})`
+    const cutDescription = `Phôi ${formatMeters(detail.sourceLengthMm)}m → dư ${formatMeters(detail.remainderMm)}m (${REMAINDER_TYPE_LABEL[detail.remainderType]})`
     detail.items.forEach((item) => {
       rows.push({
         key: `item-${item.id}`,
@@ -54,8 +56,7 @@ function buildRows(plan: CuttingPlanResponse): DemandRow[] {
       customerName: shortage.customerName,
       doorProductName: shortage.doorProductName,
       slatMaterialName: shortage.slatMaterialName,
-      cutLengthMm:
-        shortage.missingQuantity > 0 ? Math.round((shortage.missingLengthM * 1000) / shortage.missingQuantity) : 0,
+      cutLengthMm: shortageCutLengthMm(shortage),
       quantityNeeded: shortage.missingQuantity,
       quantityMissing: shortage.missingQuantity,
       sufficient: false,
@@ -180,7 +181,7 @@ export function CuttingPlanByOrderTab({ plan }: Props) {
           {
             title: 'Độ dài cần cắt',
             align: 'right',
-            render: (_, row) => `${(row.cutLengthMm / 1000).toFixed(2)} m`,
+            render: (_, row) => `${formatMeters(row.cutLengthMm)} m`,
           },
           { title: 'SL thanh cần', dataIndex: 'quantityNeeded', align: 'right' },
           {
