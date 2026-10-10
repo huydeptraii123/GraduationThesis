@@ -95,6 +95,20 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
         bomItemRepository.save(entity);
     }
 
+    /**
+     * MAIN_SLAT với số nan cố định (hệ số góc 0) và độ trừ chiều rộng 0: đoạn cắt bằng đúng chiều
+     * rộng cửa — cách gọn nhất để một bộ cửa cần nhiều thanh cùng một độ dài.
+     */
+    private void persistMainSlatBomItem(DoorProduct doorProduct, SlatMaterial slatMaterial, int slatCount) {
+        BomItem entity = new BomItem();
+        entity.setDoorProduct(doorProduct);
+        entity.setSlatMaterial(slatMaterial);
+        entity.setWidthOffsetM(BigDecimal.ZERO);
+        entity.setSlatCountSlope(BigDecimal.ZERO);
+        entity.setSlatCountIntercept(BigDecimal.valueOf(slatCount));
+        bomItemRepository.save(entity);
+    }
+
     private SalesOrder persistSalesOrder(
             DoorProduct doorProduct, Customer customer, BigDecimal chieuCaoDh, BigDecimal chieuRongDh, LocalDate reqdDeliveryDate) {
         SalesOrder entity = new SalesOrder();
@@ -172,8 +186,8 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
                 .extracting(CuttingPlanDemandView::slatMaterialCode, CuttingPlanDemandView::statusText)
                 .containsExactlyInAnyOrder(
                         tuple(sufficient.getSlatMaterial(), "✔Đủ"),
-                        tuple(missingAll.getSlatMaterial(), "Thiếu toàn bộ 1 nan 2.00m (2.0m)"),
-                        tuple(rail.getSlatMaterial(), "Thiếu 1 nan 2.50m (2.5m)"));
+                        tuple(missingAll.getSlatMaterial(), "Thiếu toàn bộ 1 nan 2m (2m)"),
+                        tuple(rail.getSlatMaterial(), "Thiếu 1 nan 2.5m (2.5m)"));
     }
 
     /** Một loại thanh thiếu là cả bộ cửa tính thiếu — bộ cửa không lắp được khi còn thiếu thành phần nào. */
@@ -258,10 +272,9 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
      * quả thuật toán còn trong bộ nhớ, một bên đọc ba bảng đã lưu — nên nếu mỗi bên tự gộp lấy thì
      * báo cáo trình PLANNER duyệt và file Excel xuất sau đó có thể lệch nhau mà không ai phát hiện.
      *
-     * <p>Chiều cao 2.345m cố ý không tròn tới centimet: bảng thiếu vật tư lưu tổng độ dài ở đơn vị
-     * centimet nên độ dài đoạn suy ngược từ đó là 2350mm chứ không phải 2345mm. Một kích thước
-     * tròn như 2.500m che mất hẳn sai lệch này, mà kích thước thật của khách hàng thì gần như
-     * không bao giờ tròn.
+     * <p>Chiều cao 2.345m cố ý không tròn tới centimet: mọi phép làm tròn nào lọt vào đường đi của
+     * con số — lúc lưu hay lúc in — đều lộ ra ở chữ số milimet. Một kích thước tròn như 2.500m che
+     * mất hẳn sai lệch ấy, mà kích thước thật của khách hàng thì gần như không bao giờ tròn.
      */
     @Test
     void approvedPlanAndPreview_produceTheSameNumbers() {
@@ -307,7 +320,7 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
                         .toList());
         assertThat(beforeApproval)
                 .extracting(CuttingPlanDemandView::cutLengthMm, CuttingPlanDemandView::statusText)
-                .containsExactlyInAnyOrder(tuple(2000, "✔Đủ"), tuple(2345, "Thiếu 1 nan 2.35m (2.3m)"));
+                .containsExactlyInAnyOrder(tuple(2000, "✔Đủ"), tuple(2345, "Thiếu 1 nan 2.345m (2.345m)"));
     }
 
     @Test
@@ -323,8 +336,8 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
 
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).cutDetailText())
-                .isEqualTo("[TP] 2200mm: 1 phôi → 1 nan [Cắt phế 0.20m, PA1] (còn lại 0 phôi)");
-        assertThat(rows.get(0).stockSnapshotText()).isEqualTo("2.20m 1 thanh");
+                .isEqualTo("[TP] 2200mm: 1 phôi → 1 nan [Cắt phế 0.2m, PA1] (còn lại 0 phôi)");
+        assertThat(rows.get(0).stockSnapshotText()).isEqualTo("2.2m 1 thanh");
     }
 
     /** Hai bộ cửa dùng chung một phôi ở Mức 3 — mỗi dòng chỉ kể phần nan của chính bộ cửa nó. */
@@ -344,7 +357,7 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
         assertThat(rows).hasSize(2);
         assertThat(rows)
                 .allSatisfy(row -> assertThat(row.cutDetailText())
-                        .isEqualTo("[TP] 5100mm: 1 phôi → 1 nan [Cắt phế 0.10m, PA3] (còn lại 0 phôi)"));
+                        .isEqualTo("[TP] 5100mm: 1 phôi → 1 nan [Cắt phế 0.1m, PA3] (còn lại 0 phôi)"));
     }
 
     /**
@@ -379,12 +392,12 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
                         tuple(first.getYcsx(), "[TP] 6400mm: 1 phôi → 1 nan [Cắt để lại ♻️3400mm, PA4] (còn lại 0 phôi)"),
                         tuple(
                                 rows.get(1).ycsx(),
-                                "[TP] ♻️3400mm: 1 phôi → 1 nan [Cắt phế 0.00m, PA2] (còn lại 0 phôi)"),
+                                "[TP] ♻️3400mm: 1 phôi → 1 nan [Cắt phế 0m, PA2] (còn lại 0 phôi)"),
                         tuple(
                                 rows.get(2).ycsx(),
-                                "[TP] ♻️3400mm: 1 phôi → 1 nan [Cắt phế 0.00m, PA2] (còn lại 0 phôi)"));
+                                "[TP] ♻️3400mm: 1 phôi → 1 nan [Cắt phế 0m, PA2] (còn lại 0 phôi)"));
         // Ảnh chụp là tồn kho ĐẦU lần chạy nên chỉ có phôi nguyên, không có phần dư sinh ra giữa chừng.
-        assertThat(rows).allSatisfy(row -> assertThat(row.stockSnapshotText()).isEqualTo("6.40m 1 thanh"));
+        assertThat(rows).allSatisfy(row -> assertThat(row.stockSnapshotText()).isEqualTo("6.4m 1 thanh"));
     }
 
     /** Ảnh chụp tồn kho liệt kê mọi độ dài của loại vật tư đó, sắp tăng dần như khuôn mẫu. */
@@ -403,7 +416,7 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
 
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).stockSnapshotText())
-                .isEqualTo("2.20m 1 thanh, 4.20m 13 thanh, 6.00m 3 thanh");
+                .isEqualTo("2.2m 1 thanh, 4.2m 13 thanh, 6m 3 thanh");
     }
 
     /** Bộ cửa thiếu toàn bộ một loại thanh nan thì không có phôi nào để mô tả — ô để trống. */
@@ -426,10 +439,12 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
      *
      * <p>Ca này khác hẳn ca thiếu một phần ở trên: dòng thiếu một phần còn giữ được độ dài milimet
      * nhờ chính những đoạn đã cắt được của nó, còn dòng thiếu toàn bộ thì không cắt được đoạn nào —
-     * khi duyệt nó chỉ tồn tại ở bảng thiếu vật tư, nơi lưu tổng độ dài theo centimet. Bài kiểm thử
-     * đối chiếu hai nguồn ở trên không chạm tới nhánh này nên từng bỏ lọt chênh lệch.
+     * khi duyệt nó chỉ tồn tại ở bảng thiếu vật tư, nơi lưu TỔNG độ dài và độ dài đoạn phải chia
+     * ngược ra. Bài kiểm thử đối chiếu hai nguồn ở trên không chạm tới nhánh này nên từng bỏ lọt
+     * chênh lệch.
      *
-     * <p>Kích thước 2.345m cố ý lẻ tới milimet: mọi kích thước tròn đều che mất đúng sai số này.
+     * <p>Không chỉ hai bên khớp nhau mà cả hai phải đúng tới milimet: kích thước 2.345m cố ý lẻ,
+     * và từng có thời cả hai nhánh cùng in 2.350m — khớp nhau nhưng cùng sai.
      */
     @Test
     void approvedPlanAndPreview_agreeOnARowMissingEveryStick() {
@@ -450,6 +465,60 @@ class CuttingPlanReportServiceTest extends AbstractIntegrationTest {
                 .extracting(CuttingPlanDemandView::cutLengthMm, CuttingPlanDemandView::statusText)
                 .containsExactly(
                         tuple(beforeApproval.get(0).cutLengthMm(), beforeApproval.get(0).statusText()));
+        assertThat(afterApproval)
+                .extracting(CuttingPlanDemandView::cutLengthMm, CuttingPlanDemandView::statusText)
+                .containsExactly(tuple(2345, "Thiếu toàn bộ 1 nan 2.345m (2.345m)"));
+    }
+
+    /**
+     * Dòng thiếu toàn bộ NHIỀU thanh, đọc lại sau khi duyệt. Độ dài đoạn ở nhánh này chia ngược từ
+     * tổng độ dài đã lưu, nên chỉ đúng khi tổng được lưu đủ tới milimet: 3 × 2345mm = 7.035m, lưu
+     * tới centimet thành 7.04m thì chia ra 2347mm — sai cả cột độ dài lẫn câu trạng thái.
+     */
+    @Test
+    void buildFromApprovedPlan_keepsEveryMillimetreOfARowMissingSeveralSticks() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial mainSlat = persistSlatMaterial(SlatGroup.MAIN_SLAT);
+        persistMainSlatBomItem(doorProduct, mainSlat, 3);
+        // Không nhập tồn kho: cả 3 thanh của bộ cửa đều thiếu.
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("2.345"), LocalDate.now());
+
+        CuttingPlanApprovalPreview preview = cuttingPlanService.approvalPreview();
+        CuttingPlan plan = cuttingPlanService.approve(preview.stateFingerprint());
+        List<CuttingPlanDemandView> afterApproval = reportService.buildFromApprovedPlan(plan.getId());
+
+        assertThat(afterApproval)
+                .extracting(
+                        CuttingPlanDemandView::cutLengthMm,
+                        CuttingPlanDemandView::quantityMissing,
+                        CuttingPlanDemandView::statusText)
+                .containsExactly(tuple(2345, 3, "Thiếu toàn bộ 3 nan 2.345m (7.035m)"));
+    }
+
+    /**
+     * Mọi độ dài trong câu chữ ghi đúng tới milimet, không làm tròn ở chữ số nào — yêu cầu của
+     * doanh nghiệp vì xưởng cắt theo đúng con số này. Mỗi con số ở đây cố ý lẻ tới milimet: độ dài
+     * đoạn 4745mm, phần dư bỏ 123mm, phôi 4868mm, tổng thiếu 3 × 4745 = 14235mm — một phép làm
+     * tròn tới centimet hay tới một chữ số đều làm sai ít nhất một trong số đó.
+     */
+    @Test
+    void buildFromPreview_writesEveryLengthExactToTheMillimetre() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial mainSlat = persistSlatMaterial(SlatGroup.MAIN_SLAT);
+        persistMainSlatBomItem(doorProduct, mainSlat, 4);
+        persistInventoryBatch(mainSlat, 4868, 1);
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("4.745"), LocalDate.now());
+
+        List<CuttingPlanDemandView> rows = reportService.buildFromPreview(cuttingPlanService.simulate());
+
+        assertThat(rows).hasSize(1);
+        CuttingPlanDemandView row = rows.get(0);
+        assertThat(row.cutLengthMm()).isEqualTo(4745);
+        assertThat(row.statusText()).isEqualTo("Thiếu 3 nan 4.745m (14.235m)");
+        assertThat(row.cutDetailText()).isEqualTo("[TP] 4868mm: 1 phôi → 1 nan [Cắt phế 0.123m, PA1] (còn lại 0 phôi)");
+        assertThat(row.stockSnapshotText()).isEqualTo("4.868m 1 thanh");
     }
 
     /** Model cửa đi thẳng từ mẫu cửa ra báo cáo — đây là trục của biểu đồ "số bộ cửa theo model". */

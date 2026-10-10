@@ -56,12 +56,6 @@ public class CuttingPlanReportService {
 
     private static final BigDecimal MM_PER_M = new BigDecimal(1000);
 
-    /** Độ dài một đoạn cần chính xác tới centimet để thợ cắt đối chiếu. */
-    private static final int PIECE_SCALE = 2;
-
-    /** Tổng độ dài chỉ dùng để ước lượng khối lượng vật tư bù nên làm tròn thưa hơn. */
-    private static final int TOTAL_SCALE = 1;
-
     /** Dấu thanh tái sử dụng — giữ nguyên ký tự của khuôn mẫu doanh nghiệp đang đối chiếu hằng ngày. */
     private static final String RECYCLED_MARK = "♻️";
 
@@ -139,12 +133,11 @@ public class CuttingPlanReportService {
     /**
      * Dựng báo cáo từ một phương án đã duyệt.
      *
-     * <p>Bảng thiếu vật tư lưu TỔNG độ dài thiếu chứ không lưu độ dài từng đoạn, và lưu ở đơn vị
-     * centimet, nên độ dài đoạn suy ngược ra từ đó bị làm tròn lên bội số của 10mm: một đoạn
-     * 2345mm đọc lại thành 2350mm. Vì vậy con số suy ngược chỉ được dùng khi dòng đó thiếu TOÀN BỘ
-     * — khi đó không còn nguồn nào khác, và sai số nằm dưới mức làm tròn mà báo cáo hiển thị. Dòng
-     * thiếu một phần thì đã có những đoạn cắt được của chính nó mang độ dài chính xác tới
-     * milimet, và độ dài đó được ưu tiên.
+     * <p>Bảng thiếu vật tư lưu TỔNG độ dài thiếu chứ không lưu độ dài từng đoạn, nên độ dài đoạn
+     * phải suy ngược bằng phép chia tổng cho số thanh. Tổng lưu đủ tới milimet nên phép chia ra
+     * đúng độ dài gốc; dù vậy con số suy ngược chỉ được dùng khi dòng đó thiếu TOÀN BỘ — khi đó
+     * không còn nguồn nào khác. Dòng thiếu một phần đã có những đoạn cắt được của chính nó mang
+     * độ dài lấy thẳng từ kết quả thuật toán, và độ dài đó được ưu tiên.
      */
     @Transactional(readOnly = true)
     public List<CuttingPlanDemandView> buildFromApprovedPlan(Long planId) {
@@ -200,30 +193,11 @@ public class CuttingPlanReportService {
     }
 
     /**
-     * Độ dài đoạn của một dòng thiếu TOÀN BỘ, quy về đúng con số mà phương án đã duyệt đọc lại được.
-     *
-     * <p>Dòng thiếu toàn bộ không có đoạn nào cắt được để giữ độ dài milimet, nên khi duyệt nó chỉ
-     * còn tồn tại ở bảng thiếu vật tư — nơi lưu TỔNG độ dài ở đơn vị centimet ({@code DECIMAL(10,2)}).
-     * Milimet lẻ mất hẳn tại thời điểm ghi và không cách nào lấy lại.
-     *
-     * <p>Vì vậy nhánh chưa lưu phải tự làm tròn y như vậy thay vì giữ con số chính xác của mình:
-     * giữ lại thì cùng một phương án, xem trước khi duyệt và xuất Excel sau khi duyệt, in ra hai độ
-     * dài khác nhau (2.345m và 2.350m) và hai tổng khác nhau (2.3m và 2.4m) — đúng thứ mà lớp này
-     * cam kết là không thể xảy ra. Thà cùng thô còn hơn lệch nhau.
-     *
-     * <p>Phép quy đổi này <b>lũy đẳng</b>, nên gọi thêm một lần trên con số đã đọc từ cơ sở dữ liệu
-     * cũng không làm nó đổi.
+     * Tổng độ dài thiếu chia cho số thanh. Từ khi cột lưu đủ milimet, phép chia luôn ra số nguyên
+     * và bước làm tròn không bao giờ chạm tới. Nó còn đó chỉ cho phương án duyệt TRƯỚC khi cột được
+     * nới: tổng của chúng đã bị làm tròn tới centimet lúc ghi, chia ra có thể lẻ, và milimet đã mất
+     * thì không có cách nào lấy lại.
      */
-    private static int storedShortageCutLengthMm(int cutLengthMm, int quantity) {
-        if (quantity <= 0) {
-            return cutLengthMm;
-        }
-        BigDecimal totalM = toMeters((long) cutLengthMm * quantity, PIECE_SCALE);
-        return totalM.multiply(MM_PER_M)
-                .divide(BigDecimal.valueOf(quantity), 0, RoundingMode.HALF_UP)
-                .intValueExact();
-    }
-
     private static int averageCutLengthMm(ShortageRecord shortage) {
         return shortage
                 .getMissingLengthM()
@@ -287,9 +261,6 @@ public class CuttingPlanReportService {
         List<Accumulator> rows = new ArrayList<>();
         Set<OrderKey> shortDoorSets = new HashSet<>();
         for (Accumulator row : accumulators) {
-            if (row.missing >= row.needed) {
-                row.cutLengthMm = storedShortageCutLengthMm(row.cutLengthMm, row.needed);
-            }
             rows.add(row);
             if (row.missing > 0) {
                 shortDoorSets.add(new OrderKey(row.order.getYcsx(), row.order.getItem()));
@@ -351,8 +322,8 @@ public class CuttingPlanReportService {
         if (row.missing == 0) {
             return "✔Đủ";
         }
-        BigDecimal pieceM = toMeters(row.cutLengthMm, PIECE_SCALE);
-        BigDecimal totalM = toMeters((long) row.cutLengthMm * row.missing, TOTAL_SCALE);
+        String pieceM = metres(row.cutLengthMm);
+        String totalM = metres((long) row.cutLengthMm * row.missing);
         return row.missing >= row.needed
                 ? "Thiếu toàn bộ %d nan %sm (%sm)".formatted(row.needed, pieceM, totalM)
                 : "Thiếu %d nan %sm (%sm)".formatted(row.missing, pieceM, totalM);
@@ -412,11 +383,20 @@ public class CuttingPlanReportService {
     private static String remainderText(StickKey stick) {
         return stick.restock()
                 ? "Cắt để lại %s%dmm".formatted(RECYCLED_MARK, stick.remainderMm())
-                : "Cắt phế %sm".formatted(toMeters(stick.remainderMm(), PIECE_SCALE));
+                : "Cắt phế %sm".formatted(metres(stick.remainderMm()));
     }
 
-    private static BigDecimal toMeters(long lengthMm, int scale) {
-        return BigDecimal.valueOf(lengthMm).divide(MM_PER_M, scale, RoundingMode.HALF_UP);
+    /**
+     * Độ dài ghi trong mọi câu chữ của báo cáo: đúng số milimet, chỉ dịch dấu phẩy sang mét và bỏ
+     * số 0 thừa ở cuối — 4745mm → {@code 4.745}, 4740mm → {@code 4.74}, 4000mm → {@code 4}.
+     *
+     * <p>Không làm tròn ở bất kỳ chữ số nào: doanh nghiệp yêu cầu mọi độ dài trên báo cáo chính xác
+     * tuyệt đối vì xưởng cắt theo đúng con số này, và câu chữ phải khớp từng chữ số với cột độ dài
+     * đoạn cắt ngay bên cạnh. Mọi độ dài trong hệ thống là số nguyên milimet nên mét luôn có nhiều
+     * nhất 3 chữ số thập phân — dạng này không bao giờ phải cắt bớt chữ số nào.
+     */
+    private static String metres(long lengthMm) {
+        return BigDecimal.valueOf(lengthMm, 3).stripTrailingZeros().toPlainString();
     }
 
     /**
@@ -497,7 +477,7 @@ public class CuttingPlanReportService {
             return lengths != null && !lengths.contains(lengthMm);
         }
 
-        /** {@code "4.00m 7 thanh, 4.20m 13 thanh"} — sắp theo độ dài tăng dần như khuôn mẫu. */
+        /** {@code "4m 7 thanh, 4.205m 13 thanh"} — sắp theo độ dài tăng dần như khuôn mẫu. */
         String textFor(Long slatMaterialId) {
             NavigableLengths lengths = byMaterialId.get(slatMaterialId);
             return lengths == null ? null : lengths.text();
@@ -519,7 +499,7 @@ public class CuttingPlanReportService {
 
         String text() {
             return countByLength.entrySet().stream()
-                    .map(entry -> "%sm %d thanh".formatted(toMeters(entry.getKey(), PIECE_SCALE), entry.getValue()))
+                    .map(entry -> "%sm %d thanh".formatted(metres(entry.getKey()), entry.getValue()))
                     .collect(Collectors.joining(", "));
         }
     }
