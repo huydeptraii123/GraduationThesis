@@ -225,11 +225,11 @@ class ExcelExportServiceTest extends AbstractIntegrationTest {
             assertThat((int) row.getCell(COL_MISSING).getNumericCellValue()).isZero();
             assertThat(row.getCell(COL_STATUS).getStringCellValue()).isEqualTo("✔Đủ");
             assertThat(row.getCell(COL_CUT_DETAIL).getStringCellValue())
-                    .isEqualTo("[TP] 2200mm: 1 phôi → 1 nan [Cắt phế 0.20m, PA1] (còn lại 0 phôi)");
+                    .isEqualTo("[TP] 2200mm: 1 phôi → 1 nan [Cắt phế 0.2m, PA1] (còn lại 0 phôi)");
             assertThat(row.getCell(COL_DELIVERY_DATE).getLocalDateTimeCellValue().toLocalDate())
                     .isEqualTo(deliveryDate);
             assertThat(row.getCell(COL_COMPONENT_GROUP).getStringCellValue()).isEqualTo("Thanh đáy");
-            assertThat(row.getCell(COL_STOCK_SNAPSHOT).getStringCellValue()).isEqualTo("2.20m 1 thanh");
+            assertThat(row.getCell(COL_STOCK_SNAPSHOT).getStringCellValue()).isEqualTo("2.2m 1 thanh");
             assertThat(row.getCell(COL_DELIVERY_DATE).getCellStyle().getDataFormatString())
                     .isEqualTo("dd/MM/yyyy");
             assertThat(row.getCell(COL_NEEDED).getCellStyle().getDataFormatString()).isEqualTo("#,0");
@@ -325,6 +325,40 @@ class ExcelExportServiceTest extends AbstractIntegrationTest {
             Row row = sheet.getRow(1);
             assertThat(row.getCell(1).getStringCellValue()).isEqualTo(shortOrder.getYcsx());
             assertThat(row.getCell(9).getStringCellValue()).startsWith("Thiếu toàn bộ");
+        }
+    }
+
+    /**
+     * Cả hai file ghi độ dài đoạn của một dòng thiếu toàn bộ đúng tới milimet, và cột số khớp từng
+     * chữ số với câu trạng thái ngay bên cạnh. Đây đúng là tình huống doanh nghiệp phản hồi: cột độ
+     * dài ghi một số, câu trạng thái ghi một số đã làm tròn khác.
+     *
+     * <p>Chiều rộng 2.345m cố ý lẻ tới milimet — dòng này không cắt được đoạn nào nên độ dài của nó
+     * chỉ còn ở bảng thiếu vật tư, đúng chỗ từng làm mất milimet lẻ lúc lưu.
+     */
+    @Test
+    void bothFiles_writeTheLengthOfARowMissingEveryStickExactToTheMillimetre() throws IOException {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistSalesOrder(doorProduct, customer, new BigDecimal("2.345"), LocalDate.now());
+
+        List<CuttingPlanDemandView> rows = approvedRows();
+
+        try (Workbook plan = toWorkbook(excelExportService.exportCuttingPlan(rows));
+                Workbook shortage = toWorkbook(excelExportService.exportShortageReport(rows))) {
+            Row planRow = plan.getSheet("Export").getRow(1);
+            assertThat(planRow.getCell(COL_CUT).getNumericCellValue()).isEqualTo(2.345);
+            assertThat(planRow.getCell(COL_STATUS).getStringCellValue())
+                    .isEqualTo("Thiếu toàn bộ 1 nan 2.345m (2.345m)");
+
+            Sheet shortageSheet = shortage.getSheet("Export");
+            List<String> headers = headersOf(shortageSheet);
+            Row shortageRow = shortageSheet.getRow(1);
+            assertThat(shortageRow.getCell(headers.indexOf("cut")).getNumericCellValue()).isEqualTo(2.345);
+            assertThat(shortageRow.getCell(headers.indexOf("trang_thai_dap_ung")).getStringCellValue())
+                    .isEqualTo("Thiếu toàn bộ 1 nan 2.345m (2.345m)");
         }
     }
 }

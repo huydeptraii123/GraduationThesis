@@ -6,7 +6,6 @@ import com.slatcut.cutting.service.optimizer.CutRecord;
 import com.slatcut.cutting.service.optimizer.RemainderCategory;
 import com.slatcut.cutting.service.optimizer.ShortageEntry;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,8 +22,6 @@ import java.util.Map;
  * duyệt chịu trách nhiệm trên cái họ đã xem.
  */
 public final class CuttingResultGrouping {
-
-    private static final BigDecimal MM_PER_M = new BigDecimal(1000);
 
     private CuttingResultGrouping() {}
 
@@ -119,8 +116,13 @@ public final class CuttingResultGrouping {
         return key.toString();
     }
 
+    /**
+     * Đổi milimet ra mét bằng cách dịch dấu phẩy — không có bước làm tròn nào. Đúng 3 chữ số thập
+     * phân, khớp cột {@code shortage_record.missing_length_m DECIMAL(10,3)}, nên tổng độ dài thiếu
+     * lưu xuống vẫn chia ngược ra đúng độ dài đoạn tới milimet.
+     */
     private static BigDecimal toMeters(int lengthMm) {
-        return BigDecimal.valueOf(lengthMm).divide(MM_PER_M, 2, RoundingMode.HALF_UP);
+        return BigDecimal.valueOf(lengthMm, 3);
     }
 
     /**
