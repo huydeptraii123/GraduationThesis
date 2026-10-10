@@ -38,20 +38,23 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
      * duyệt) để ba bản không thể lệch nhau. Đơn chưa duyệt không thỏa điều kiện này là đơn ĐANG BỊ
      * CHẶN chờ ADMIN bổ sung định mức.
      *
-     * <p>Hai vế, đúng bằng hai nhánh bỏ qua bộ cửa của CuttingDemandService.buildDemands:
+     * <p>Ba vế, đúng bằng ba nhánh bỏ qua cả bộ cửa của CuttingDemandService.buildDemands:
      * <ul>
      *   <li>Có ít nhất một dòng định mức thuộc nhóm có công thức cắt (mọi nhóm trừ OTHER) — không có
      *       thì đơn sinh 0 nhu cầu cắt.
-     *   <li>KHÔNG có dòng nào thiếu tham số của chính công thức đó: MAIN_SLAT thiếu một trong hai hệ
-     *       số tính số nan, RAIL thiếu heightOffsetM. Mỗi dòng định mức là một thành phần bắt buộc của
-     *       bộ cửa, nên thiếu một dòng là nhu cầu cắt của cả bộ không đầy đủ: cứ tính các dòng còn lại
-     *       thì bộ cửa vẫn có thể hiện "đủ nan" trong khi nan chính chưa từng được tính. Dữ liệu thật
-     *       có đúng trường hợp này ở quy mô lớn — một mẫu cửa có cả hai dòng nan chính thiếu hệ số
-     *       chiếm phần lớn sổ đơn.
+     *   <li>KHÔNG có dòng RAIL nào thiếu heightOffsetM. Ray là thành phần bắt buộc của mọi bộ cửa có
+     *       nó, không có dạng "ray phụ" nào được phép bỏ qua.
+     *   <li>Mẫu cửa không có dòng MAIN_SLAT nào, HOẶC có ít nhất một dòng MAIN_SLAT đủ cả hai hệ số
+     *       tính số nan. Theo doanh nghiệp, chỉ nan lớn mới có hệ số; dòng nan chính thiếu hệ số bên
+     *       cạnh một dòng đủ hệ số là profile phụ nhỏ, buildDemands bỏ riêng dòng đó chứ không bỏ cả
+     *       bộ cửa. Còn khi MỌI dòng nan chính đều thiếu hệ số thì nan chính của bộ cửa chưa từng
+     *       được tính: cứ tính các dòng còn lại thì bộ cửa vẫn có thể hiện "đủ nan" sai, nên đơn bị
+     *       chặn. Dữ liệu thật có đúng trường hợp này ở quy mô lớn — một mẫu cửa có cả hai dòng nan
+     *       chính thiếu hệ số chiếm phần lớn sổ đơn.
      * </ul>
      * Nhóm OTHER không có mặt ở vế nào: nó không cắt từ thanh tồn kho nên không làm đơn bị chặn.
-     * Vế đầu chỉ cần hỏi "có dòng ngoài OTHER không" vì vế sau đã bảo đảm mọi dòng như vậy đều đủ
-     * tham số.
+     * Vế đầu chỉ cần hỏi "có dòng ngoài OTHER không": nếu các dòng ngoài OTHER chỉ là nan chính thiếu
+     * hệ số thì vế thứ ba đã chặn, còn lại thì ít nhất một dòng tính được đoạn cắt.
      *
      * <p><b>Sửa CuttingDemandService.buildDemands thì phải sửa cả đây lẫn bản Criteria
      * {@code SalesOrderSpecifications.hasCompleteBom}</b> (bộ lọc trạng thái ở màn đơn hàng, phải
@@ -65,12 +68,20 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
                   WHERE b.doorProduct = so.doorProduct
                     AND sm.slatGroup <> com.slatcut.cutting.domain.SlatGroup.OTHER)
               AND NOT EXISTS (
-                  SELECT 1 FROM BomItem ib JOIN ib.slatMaterial ism
-                  WHERE ib.doorProduct = so.doorProduct AND (
-                       (ism.slatGroup = com.slatcut.cutting.domain.SlatGroup.MAIN_SLAT
-                          AND (ib.slatCountSlope IS NULL OR ib.slatCountIntercept IS NULL))
-                    OR (ism.slatGroup = com.slatcut.cutting.domain.SlatGroup.RAIL
-                          AND ib.heightOffsetM IS NULL)))
+                  SELECT 1 FROM BomItem rb JOIN rb.slatMaterial rsm
+                  WHERE rb.doorProduct = so.doorProduct
+                    AND rsm.slatGroup = com.slatcut.cutting.domain.SlatGroup.RAIL
+                    AND rb.heightOffsetM IS NULL)
+              AND (NOT EXISTS (
+                      SELECT 1 FROM BomItem mb JOIN mb.slatMaterial msm
+                      WHERE mb.doorProduct = so.doorProduct
+                        AND msm.slatGroup = com.slatcut.cutting.domain.SlatGroup.MAIN_SLAT)
+                   OR EXISTS (
+                      SELECT 1 FROM BomItem cb JOIN cb.slatMaterial csm
+                      WHERE cb.doorProduct = so.doorProduct
+                        AND csm.slatGroup = com.slatcut.cutting.domain.SlatGroup.MAIN_SLAT
+                        AND cb.slatCountSlope IS NOT NULL
+                        AND cb.slatCountIntercept IS NOT NULL))
             """;
 
     /**
@@ -85,8 +96,8 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
      *
      * <p>Điều kiện định mức ở cuối ({@link #HAS_COMPLETE_BOM}) là bắt buộc: đơn sinh ra 0 nhu cầu
      * cắt vẫn sẽ được gán approvedPlan nếu lọt vào phạm vi, tức bị đánh dấu "đã duyệt" trong khi
-     * không sản xuất được gì; còn đơn chỉ tính được một phần định mức thì bị duyệt với kết quả đủ/thiếu
-     * sai. Cả hai đều là đơn ĐANG BỊ CHẶN chờ ADMIN bổ sung định mức, không phải đơn đã xử lý xong.
+     * không sản xuất được gì; còn đơn mà nan chính hay ray chưa tính được thì bị duyệt với kết quả
+     * đủ/thiếu sai. Cả hai đều là đơn ĐANG BỊ CHẶN chờ ADMIN bổ sung định mức, không phải đơn đã xử lý xong.
      *
      * <p>Đơn bị loại ở đây được đếm riêng (xem {@link #countUnprocessedInScopeIgnoringBom}) và cảnh
      * báo trên trang chủ, không bị bỏ quên âm thầm.
@@ -123,8 +134,8 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
      *
      * <p>Điều kiện lọc định mức là cùng hằng {@link #HAS_COMPLETE_BOM} với
      * {@link #findUnprocessedInScope}: đơn không sinh được nhu cầu cắt nào thì đưa vào cũng chỉ ra 0
-     * dòng kết quả, còn đơn chỉ tính được một phần định mức thì ra trạng thái đủ/thiếu sai. Số đơn bị
-     * loại vì hai lý do này được đếm riêng và cảnh báo trên trang chủ.
+     * dòng kết quả, còn đơn mà nan chính hay ray chưa tính được thì ra trạng thái đủ/thiếu sai. Số
+     * đơn bị loại vì hai lý do này được đếm riêng và cảnh báo trên trang chủ.
      *
      * <p>JOIN FETCH customer/doorProduct ở đây mà {@link #findUnprocessedInScope} không có: query
      * này quét toàn bảng (không có hạn mức 70 đơn) và mọi dòng đều bị đọc tên khách hàng/mẫu cửa

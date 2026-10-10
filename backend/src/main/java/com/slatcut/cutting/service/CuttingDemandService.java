@@ -60,20 +60,23 @@ public class CuttingDemandService {
                         order.getDoorProduct().getId());
                 continue;
             }
-            Optional<BomItem> incomplete =
-                    bomItems.stream().filter(CuttingDemandService::lacksCutParameters).findFirst();
-            if (incomplete.isPresent()) {
+            Optional<String> blockReason = blockReason(bomItems);
+            if (blockReason.isPresent()) {
                 log.warn(
-                        "Bỏ qua đơn hàng ycsx={} item={}: dòng định mức id={} (nhóm {}) của mẫu cửa id={} thiếu"
-                                + " tham số tính đoạn cắt, tính các dòng còn lại sẽ ra nhu cầu cắt không đầy đủ",
+                        "Bỏ qua đơn hàng ycsx={} item={}: mẫu cửa id={} {}, tính các dòng còn lại sẽ ra nhu cầu"
+                                + " cắt không đầy đủ",
                         order.getYcsx(),
                         order.getItem(),
-                        incomplete.get().getId(),
-                        incomplete.get().getSlatMaterial().getSlatGroup(),
-                        order.getDoorProduct().getId());
+                        order.getDoorProduct().getId(),
+                        blockReason.get());
                 continue;
             }
             for (BomItem bomItem : bomItems) {
+                // Qua được blockReason thì dòng thiếu tham số chỉ có thể là nan chính thiếu hệ số.
+                if (lacksCutParameters(bomItem)) {
+                    logSkipped(order, bomItem, "nan chính thiếu hệ số tính số nan — profile phụ, không lập kế hoạch cắt");
+                    continue;
+                }
                 buildDemand(order, bomItem).ifPresent(demands::add);
             }
         }
@@ -81,18 +84,42 @@ public class CuttingDemandService {
     }
 
     /**
-     * Dòng định mức thuộc nhóm có công thức cắt nhưng thiếu tham số của chính công thức đó: MAIN_SLAT
-     * thiếu một trong hai hệ số tính số nan, RAIL thiếu {@code heightOffsetM}. Mẫu cửa có dù chỉ một
-     * dòng như vậy thì cả bộ cửa bị bỏ qua chứ không riêng dòng đó — mỗi dòng định mức là một thành
-     * phần bắt buộc, nên tính các dòng còn lại sẽ ra một bộ cửa "đủ nan" trong khi nan chính của nó
-     * chưa từng được tính. Nhóm OTHER không tính ở đây: nó không cắt từ thanh tồn kho (xem
-     * {@link #buildDemand}).
+     * Lý do bỏ qua CẢ bộ cửa, nếu có: có dòng RAIL thiếu {@code heightOffsetM}, hoặc mẫu cửa có dòng
+     * MAIN_SLAT nhưng không dòng nào đủ hai hệ số tính số nan. Khi đó nan chính hay ray của bộ cửa
+     * chưa từng được tính, nên tính các dòng còn lại sẽ ra một bộ cửa "đủ nan" sai.
+     *
+     * <p>Dòng MAIN_SLAT thiếu hệ số bên cạnh một dòng đủ hệ số KHÔNG làm bỏ cả bộ cửa: theo doanh
+     * nghiệp chỉ nan lớn mới có hệ số, dòng như vậy là profile phụ nhỏ và {@link #buildDemands} bỏ
+     * riêng nó. Nhóm OTHER không xét ở đây: nó không cắt từ thanh tồn kho (xem {@link #buildDemand}).
      *
      * <p><b>Luật này có hai bản sao phải sửa theo</b>: hằng {@code SalesOrderRepository.HAS_COMPLETE_BOM}
      * (phạm vi của hai chức năng tính và duyệt) và {@code SalesOrderSpecifications.hasCompleteBom}
      * (trạng thái "đang bị chặn" ở màn đơn hàng). Nhờ chúng, đơn như vậy không bao giờ vào tới đây
      * từ hai chức năng kia — kiểm tra ở đây là lớp chặn cuối để hàm này tự nó không bao giờ trả về
-     * nhu cầu cắt thiếu thành phần.
+     * nhu cầu cắt thiếu thành phần. Vế "có ít nhất một dòng ngoài OTHER" của hai bản kia không cần
+     * lặp lại ở đây: mẫu cửa như vậy tự sinh 0 nhu cầu.
+     */
+    private static Optional<String> blockReason(List<BomItem> bomItems) {
+        Optional<BomItem> brokenRail = bomItems.stream()
+                .filter(bomItem -> bomItem.getSlatMaterial().getSlatGroup() == SlatGroup.RAIL)
+                .filter(CuttingDemandService::lacksCutParameters)
+                .findFirst();
+        if (brokenRail.isPresent()) {
+            return Optional.of("có dòng ray id=" + brokenRail.get().getId() + " thiếu heightOffsetM");
+        }
+        List<BomItem> mainSlats = bomItems.stream()
+                .filter(bomItem -> bomItem.getSlatMaterial().getSlatGroup() == SlatGroup.MAIN_SLAT)
+                .toList();
+        if (!mainSlats.isEmpty() && mainSlats.stream().allMatch(CuttingDemandService::lacksCutParameters)) {
+            return Optional.of("có " + mainSlats.size() + " dòng nan chính nhưng không dòng nào đủ hệ số tính số nan");
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Dòng định mức thuộc nhóm có công thức cắt nhưng thiếu tham số của chính công thức đó: MAIN_SLAT
+     * thiếu một trong hai hệ số tính số nan, RAIL thiếu {@code heightOffsetM}. Switch phủ đủ mọi
+     * nhóm để thêm nhóm mới thì không biên dịch được cho tới khi quyết định tham số bắt buộc của nó.
      */
     private static boolean lacksCutParameters(BomItem bomItem) {
         return switch (bomItem.getSlatMaterial().getSlatGroup()) {
@@ -102,7 +129,10 @@ public class CuttingDemandService {
         };
     }
 
-    /** Gọi sau {@link #lacksCutParameters}: mọi tham số mà công thức của nhóm cần đều đã có. */
+    /**
+     * Gọi sau {@link #blockReason} và sau khi đã bỏ dòng nan chính thiếu hệ số: mọi tham số mà công
+     * thức của nhóm cần đều đã có.
+     */
     private Optional<CuttingDemand> buildDemand(SalesOrder order, BomItem bomItem) {
         SlatGroup slatGroup = bomItem.getSlatMaterial().getSlatGroup();
         BigDecimal cutDimM;

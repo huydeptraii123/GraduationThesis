@@ -139,11 +139,11 @@ class CuttingDemandServiceTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Nan chính thiếu hệ số thì bỏ qua CẢ bộ cửa, không riêng dòng đó: thanh đáy và nan phụ của bộ
-     * cửa đều đủ tham số nhưng vẫn không được sinh nhu cầu, vì một bộ cửa chỉ có thanh đáy với nan
-     * phụ sẽ hiện "đủ nan" trong khi nan chính chưa từng được tính. Đây đúng là hình dạng định mức
-     * của mẫu cửa chiếm phần lớn sổ đơn trong dữ liệu thật. Thiếu hệ số nào cũng vậy — mỗi hệ số
-     * một bộ cửa — và một bộ cửa đủ định mức gọi cùng lượt vẫn ra nhu cầu bình thường.
+     * Dòng nan chính DUY NHẤT của mẫu cửa thiếu hệ số thì bỏ qua CẢ bộ cửa, không riêng dòng đó: thanh
+     * đáy và nan phụ của bộ cửa đều đủ tham số nhưng vẫn không được sinh nhu cầu, vì một bộ cửa chỉ
+     * có thanh đáy với nan phụ sẽ hiện "đủ nan" trong khi nan chính chưa từng được tính. Đây đúng là
+     * hình dạng định mức của mẫu cửa chiếm phần lớn sổ đơn trong dữ liệu thật. Thiếu hệ số nào cũng
+     * vậy — mỗi hệ số một bộ cửa — và một bộ cửa đủ định mức gọi cùng lượt vẫn ra nhu cầu bình thường.
      */
     @Test
     void buildDemands_mainSlatMissingSlopeOrIntercept_skipsWholeDoorSet() {
@@ -180,28 +180,30 @@ class CuttingDemandServiceTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Mẫu cửa có hai dòng nan chính, một dòng đủ hệ số và một dòng thiếu: vẫn bỏ cả bộ cửa. Mọi dòng
-     * định mức đều là thành phần bắt buộc, nên dòng đủ hệ số tự nó không làm nhu cầu của bộ cửa đầy
-     * đủ trở lại.
+     * Mẫu cửa có hai dòng nan chính, một dòng đủ hệ số và một dòng thiếu: chỉ bỏ riêng dòng thiếu.
+     * Theo doanh nghiệp, chỉ nan lớn mới có hệ số; dòng thiếu bên cạnh một dòng đủ là profile phụ
+     * nhỏ, không lập kế hoạch cắt (giống nhóm OTHER). Nan chính đủ hệ số và thanh đáy vẫn ra nhu cầu
+     * như thường, và không nhu cầu nào mang vật tư của dòng thiếu.
      */
     @Test
-    void buildDemands_oneOfTwoMainSlatRowsMissingCoefficients_skipsWholeDoorSet() {
+    void buildDemands_oneOfTwoMainSlatRowsMissingCoefficients_skipsOnlyThatRow() {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial completeMain = persistSlatMaterial(SlatGroup.MAIN_SLAT);
         persistBomItem(
-                doorProduct,
-                persistSlatMaterial(SlatGroup.MAIN_SLAT),
-                new BigDecimal("0.024"),
-                null,
-                new BigDecimal("2.000000"),
-                new BigDecimal("1.0000"));
+                doorProduct, completeMain, new BigDecimal("0.024"), null, new BigDecimal("2.000000"), new BigDecimal("1.0000"));
         persistBomItem(
-                doorProduct, persistSlatMaterial(SlatGroup.MAIN_SLAT), new BigDecimal("0.024"), null, null, null);
+                doorProduct, persistSlatMaterial(SlatGroup.MAIN_SLAT), new BigDecimal("0.031"), null, null, null);
+        SlatMaterial bottomBar = persistSlatMaterial(SlatGroup.BOTTOM_BAR);
+        persistBomItem(doorProduct, bottomBar, null, null, null, null);
         SalesOrder order = persistSalesOrder(doorProduct, customer, new BigDecimal("2.500"), new BigDecimal("3.150"));
 
         List<CuttingDemand> demands = service.buildDemands(List.of(order));
 
-        assertThat(demands).isEmpty();
+        assertThat(demands)
+                .as("nan chính đủ hệ số (3.150 - 0.024, 2*2.5 + 1 nan) và thanh đáy; dòng thiếu hệ số bị bỏ riêng")
+                .extracting(d -> d.slatMaterial().getId(), CuttingDemand::cutLengthMm, CuttingDemand::quantity)
+                .containsExactlyInAnyOrder(tuple(completeMain.getId(), 3126, 6), tuple(bottomBar.getId(), 3150, 1));
     }
 
     @Test

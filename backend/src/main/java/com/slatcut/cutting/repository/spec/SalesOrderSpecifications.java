@@ -10,7 +10,6 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
-import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -78,8 +77,9 @@ public final class SalesOrderSpecifications {
 
     /**
      * Mẫu cửa của đơn có định mức ĐẦY ĐỦ để tính nhu cầu cắt: có ít nhất một dòng ngoài nhóm OTHER,
-     * và không dòng nào thiếu tham số của công thức cắt (MAIN_SLAT thiếu hệ số tính số nan, RAIL
-     * thiếu {@code heightOffsetM}).
+     * không dòng RAIL nào thiếu {@code heightOffsetM}, và hoặc không có dòng MAIN_SLAT nào, hoặc có
+     * ít nhất một dòng MAIN_SLAT đủ cả hai hệ số tính số nan (dòng nan chính thiếu hệ số bên cạnh nó
+     * là profile phụ, bị bỏ riêng khi tính nhu cầu).
      *
      * <p>Bản Criteria của hằng {@code SalesOrderRepository.HAS_COMPLETE_BOM} — chính là luật mà hai
      * chức năng tính và duyệt phương án dùng để loại đơn khỏi phạm vi xử lý — và qua đó phản chiếu
@@ -99,20 +99,31 @@ public final class SalesOrderSpecifications {
                 cb.equal(bom.get("doorProduct"), root.get("doorProduct")),
                 cb.notEqual(material.get("slatGroup"), SlatGroup.OTHER));
 
-        Subquery<Integer> incomplete = query.subquery(Integer.class);
-        Root<BomItem> incompleteBom = incomplete.from(BomItem.class);
-        Path<SlatGroup> group = incompleteBom.join("slatMaterial").get("slatGroup");
-        incomplete.select(cb.literal(1)).where(
-                cb.equal(incompleteBom.get("doorProduct"), root.get("doorProduct")),
-                cb.or(
-                        cb.and(
-                                cb.equal(group, SlatGroup.MAIN_SLAT),
-                                cb.or(
-                                        cb.isNull(incompleteBom.get("slatCountSlope")),
-                                        cb.isNull(incompleteBom.get("slatCountIntercept")))),
-                        cb.and(cb.equal(group, SlatGroup.RAIL), cb.isNull(incompleteBom.get("heightOffsetM")))));
+        Subquery<Integer> brokenRail = query.subquery(Integer.class);
+        Root<BomItem> railBom = brokenRail.from(BomItem.class);
+        brokenRail.select(cb.literal(1)).where(
+                cb.equal(railBom.get("doorProduct"), root.get("doorProduct")),
+                cb.equal(railBom.join("slatMaterial").get("slatGroup"), SlatGroup.RAIL),
+                cb.isNull(railBom.get("heightOffsetM")));
 
-        return cb.and(cb.exists(cuttable), cb.not(cb.exists(incomplete)));
+        Subquery<Integer> anyMain = query.subquery(Integer.class);
+        Root<BomItem> mainBom = anyMain.from(BomItem.class);
+        anyMain.select(cb.literal(1)).where(
+                cb.equal(mainBom.get("doorProduct"), root.get("doorProduct")),
+                cb.equal(mainBom.join("slatMaterial").get("slatGroup"), SlatGroup.MAIN_SLAT));
+
+        Subquery<Integer> completeMain = query.subquery(Integer.class);
+        Root<BomItem> completeBom = completeMain.from(BomItem.class);
+        completeMain.select(cb.literal(1)).where(
+                cb.equal(completeBom.get("doorProduct"), root.get("doorProduct")),
+                cb.equal(completeBom.join("slatMaterial").get("slatGroup"), SlatGroup.MAIN_SLAT),
+                cb.isNotNull(completeBom.get("slatCountSlope")),
+                cb.isNotNull(completeBom.get("slatCountIntercept")));
+
+        return cb.and(
+                cb.exists(cuttable),
+                cb.not(cb.exists(brokenRail)),
+                cb.or(cb.not(cb.exists(anyMain)), cb.exists(completeMain)));
     }
 
     /**
