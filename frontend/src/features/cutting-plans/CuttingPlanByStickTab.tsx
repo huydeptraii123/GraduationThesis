@@ -4,6 +4,7 @@ import { CuttingBarDiagram } from '../../components/CuttingBarDiagram'
 import { ChartLegend } from '../../components/charts/ChartParts'
 import { REMAINDER_COLOR, type LegendEntry } from '../../components/charts/chartTheme'
 import { localPagination } from '../../api/pagination'
+import { formatMeters } from '../../utils/formatMeters'
 import { expandDetailToPieces } from './expandDetailToPieces'
 import { REMAINDER_TYPE_LABEL } from './remainderLabels'
 import type { CuttingPlanDetailResponse, CuttingPlanResponse } from './types'
@@ -112,7 +113,7 @@ export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
           <Card
             key={detail.id}
             size="small"
-            title={`Phôi #${index + 1} - ${detail.slatMaterialName} · ${(detail.sourceLengthMm / 1000).toFixed(2)}m`}
+            title={`Phôi #${index + 1} - ${detail.slatMaterialName} · ${formatMeters(detail.sourceLengthMm)}m`}
             extra={
               <Space>
                 <span>SL: {detail.stickCount} thanh</span>
@@ -162,14 +163,14 @@ export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
             { title: 'Vật tư', dataIndex: 'slatMaterialName' },
             {
               title: 'Độ dài phôi',
-              render: (_, detail) => `${(detail.sourceLengthMm / 1000).toFixed(2)} m`,
+              render: (_, detail) => `${formatMeters(detail.sourceLengthMm)} m`,
             },
             { title: 'SL phôi', dataIndex: 'stickCount', align: 'right' },
             { title: 'Mã Pattern', dataIndex: 'patternCode' },
             {
               title: 'Phần dư',
               render: (_, detail) =>
-                `${(detail.remainderMm / 1000).toFixed(2)} m (${REMAINDER_TYPE_LABEL[detail.remainderType]})`,
+                `${formatMeters(detail.remainderMm)} m (${REMAINDER_TYPE_LABEL[detail.remainderType]})`,
             },
           ]}
         />

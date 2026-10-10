@@ -44,7 +44,8 @@ export interface ShortageByMaterial {
   slatMaterialName: string
   slatGroup: string
   missingSticks: number
-  missingLengthM: number
+  /** Tổng độ dài thiếu tính bằng milimet nguyên — cộng số nguyên nên không sai số, hiển thị bằng formatMeters. */
+  missingLengthMm: number
   affectedDoorSetCount: number
 }
 
@@ -165,19 +166,19 @@ export function shortagesByMaterial(demands: CuttingPlanDemandView[]): ShortageB
         slatMaterialName: demand.slatMaterialName,
         slatGroup: demand.slatGroup,
         missingSticks: 0,
-        missingLengthM: 0,
+        missingLengthMm: 0,
         affectedDoorSetCount: 0,
         doorSetKeys: new Set<string>(),
       }
       byCode.set(demand.slatMaterialCode, row)
     }
     row.missingSticks += demand.quantityMissing
-    row.missingLengthM += (demand.quantityMissing * demand.cutLengthMm) / 1000
+    row.missingLengthMm += demand.quantityMissing * demand.cutLengthMm
     row.doorSetKeys.add(`${demand.ycsx}#${demand.item}`)
   }
   return [...byCode.values()]
     .map(({ doorSetKeys, ...row }) => ({ ...row, affectedDoorSetCount: doorSetKeys.size }))
-    .sort((left, right) => right.missingLengthM - left.missingLengthM)
+    .sort((left, right) => right.missingLengthMm - left.missingLengthMm)
 }
 
 /**

@@ -6,7 +6,9 @@ import { Link, useParams } from 'react-router-dom'
 import { extractBlobErrorMessage, extractErrorMessage } from '../../api/apiError'
 import { downloadFile } from '../../api/downloadFile'
 import { localPagination } from '../../api/pagination'
+import { formatMeters } from '../../utils/formatMeters'
 import { exportShortageReport, getCuttingPlan } from './cuttingPlansApi'
+import { shortageTotalMm } from './shortageLengths'
 import type { CuttingPlanResponse } from './types'
 
 /**
@@ -152,7 +154,7 @@ export function CuttingPlanShortagesPage() {
           {
             title: 'Độ dài thiếu',
             align: 'right',
-            render: (_, s) => `${s.missingLengthM.toFixed(2)} m`,
+            render: (_, s) => `${formatMeters(shortageTotalMm(s))} m`,
           },
           {
             title: 'Ngày giao yêu cầu',
