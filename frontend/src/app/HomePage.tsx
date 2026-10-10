@@ -181,8 +181,8 @@ export function HomePage() {
           title={`${simulation.blockedOrderCount} đơn đang bị bỏ qua vì định mức BOM của mẫu cửa chưa đầy đủ.`}
           description={
             <span>
-              Mẫu cửa của những đơn này chưa có định mức, hoặc có dòng định mức thiếu tham số tính đoạn cắt (ví dụ nan
-              chính thiếu hệ số tính số nan). Tính tiếp sẽ ra kết quả đủ/thiếu sai, nên chúng không nằm trong các con số
+              Mẫu cửa của những đơn này chưa có định mức, có nan chính nhưng không dòng nào đủ hệ số tính số nan, hoặc có
+              ray thiếu offset chiều cao. Tính tiếp sẽ ra kết quả đủ/thiếu sai, nên chúng không nằm trong các con số
               bên dưới. Cần tài khoản Quản trị (ADMIN) bổ sung định mức cho mẫu cửa tương ứng tại{' '}
               <Link to="/bom">Định mức BOM</Link>.
             </span>

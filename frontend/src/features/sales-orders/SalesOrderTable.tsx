@@ -25,7 +25,7 @@ const PROCESSING_STATUS: Record<SalesOrderProcessingStatus, { label: string; col
   BLOCKED: {
     label: 'Đang bị chặn',
     color: 'warning',
-    hint: 'Định mức của mẫu cửa chưa đầy đủ (chưa có, hoặc có dòng thiếu tham số tính đoạn cắt) nên đơn chưa vào được phạm vi xử lý — cần ADMIN bổ sung định mức.',
+    hint: 'Định mức của mẫu cửa chưa đầy đủ (chưa có, có nan chính nhưng không dòng nào đủ hệ số tính số nan, hoặc ray thiếu offset chiều cao) nên đơn chưa vào được phạm vi xử lý — cần ADMIN bổ sung định mức.',
   },
   SUFFICIENT: { label: 'Đủ vật tư', color: 'success' },
   SHORTAGE: { label: 'Thiếu vật tư', color: 'error' },
