@@ -83,7 +83,7 @@ Mục này ánh xạ các entity ở mục 3.3.1 sang bảng MySQL cụ thể: t
 
 - **Khóa chính**: mọi bảng dùng `id BIGINT AUTO_INCREMENT PRIMARY KEY` (chiến lược `GenerationType.IDENTITY` của Spring Data JPA), không dùng khóa nghiệp vụ (`ycsx`, `customer`,...) làm khóa chính trực tiếp — các trường này vẫn được đánh UNIQUE để đảm bảo tính duy nhất, nhưng để khóa chính là số nguyên tự tăng giúp khóa ngoại ở bảng con nhẹ hơn và không bị ảnh hưởng nếu định dạng khóa nghiệp vụ thay đổi.
 - **Tên cột khớp dataset**: với các bảng có nguồn từ 1 file dữ liệu thật (`customer`, `door_product`, `slat_material`, `bom_item`, `inventory_batch`, `sales_order`), tên cột **giữ nguyên văn** theo tên cột trong file CSV/Excel gốc ở `dataset/` (kể cả khi đó là tên viết tắt tiếng Việt như `ycsx`, `z_chieu_cao_dh`, `do_dai_thanh_mm`) — mục đích để đối chiếu cột ↔ dataset trực tiếp khi viết `ExcelImportService`, không cần tra bảng mapping riêng. Các bảng không có nguồn dữ liệu thật (`role`, `app_user`, `cutting_plan` và các bảng con, `shortage_record`) vẫn dùng tên tiếng Anh generic.
-- **Đơn vị độ dài**: trường tên kết thúc bằng `_mm` (mm, ví dụ `cut_length_mm`, `do_dai_thanh_mm`) lưu số nguyên (`INT`) — dùng cho các phép tính cắt cần chính xác tuyệt đối, tránh sai số dấu phẩy động khi cộng trừ nhiều đoạn. Trường kết thúc bằng `_m` (mét, ví dụ `total_waste_m`, `missing_length_m`) là số liệu tổng hợp/báo cáo, lưu `DECIMAL(10,2)`. Tồn kho (`inventory_batch`) là ngoại lệ — lưu trực tiếp số lượng thanh (`so_thanh`, số nguyên) thay vì tổng mét, xem giải thích ở bảng `inventory_batch`.
+- **Đơn vị độ dài**: trường tên kết thúc bằng `_mm` (mm, ví dụ `cut_length_mm`, `do_dai_thanh_mm`) lưu số nguyên (`INT`) — dùng cho các phép tính cắt cần chính xác tuyệt đối, tránh sai số dấu phẩy động khi cộng trừ nhiều đoạn. Trường kết thúc bằng `_m` (mét) có độ chính xác theo mục đích: số liệu tổng hợp/báo cáo như `total_waste_m`, `total_stock_used_m` lưu `DECIMAL(10,2)`; `missing_length_m` lưu `DECIMAL(10,3)` để giữ đủ milimet (xem bảng `shortage_record`); các tham số định mức `width_offset_m`, `height_offset_m` lưu `DECIMAL(6,3)` (xem bảng `bom_item`). Tồn kho (`inventory_batch`) là ngoại lệ — lưu trực tiếp số lượng thanh (`so_thanh`, số nguyên) thay vì tổng mét, xem giải thích ở bảng `inventory_batch`.
 - **Tên bảng/cột trùng từ khóa dự trữ của MySQL**: entity `User` ánh xạ sang bảng `app_user` (`USER` là từ khóa dự trữ trong MySQL 8); trường `group` của `SlatMaterial` ánh xạ sang cột `slat_group` (tránh trùng `GROUP BY`).
 - **Timestamp**: bảng dữ liệu nền tảng/nghiệp vụ có thể chỉnh sửa qua thời gian (Nhóm 1, Nhóm 2 yêu cầu chức năng) có thêm `created_at`, `updated_at DATETIME`. Bảng lưu kết quả một lần chạy thuật toán (`cutting_plan` và các bảng con) không cần `updated_at` vì chỉ ghi một lần, không có luồng chỉnh sửa sau đó.
 
@@ -408,7 +408,7 @@ Không có `updated_at`: một `CuttingPlan` và toàn bộ bảng con được 
 | cut_quantity | INT | NOT NULL |
 | is_original_order | BOOLEAN | NOT NULL |
 
-UNIQUE (`cutting_plan_detail_id`, `sales_order_id`): một bộ cửa chỉ xuất hiện đúng 1 lần trên 1 phôi cụ thể (nhiều đoạn của cùng bộ cửa trên cùng phôi gộp vào `cut_quantity`, không tách nhiều dòng). `INDEX (sales_order_id)` phục vụ truy vấn suy ra **kết quả đủ/thiếu vật tư** của một đơn đã duyệt (điểm 5, mục 3.3.1): kiểm tra tồn tại bản ghi tham chiếu tới `SalesOrder` đó. Bản thân việc đơn đã được duyệt hay chưa không đọc ở đây mà đọc thẳng từ `sales_order.approved_plan_id`.
+UNIQUE (`cutting_plan_detail_id`, `sales_order_id`): một bộ cửa chỉ xuất hiện đúng 1 lần trên 1 phôi cụ thể (nhiều đoạn của cùng bộ cửa gộp vào `cut_quantity`, không tách nhiều dòng; vì một dòng `cutting_plan_detail` đại diện cho `stick_count` phôi giống hệt nhau, `cut_quantity` là tổng số đoạn trên cả `stick_count` phôi đó — mỗi phôi mang `cut_quantity / stick_count` đoạn). `INDEX (sales_order_id)` phục vụ truy vấn suy ra **kết quả đủ/thiếu vật tư** của một đơn đã duyệt (điểm 5, mục 3.3.1): kiểm tra tồn tại bản ghi tham chiếu tới `SalesOrder` đó. Bản thân việc đơn đã được duyệt hay chưa không đọc ở đây mà đọc thẳng từ `sales_order.approved_plan_id`.
 
 ### `shortage_record`
 | Cột | Kiểu | Ràng buộc |
@@ -418,9 +418,11 @@ UNIQUE (`cutting_plan_detail_id`, `sales_order_id`): một bộ cửa chỉ xu�
 | sales_order_id | BIGINT | NOT NULL, FK → `sales_order.id` |
 | slat_material_id | BIGINT | NOT NULL, FK → `slat_material.id` |
 | missing_quantity | INT | NOT NULL |
-| missing_length_m | DECIMAL(10,2) | NOT NULL |
+| missing_length_m | DECIMAL(10,3) | NOT NULL |
 
 UNIQUE (`cutting_plan_id`, `sales_order_id`, `slat_material_id`): trong 1 lần chạy, một bộ cửa chỉ thiếu đúng 1 lần cho 1 loại thanh nan cụ thể. `INDEX (sales_order_id)` dùng cho cùng mục đích suy ra kết quả đủ/thiếu vật tư như ở `cutting_plan_detail_item`.
+
+`missing_length_m` lưu 3 chữ số thập phân, tức đúng tới milimet, khác các cột mét tổng hợp khác. Bảng chỉ lưu TỔNG độ dài thiếu, nên với một bộ cửa thiếu toàn bộ một loại thanh — không cắt được đoạn nào để giữ độ dài — báo cáo phải chia tổng cho `missing_quantity` để biết độ dài đoạn cần cắt bù. Lưu tới centimet thì milimet lẻ mất ngay lúc ghi (3 × 2345mm = 7,035m lưu thành 7,04m, chia ra 2347mm) và báo cáo ghi sai độ dài cần cắt; 3 chữ số thì phép chia luôn ra đúng độ dài gốc. Các dòng ghi trước khi cột được nới vẫn giữ tổng đã làm tròn tới centimet. Phép chia tổng cho số thanh rồi làm tròn tới milimet vẫn khôi phục đúng độ dài đoạn khi sai số của tổng (tối đa 5mm) chia cho số thanh còn dưới nửa milimet — luôn đúng khi thiếu từ 11 thanh trở lên, hoặc khi tổng vốn chẵn centimet; ngoài hai trường hợp đó, độ dài suy ra có thể lệch vài milimet. Màn báo thiếu vật tư, tab tổng quan và tab chi tiết theo đơn hàng không có sẵn độ dài đoạn của dòng thiếu nên luôn suy theo cách này; với dòng ghi từ khi cột đủ milimet, kết quả trùng đúng tổng đã lưu.
 
 ### `cutting_plan_stock_snapshot`
 | Cột | Kiểu | Ràng buộc |
