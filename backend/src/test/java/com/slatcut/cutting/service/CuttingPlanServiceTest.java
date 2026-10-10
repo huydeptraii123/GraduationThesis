@@ -1168,7 +1168,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
     void generate_excludesOrdersWhoseBomCannotYieldCompleteDemand() {
         Customer customer = persistCustomer();
 
-        // (1) MAIN_SLAT thiếu hệ số tính số nan — đúng 69/527 dòng trong dữ liệu thật của doanh nghiệp.
+        // (1) Dòng MAIN_SLAT duy nhất của mẫu cửa thiếu hệ số tính số nan.
         DoorProduct missingCoefficients = persistDoorProduct();
         persistBomItem(missingCoefficients, persistSlatMaterial(SlatGroup.MAIN_SLAT));
         persistSalesOrder(
@@ -1185,9 +1185,9 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistBomItem(onlyOtherGroup, persistSlatMaterial(SlatGroup.OTHER));
         persistSalesOrder("HY9" + (counter + 1), onlyOtherGroup, customer, new BigDecimal("2.000"), LocalDate.now());
 
-        // (4) Nan chính thiếu hệ số, nhưng thanh đáy và nan phụ đủ tham số và CÓ SẴN tồn kho — đúng
-        // hình dạng định mức của mẫu cửa chiếm phần lớn sổ đơn trong dữ liệu thật. Theo luật cũ (bỏ
-        // riêng dòng hỏng) đơn này được duyệt với trạng thái "đủ nan" dù nan chính chưa từng được tính.
+        // (4) Không nan chính nào đủ hệ số, nhưng thanh đáy và nan phụ đủ tham số và CÓ SẴN tồn kho —
+        // đúng hình dạng định mức của mẫu cửa chiếm phần lớn sổ đơn trong dữ liệu thật. Bỏ riêng dòng
+        // hỏng ở đây thì đơn được duyệt với trạng thái "đủ nan" dù nan chính chưa từng được tính.
         DoorProduct mainSlatIncomplete = persistDoorProduct();
         persistBomItem(mainSlatIncomplete, persistSlatMaterial(SlatGroup.MAIN_SLAT));
         for (SlatGroup cuttable : List.of(SlatGroup.BOTTOM_BAR, SlatGroup.SUB_SLAT)) {
@@ -1209,6 +1209,56 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         assertThat(cuttingPlanDetailItemRepository.findAll()).isEmpty();
         assertThat(shortageRecordRepository.findAll()).isEmpty();
         assertThat(service.countPendingMissingBom()).isEqualTo(4);
+    }
+
+    /**
+     * Mặt kia của kịch bản (4): mẫu cửa có MỘT nan chính đủ hệ số bên cạnh một nan chính thiếu hệ số
+     * thì KHÔNG bị chặn — theo doanh nghiệp, dòng thiếu là profile phụ nhỏ (chỉ nan lớn mới có hệ
+     * số), nên chỉ dòng đó bị bỏ. Đi trọn đường duyệt để khóa cả truy vấn phạm vi lẫn
+     * CuttingDemandService: đơn vào phạm vi, không bị đếm là đang bị chặn, và phương án chỉ cắt vật tư
+     * của dòng đủ hệ số. Mồi nhử: vật tư của dòng thiếu hệ số CÓ SẴN tồn kho khớp đúng độ dài, nên
+     * nếu dòng đó lọt vào nhu cầu thì nó sẽ được cắt và lộ ra trong chi tiết phương án.
+     */
+    @Test
+    void generate_includesDoorSetWithOneCompleteMainSlatRow() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+
+        SlatMaterial completeMain = persistSlatMaterial(SlatGroup.MAIN_SLAT);
+        BomItem complete = new BomItem();
+        complete.setDoorProduct(doorProduct);
+        complete.setSlatMaterial(completeMain);
+        complete.setWidthOffsetM(new BigDecimal("0.024"));
+        complete.setSlatCountSlope(BigDecimal.ZERO);
+        complete.setSlatCountIntercept(new BigDecimal("2.0000"));
+        bomItemRepository.save(complete);
+        persistInventoryBatch(completeMain, 3126, 2);
+
+        SlatMaterial secondaryProfile = persistSlatMaterial(SlatGroup.MAIN_SLAT);
+        BomItem incomplete = new BomItem();
+        incomplete.setDoorProduct(doorProduct);
+        incomplete.setSlatMaterial(secondaryProfile);
+        incomplete.setWidthOffsetM(new BigDecimal("0.024"));
+        bomItemRepository.save(incomplete);
+        persistInventoryBatch(secondaryProfile, 3126, 5);
+
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("3.150"), LocalDate.now());
+
+        assertThat(service.countPendingMissingBom())
+                .as("một nan chính đủ hệ số là đủ để mẫu cửa không bị chặn")
+                .isZero();
+
+        CuttingPlan plan = approvePlan();
+
+        assertThat(plan.getScopeOrderCount()).isEqualTo(1);
+        assertThat(cuttingPlanDetailRepository.findByCuttingPlan_Id(plan.getId()))
+                .as("chỉ nan chính đủ hệ số được cắt: 2 nan × (3.150 - 0.024)m, khớp đúng 2 thanh 3126mm")
+                .extracting(
+                        detail -> detail.getSlatMaterial().getId(),
+                        CuttingPlanDetail::getSourceLengthMm,
+                        CuttingPlanDetail::getStickCount)
+                .containsExactly(tuple(completeMain.getId(), 3126, 2));
+        assertThat(shortageRecordRepository.findAll()).isEmpty();
     }
 
     /**

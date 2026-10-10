@@ -361,9 +361,13 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
      * <ul>
      *   <li>MAIN_SLAT chỉ có MỘT trong hai hệ số, mỗi hệ số một mẫu cửa: bản nào bỏ sót điều kiện của
      *       một hệ số thì đúng mẫu cửa đó lọt thành "Chưa xử lý".
-     *   <li>Dòng thiếu tham số đi KÈM dòng dùng được (nan chính hỏng + thanh đáy/nan phụ — hình dạng
-     *       định mức chiếm phần lớn sổ đơn thật; hai dòng nan chính một đủ một thiếu; ray hỏng + nan
-     *       phụ): vẫn bị chặn, vì một dòng hỏng là nhu cầu cả bộ cửa không đầy đủ.
+     *   <li>Nan chính hỏng đi KÈM dòng dùng được nhưng KHÔNG có nan chính nào đủ hệ số (một hay hai dòng
+     *       nan chính hỏng + thanh đáy/nan phụ — hình dạng định mức chiếm phần lớn sổ đơn thật): vẫn
+     *       bị chặn, vì nan chính của bộ cửa chưa từng được tính.
+     *   <li>Hai dòng nan chính một đủ một thiếu: KHÔNG bị chặn — dòng thiếu là profile phụ, bị bỏ
+     *       riêng. Bản nào còn giữ luật cũ "dù chỉ một dòng hỏng" thì mẫu này lộ ra. Cùng hình dạng đó
+     *       kèm thêm ray hỏng thì vẫn bị chặn: nan chính đủ không cứu được ray.
+     *   <li>Ray hỏng + nan phụ: vẫn bị chặn.
      *   <li>Dòng OTHER không tham số đi kèm nan phụ: KHÔNG bị chặn — bản nào coi OTHER là dòng hỏng
      *       thì mẫu này lộ ra.
      * </ul>
@@ -408,6 +412,14 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
         DoorProduct otherWithSub = persistDoorProduct(83300007L, "#12");
         persistBomItem(otherWithSub, SlatGroup.OTHER, null, null, null);
         persistBomItem(otherWithSub, SlatGroup.SUB_SLAT, null, null, null);
+        DoorProduct mainAllBrokenWithSub = persistDoorProduct(83300006L, "#12");
+        persistBomItem(mainAllBrokenWithSub, SlatGroup.MAIN_SLAT, null, null, null);
+        persistBomItem(mainAllBrokenWithSub, SlatGroup.MAIN_SLAT, slope, null, null);
+        persistBomItem(mainAllBrokenWithSub, SlatGroup.SUB_SLAT, null, null, null);
+        DoorProduct mainOneOfTwoBrokenRailBroken = persistDoorProduct(83300005L, "#12");
+        persistBomItem(mainOneOfTwoBrokenRailBroken, SlatGroup.MAIN_SLAT, slope, intercept, null);
+        persistBomItem(mainOneOfTwoBrokenRailBroken, SlatGroup.MAIN_SLAT, null, null, null);
+        persistBomItem(mainOneOfTwoBrokenRailBroken, SlatGroup.RAIL, null, null, null);
 
         int item = 0;
         for (Map.Entry<DoorProduct, SalesOrderProcessingStatus> entry : Map.ofEntries(
@@ -418,7 +430,9 @@ class SalesOrderServiceTest extends AbstractIntegrationTest {
                         Map.entry(otherOnly, SalesOrderProcessingStatus.BLOCKED),
                         Map.entry(railBrokenWithSub, SalesOrderProcessingStatus.BLOCKED),
                         Map.entry(mainBrokenWithSubAndBottom, SalesOrderProcessingStatus.BLOCKED),
-                        Map.entry(mainOneOfTwoBroken, SalesOrderProcessingStatus.BLOCKED),
+                        Map.entry(mainAllBrokenWithSub, SalesOrderProcessingStatus.BLOCKED),
+                        Map.entry(mainOneOfTwoBrokenRailBroken, SalesOrderProcessingStatus.BLOCKED),
+                        Map.entry(mainOneOfTwoBroken, SalesOrderProcessingStatus.PENDING),
                         Map.entry(mainComplete, SalesOrderProcessingStatus.PENDING),
                         Map.entry(railWithOffset, SalesOrderProcessingStatus.PENDING),
                         Map.entry(subSlat, SalesOrderProcessingStatus.PENDING),
