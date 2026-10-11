@@ -189,5 +189,6 @@ export function shortagesByMaterial(demands: CuttingPlanDemandView[]): ShortageB
  * và in ra `0.00%` ở đó là nói rằng cắt rất sạch.
  */
 export function wasteRatioPercent(totalWasteM: number, totalStockUsedM: number): number | null {
-  return totalStockUsedM > 0 ? (totalWasteM / totalStockUsedM) * 100 : null
+  // Nhân 100 trước rồi mới chia: (0.115 / 100) * 100 ra 0.11499999999999999 và làm tròn sai về 0.11.
+  return totalStockUsedM > 0 ? (totalWasteM * 100) / totalStockUsedM : null
 }

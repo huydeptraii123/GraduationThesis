@@ -11,6 +11,7 @@ import { CuttingPlanOverviewTab } from './CuttingPlanOverviewTab'
 import { createOrderColorAssigner } from './orderColorPalette'
 import { buildCuttingBatches, buildDedupedOrderRows } from './cuttingBatches'
 import { exportCuttingPlan, getCuttingPlan } from './cuttingPlansApi'
+import { planWasteRatioPercent } from './planWasteRatio'
 import type { CuttingPlanResponse, CuttingPlanStatus } from './types'
 
 const STATUS_LABEL: Record<CuttingPlanStatus, { text: string; color: string }> = {
@@ -96,7 +97,7 @@ export function CuttingPlanDetailPage() {
           <Typography.Text type="secondary">
             Chạy lúc {dayjs(plan.runAt).format('DD/MM/YYYY HH:mm')} · Phạm vi {plan.scopeOrderCount} đơn đến{' '}
             {dayjs(plan.scopeCutoffDate).format('DD/MM/YYYY')} · Tỷ lệ phế{' '}
-            {plan.totalStockUsedM > 0 ? ((plan.totalWasteM / plan.totalStockUsedM) * 100).toFixed(1) : '0.0'}%
+            {planWasteRatioPercent(plan).toFixed(1)}%
           </Typography.Text>
         </div>
         <Space>

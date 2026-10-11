@@ -28,6 +28,7 @@ import { WasteStatsSection } from '../dashboard/WasteStatsSection'
 import { getDashboard } from '../dashboard/dashboardApi'
 import type { DashboardResponse } from '../dashboard/types'
 import { listCuttingPlans } from './cuttingPlansApi'
+import { planWasteRatioPercent } from './planWasteRatio'
 import type { CuttingPlanStatus } from './types'
 
 /** Id không bao giờ tồn tại (khóa chính luôn dương) — dùng để ép bộ lọc trả về rỗng. */
@@ -227,10 +228,9 @@ export function CuttingPlanListPage() {
           {
             title: 'Tỷ lệ phế',
             render: (_, plan) => {
-              const ratio = plan.totalStockUsedM > 0 ? (plan.totalWasteM / plan.totalStockUsedM) * 100 : 0
               return (
                 <span>
-                  {ratio.toFixed(1)}% / {plan.totalWasteM.toFixed(1)}m
+                  {planWasteRatioPercent(plan).toFixed(1)}% / {plan.totalWasteM.toFixed(1)}m
                 </span>
               )
             },
