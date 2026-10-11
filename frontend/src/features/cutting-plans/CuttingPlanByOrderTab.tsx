@@ -116,17 +116,17 @@ export function CuttingPlanByOrderTab({ plan }: Props) {
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={8}>
           <Card size="small">
-            <Statistic title="Tổng nhu cầu cắt" value={allRows.length} />
+            <Statistic title="Tổng nhu cầu cắt" value={allRows.length} groupSeparator="." />
           </Card>
         </Col>
         <Col span={8}>
           <Card size="small">
-            <Statistic title="Đáp ứng đủ" value={sufficientCount} styles={{ content: { color: '#3f8600' } }} />
+            <Statistic title="Đáp ứng đủ" value={sufficientCount} groupSeparator="." styles={{ content: { color: '#3f8600' } }} />
           </Card>
         </Col>
         <Col span={8}>
           <Card size="small">
-            <Statistic title="Thiếu hụt" value={shortageCount} styles={{ content: { color: '#cf1322' } }} />
+            <Statistic title="Thiếu hụt" value={shortageCount} groupSeparator="." styles={{ content: { color: '#cf1322' } }} />
           </Card>
         </Col>
       </Row>

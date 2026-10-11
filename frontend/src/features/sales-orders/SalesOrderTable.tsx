@@ -7,6 +7,7 @@ import { ListLoadError } from '../../components/ListLoadError'
 import { tablePagination, type PageParams } from '../../api/pagination'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { usePagedList } from '../../hooks/usePagedList'
+import { formatMeters } from '../../utils/formatMeters'
 import type { DoorProductResponse } from '../bom/types'
 import { ImportSalesOrdersModal } from './ImportSalesOrdersModal'
 import { SalesOrderFormDrawer } from './SalesOrderFormDrawer'
@@ -262,7 +263,7 @@ export function SalesOrderTable({
             title: 'Kích thước (H×W)',
             render: (_, order) => (
               <span>
-                {order.chieuCaoDh.toFixed(3)} × {order.chieuRongDh.toFixed(3)} m
+                {formatMeters(order.chieuCaoDh * 1000)} × {formatMeters(order.chieuRongDh * 1000)} m
               </span>
             ),
           },
