@@ -160,7 +160,7 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="Tổng số bộ cửa" value={orderRows.length} suffix="bộ" />
+            <Statistic title="Tổng số bộ cửa" value={orderRows.length} groupSeparator="." suffix="bộ" />
           </Card>
         </Col>
         <Col span={6}>
@@ -181,7 +181,8 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
             <Statistic
               title={SUFFICIENT_LABEL}
               value={sufficientCount}
-              suffix={`/ ${orderRows.length}`}
+              groupSeparator="."
+              suffix={`/ ${orderRows.length.toLocaleString('vi-VN')}`}
               styles={{ content: { color: SUFFICIENCY_COLOR.sufficient } }}
             />
           </Card>
@@ -191,7 +192,8 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
             <Statistic
               title={SHORTAGE_LABEL}
               value={shortageCount}
-              suffix={`/ ${orderRows.length}`}
+              groupSeparator="."
+              suffix={`/ ${orderRows.length.toLocaleString('vi-VN')}`}
               styles={{ content: { color: SUFFICIENCY_COLOR.short } }}
             />
           </Card>

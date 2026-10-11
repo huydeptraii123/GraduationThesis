@@ -64,15 +64,21 @@ export function BomPage() {
 
   return (
     <div>
-      <Space align="center" style={{ marginBottom: 4 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          Định mức BOM (Công thức cắt nan)
-        </Typography.Title>
-        <Tag color="gold">Admin Only</Tag>
-      </Space>
-      <Typography.Text type="secondary">
-        Thiết lập tham số offset kích thước và thông số tính số lượng nan cho từng mẫu cửa.
-      </Typography.Text>
+      {/* Tiêu đề (Space = inline-flex) và câu mô tả (inline) để trần thì đứng chung một dòng, rồi kéo
+          luôn khối thẻ thống kê lên theo. Mỗi phần một khối riêng. */}
+      <div>
+        <Space align="center" style={{ marginBottom: 4 }}>
+          <Typography.Title level={3} style={{ margin: 0 }}>
+            Định mức BOM (Công thức cắt nan)
+          </Typography.Title>
+          <Tag color="gold">Admin Only</Tag>
+        </Space>
+      </div>
+      <div>
+        <Typography.Text type="secondary">
+          Thiết lập tham số offset kích thước và thông số tính số lượng nan cho từng mẫu cửa.
+        </Typography.Text>
+      </div>
 
       {!canEdit && <RoleRestrictionNotice requiredRole="ADMIN" action="thêm/sửa/xóa định mức BOM" />}
 
@@ -80,13 +86,13 @@ export function BomPage() {
 
       <Space size={16} style={{ margin: '16px 0' }} wrap>
         <Card size="small" style={{ width: 220 }}>
-          <Statistic title="Tổng định mức BOM" value={summary?.totalItems ?? 0} loading={loading} />
+          <Statistic title="Tổng định mức BOM" value={summary?.totalItems ?? 0} groupSeparator="." loading={loading} />
         </Card>
         <Card size="small" style={{ width: 220 }}>
-          <Statistic title="Nhóm thanh nan đang dùng" value={summary?.groupCount ?? 0} loading={loading} />
+          <Statistic title="Nhóm thanh nan đang dùng" value={summary?.groupCount ?? 0} groupSeparator="." loading={loading} />
         </Card>
         <Card size="small" style={{ width: 220 }}>
-          <Statistic title="Mẫu cửa đang có định mức" value={summary?.doorProductCount ?? 0} loading={loading} />
+          <Statistic title="Mẫu cửa đang có định mức" value={summary?.doorProductCount ?? 0} groupSeparator="." loading={loading} />
         </Card>
       </Space>
 

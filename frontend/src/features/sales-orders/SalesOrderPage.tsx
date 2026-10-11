@@ -63,10 +63,15 @@ export function SalesOrderPage() {
 
   return (
     <div>
-      <Typography.Title level={3} style={{ margin: 0 }}>
-        Đơn hàng
-      </Typography.Title>
-      <Typography.Text type="secondary">Danh sách đơn hàng khách, tạo thủ công hoặc nhập từ Excel SAP.</Typography.Text>
+      {/* Câu mô tả là phần tử inline: để trần thì khối thẻ thống kê (Space = inline-flex) bên dưới bị kéo
+          lên đứng cùng dòng với nó. Bọc thành khối riêng để thẻ luôn xuống dòng, kể cả khi không có dải
+          "chỉ xem" chen vào giữa (tài khoản PLANNER). */}
+      <div>
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          Đơn hàng
+        </Typography.Title>
+        <Typography.Text type="secondary">Danh sách đơn hàng khách, tạo thủ công hoặc nhập từ Excel SAP.</Typography.Text>
+      </div>
 
       {!canImport && <RoleRestrictionNotice requiredRole="PLANNER" action="nhập đơn hàng hàng loạt từ Excel" />}
 
@@ -74,7 +79,7 @@ export function SalesOrderPage() {
 
       <Space size={16} style={{ margin: '16px 0' }} wrap>
         <Card size="small" style={{ width: 220 }}>
-          <Statistic title="Tổng số đơn hàng" value={totalOrders} loading={loading} />
+          <Statistic title="Tổng số đơn hàng" value={totalOrders} groupSeparator="." loading={loading} />
         </Card>
       </Space>
 

@@ -73,10 +73,10 @@ export function UsersPage() {
 
           <Space size={16} style={{ marginBottom: 16 }} wrap>
             <Card size="small" style={{ width: 220 }}>
-              <Statistic title="Tổng số tài khoản" value={totalCount} loading={loading} />
+              <Statistic title="Tổng số tài khoản" value={totalCount} groupSeparator="." loading={loading} />
             </Card>
             <Card size="small" style={{ width: 220 }}>
-              <Statistic title="Đang hoạt động" value={activeCount} loading={loading} />
+              <Statistic title="Đang hoạt động" value={activeCount} groupSeparator="." loading={loading} />
             </Card>
           </Space>
 
