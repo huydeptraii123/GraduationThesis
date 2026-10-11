@@ -34,6 +34,7 @@ import {
 import { localPagination } from '../../api/pagination'
 import { formatMeters } from '../../utils/formatMeters'
 import type { CuttingBatch, CuttingBatchOrderRow } from './cuttingBatches'
+import { planWasteRatioPercent } from './planWasteRatio'
 import { shortageTotalMm } from './shortageLengths'
 import type { CuttingPlanResponse } from './types'
 
@@ -99,7 +100,9 @@ function countBySufficiency(
 }
 
 export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
-  const wasteRatioPercent = plan.totalStockUsedM > 0 ? (plan.totalWasteM / plan.totalStockUsedM) * 100 : 0
+  // Số đã làm tròn sẵn (Statistic chỉ cắt cụt) và so mục tiêu trên chính số đó, để số hiện ra và
+  // màu của nó không bao giờ nói hai điều khác nhau ("5.0%" mà tô đỏ).
+  const wasteRatioPercent = planWasteRatioPercent(plan)
   const sufficientCount = orderRows.filter((row) => !row.hasShortage).length
   const shortageCount = orderRows.filter((row) => row.hasShortage).length
 

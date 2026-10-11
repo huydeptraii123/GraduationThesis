@@ -51,6 +51,7 @@ import {
 } from '../../components/charts/chartTheme'
 import { DOOR_SET_STATUSES, DOOR_SET_STATUS_COLOR, type DoorSetStatus } from './simulationSeries'
 import { formatMeters } from '../../utils/formatMeters'
+import { roundHalfUp } from '../../utils/roundHalfUp'
 
 interface Props {
   simulation: CuttingPlanPreviewResponse
@@ -120,11 +121,12 @@ export function SimulationDashboard({ simulation }: Props) {
             </Typography.Text>
           </Card>
           <Card size="small">
-            {/* Hai chữ số thập phân theo khuôn mẫu doanh nghiệp; chưa tiêu hao mét nào thì tỷ lệ
+            {/* Hai chữ số thập phân theo khuôn mẫu doanh nghiệp, làm tròn trước vì Statistic chỉ cắt
+                cụt (xem roundHalfUp); chưa tiêu hao mét nào thì tỷ lệ
                 phế không tồn tại — hiện gạch ngang thay vì 0,00% (đọc nhầm thành "cắt rất sạch"). */}
             <Statistic
               title="Tỷ lệ phế"
-              value={wasteRatio ?? '—'}
+              value={wasteRatio == null ? '—' : roundHalfUp(wasteRatio, 2)}
               precision={wasteRatio == null ? undefined : 2}
               suffix={wasteRatio == null ? '' : '%'}
             />
