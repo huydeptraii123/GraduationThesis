@@ -5,6 +5,7 @@ import { ChartLegend } from '../../components/charts/ChartParts'
 import { REMAINDER_COLOR, type LegendEntry } from '../../components/charts/chartTheme'
 import { localPagination } from '../../api/pagination'
 import { formatMeters } from '../../utils/formatMeters'
+import { formatHalfUp } from '../../utils/roundHalfUp'
 import { expandDetailToPieces } from './expandDetailToPieces'
 import { REMAINDER_TYPE_LABEL } from './remainderLabels'
 import type { CuttingPlanDetailResponse, CuttingPlanResponse } from './types'
@@ -14,19 +15,24 @@ interface Props {
   assignOrderColor: (orderKey: string) => string
 }
 
-function efficiencyPercent(detail: CuttingPlanDetailResponse): number {
-  return ((detail.sourceLengthMm - detail.remainderMm) / detail.sourceLengthMm) * 100
+/**
+ * Phần trăm của `lengthMm` trên độ dài phôi, làm tròn nửa lên tới số nguyên. Nhân 100 trước rồi mới
+ * chia — một phép chia trên số nguyên mm, điều kiện để formatHalfUp làm tròn đúng.
+ */
+function percentOfStick(lengthMm: number, detail: CuttingPlanDetailResponse): string {
+  return formatHalfUp((lengthMm * 100) / detail.sourceLengthMm, 0)
 }
 
 function StatusChip({ detail }: { detail: CuttingPlanDetailResponse }) {
-  const efficiency = efficiencyPercent(detail).toFixed(0)
+  const efficiency = percentOfStick(detail.sourceLengthMm - detail.remainderMm, detail)
   if (detail.remainderType === 'RESTOCK') {
     return <Tag color="success">Tái sinh tồn kho ({efficiency}%)</Tag>
   }
   if (detail.remainderType === 'WASTE') {
     // "Cao" nói về phần dư, không phải hiệu suất — dùng đúng tỉ lệ phần dư, không phải phần đã dùng.
-    const wastePercent = (100 - Number(efficiency)).toFixed(0)
-    return <Tag color="warning">Phần dư cao ({wastePercent}%)</Tag>
+    // Tính thẳng từ phần dư chứ không lấy 100 trừ hiệu suất đã làm tròn: ở mốc nửa (57,5% / 42,5%)
+    // phép trừ ra 42 trong khi phần dư làm tròn nửa lên là 43.
+    return <Tag color="warning">Phần dư cao ({percentOfStick(detail.remainderMm, detail)}%)</Tag>
   }
   return <Tag>Hiệu suất {efficiency}%</Tag>
 }

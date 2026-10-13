@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react'
 import { formatMeters } from '../utils/formatMeters'
+import { formatHalfUp } from '../utils/roundHalfUp'
 import { CHART_SURFACE, CHART_TRACK, REMAINDER_COLOR, REMAINDER_TINT } from './charts/chartTheme'
 
 export type RemainderType = 'DISCARDED' | 'WASTE' | 'RESTOCK'
@@ -43,7 +44,8 @@ function buildTicks(sourceLengthMm: number): string[] {
   const ticks: string[] = []
   for (let i = 0; i < TICK_COUNT; i++) {
     // Mốc giữa là vạch chia đều (độ dài phôi × i/6), không phải số đo — một chữ số là đủ đọc thang.
-    ticks.push(`${((sourceLengthMm * i) / TICK_COUNT / 1000).toFixed(1)}m`)
+    // Một phép chia trên số nguyên mm rồi làm tròn nửa lên, như mọi số lẻ khác trên giao diện.
+    ticks.push(`${formatHalfUp((sourceLengthMm * i) / (TICK_COUNT * 1000), 1)}m`)
   }
   // Mốc cuối chính là độ dài phôi: ghi đúng tới milimet như tiêu đề thẻ và file Excel, không làm tròn.
   ticks.push(`${formatMeters(sourceLengthMm)}m (Chuẩn)`)

@@ -14,6 +14,8 @@
  * `content` của `<LabelList>`.
  */
 
+import { formatHalfUp } from '../../utils/roundHalfUp'
+
 /*
  * Các ngưỡng hình học dưới đây đo cho chữ 11px (`--chart-text-value` trong charts.css). Đổi cỡ chữ
  * ở đó thì phải đo lại ở đây.
@@ -74,8 +76,10 @@ function toNumber(value: number | string | undefined): number {
   return Number(value ?? 0)
 }
 
+// Cùng quy tắc HALF_UP với backend: tỷ lệ theo ngày của biểu đồ xu hướng do màn hình tự chia, không
+// phải số backend đã làm tròn sẵn, nên `toFixed` có thể lệch ở mốc nửa.
 function formatPercent(value: number | string | undefined): string {
-  return `${toNumber(value).toFixed(1)}%`
+  return `${formatHalfUp(toNumber(value), 1)}%`
 }
 
 /**

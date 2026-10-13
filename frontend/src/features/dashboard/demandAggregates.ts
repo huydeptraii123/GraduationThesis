@@ -8,6 +8,7 @@
 
 import type { CuttingPlanDemandView } from '../cutting-plans/types'
 import { DOOR_SET_SHORT, DOOR_SET_SUFFICIENT, type DoorSetStatus } from './simulationSeries'
+import { toCentimetres } from '../../utils/roundHalfUp'
 
 /** Model chưa khai báo vẫn phải lên biểu đồ — gộp im lặng vào nhóm khác thì số liệu nói dối. */
 export const UNKNOWN_MODEL_LABEL = '(chưa có model)'
@@ -189,6 +190,8 @@ export function shortagesByMaterial(demands: CuttingPlanDemandView[]): ShortageB
  * và in ra `0.00%` ở đó là nói rằng cắt rất sạch.
  */
 export function wasteRatioPercent(totalWasteM: number, totalStockUsedM: number): number | null {
-  // Nhân 100 trước rồi mới chia: (0.115 / 100) * 100 ra 0.11499999999999999 và làm tròn sai về 0.11.
-  return totalStockUsedM > 0 ? (totalWasteM * 100) / totalStockUsedM : null
+  // Chia trên centimet nguyên, nhân 100 trước: (1.15 * 100) / 1000 ra 0.11499999999999999 và làm
+  // tròn sai về 0.11, còn (115 * 100) / 100000 ra đúng 0.115.
+  const stockUsedCm = toCentimetres(totalStockUsedM)
+  return stockUsedCm > 0 ? (toCentimetres(totalWasteM) * 100) / stockUsedCm : null
 }
