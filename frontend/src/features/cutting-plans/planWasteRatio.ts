@@ -1,4 +1,4 @@
-import { roundHalfUp } from '../../utils/roundHalfUp'
+import { roundHalfUp, toCentimetres } from '../../utils/roundHalfUp'
 
 /**
  * Tỷ lệ phế của MỘT phương án, đã làm tròn nửa lên tới 1 chữ số thập phân — nguồn duy nhất cho thẻ
@@ -6,9 +6,10 @@ import { roundHalfUp } from '../../utils/roundHalfUp'
  * tính mỗi nơi một kiểu (Statistic cắt cụt, `toFixed` trên số thực) và cùng một phương án hiện
  * 1.0% ở thẻ nhưng 1.1% ở tiêu đề ngay phía trên.
  *
- * Nhân 100 trước rồi mới chia: (0.115 / 100) * 100 ra 0.11499999999999999, (0.115 * 100) / 100 ra
- * đúng 0.115. Trả 0 khi chưa tiêu hao mét nào, như cách các màn này vẫn hiển thị.
+ * Chia trên centimet nguyên, nhân 100 trước: chỉ nhân 100 trước trên số mét lẻ vẫn lệch ở mốc nửa
+ * (xem {@link toCentimetres}). Trả 0 khi chưa tiêu hao mét nào, như cách các màn này vẫn hiển thị.
  */
 export function planWasteRatioPercent(plan: { totalWasteM: number; totalStockUsedM: number }): number {
-  return plan.totalStockUsedM > 0 ? roundHalfUp((plan.totalWasteM * 100) / plan.totalStockUsedM, 1) : 0
+  const stockUsedCm = toCentimetres(plan.totalStockUsedM)
+  return stockUsedCm > 0 ? roundHalfUp((toCentimetres(plan.totalWasteM) * 100) / stockUsedCm, 1) : 0
 }

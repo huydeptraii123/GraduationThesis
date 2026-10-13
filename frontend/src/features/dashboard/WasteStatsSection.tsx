@@ -35,6 +35,7 @@ import {
 import { SLAT_GROUP_LABEL } from '../inventory/constants'
 import { REMAINDER_TYPE_LABEL } from '../cutting-plans/remainderLabels'
 import type { RemainderType } from '../cutting-plans/types'
+import { formatHalfUp, toCentimetres } from '../../utils/roundHalfUp'
 import type { DashboardResponse } from './types'
 
 interface Props {
@@ -75,7 +76,7 @@ function formatMeters(value: number): string {
 }
 
 function formatPercent(value: number): string {
-  return `${Number(value ?? 0).toFixed(1)}%`
+  return `${formatHalfUp(Number(value ?? 0), 1)}%`
 }
 
 interface OrderPoint {
@@ -173,11 +174,16 @@ export function WasteStatsSection({ data }: Props) {
         })
       }
     }
+    // Chia trên centimet nguyên, nhân 100 trước: cộng dồn số mét lẻ rồi chia sẽ lệch ở mốc nửa
+    // (0,09 m phế / 20 m tiêu hao hiện 0.4% thay vì 0.5%).
     return [...byDay.values()]
-      .map((day) => ({
-        ...day,
-        wasteRatioPercent: day.stockUsedM > 0 ? (day.wasteM / day.stockUsedM) * 100 : 0,
-      }))
+      .map((day) => {
+        const stockUsedCm = toCentimetres(day.stockUsedM)
+        return {
+          ...day,
+          wasteRatioPercent: stockUsedCm > 0 ? (toCentimetres(day.wasteM) * 100) / stockUsedCm : 0,
+        }
+      })
       .sort((left, right) => left.ts - right.ts)
   }, [orderPoints])
 
@@ -208,11 +214,12 @@ export function WasteStatsSection({ data }: Props) {
     [data.remainderBreakdown],
   )
   const breakdownTotal = breakdown.reduce((sum, row) => sum + row.value, 0)
+  const breakdownTotalCm = breakdown.reduce((sum, row) => sum + toCentimetres(row.value), 0)
   // Số mét và tỷ trọng nằm ở chú giải như vành khuyên trang chủ, không làm nhãn ngoài lát.
   const breakdownLegend: LegendEntry[] = breakdown.map((row) => ({
     id: row.key,
     label: `${row.name}: ${formatMeters(row.value)} (${
-      breakdownTotal > 0 ? ((row.value / breakdownTotal) * 100).toFixed(1) : '0.0'
+      breakdownTotalCm > 0 ? formatHalfUp((toCentimetres(row.value) * 100) / breakdownTotalCm, 1) : '0.0'
     }%)`,
     color: REMAINDER_COLOR[row.key],
   }))

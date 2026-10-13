@@ -33,6 +33,7 @@ import {
 } from '../../components/charts/chartTheme'
 import { localPagination } from '../../api/pagination'
 import { formatMeters } from '../../utils/formatMeters'
+import { formatHalfUp } from '../../utils/roundHalfUp'
 import type { CuttingBatch, CuttingBatchOrderRow } from './cuttingBatches'
 import { planWasteRatioPercent } from './planWasteRatio'
 import { shortageTotalMm } from './shortageLengths'
@@ -128,7 +129,7 @@ export function CuttingPlanOverviewTab({ plan, orderRows, batches }: Props) {
     .filter((entry) => entry.count > 0)
     .map(({ count, ...entry }) => ({
       ...entry,
-      label: `${entry.label} ${count} (${orderRows.length > 0 ? ((count / orderRows.length) * 100).toFixed(2) : '0.00'}%)`,
+      label: `${entry.label} ${count} (${orderRows.length > 0 ? formatHalfUp((count * 100) / orderRows.length, 2) : '0.00'}%)`,
     }))
   const donutSlices = [
     { name: SUFFICIENT_LABEL, value: sufficientCount, color: SUFFICIENCY_COLOR.sufficient },

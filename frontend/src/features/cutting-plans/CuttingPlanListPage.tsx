@@ -20,6 +20,7 @@ import { useNavigate } from 'react-router-dom'
 import { extractErrorMessage } from '../../api/apiError'
 import { tablePagination, type PageParams } from '../../api/pagination'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { formatHalfUp } from '../../utils/roundHalfUp'
 import { usePagedList } from '../../hooks/usePagedList'
 import { useAuth } from '../auth/AuthContext'
 import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
@@ -230,7 +231,7 @@ export function CuttingPlanListPage() {
             render: (_, plan) => {
               return (
                 <span>
-                  {planWasteRatioPercent(plan).toFixed(1)}% / {plan.totalWasteM.toFixed(1)}m
+                  {planWasteRatioPercent(plan).toFixed(1)}% / {formatHalfUp(plan.totalWasteM, 1)}m
                 </span>
               )
             },

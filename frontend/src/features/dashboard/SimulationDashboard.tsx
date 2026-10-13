@@ -51,7 +51,7 @@ import {
 } from '../../components/charts/chartTheme'
 import { DOOR_SET_STATUSES, DOOR_SET_STATUS_COLOR, type DoorSetStatus } from './simulationSeries'
 import { formatMeters } from '../../utils/formatMeters'
-import { roundHalfUp } from '../../utils/roundHalfUp'
+import { formatHalfUp, roundHalfUp } from '../../utils/roundHalfUp'
 
 interface Props {
   simulation: CuttingPlanPreviewResponse
@@ -78,7 +78,7 @@ const STATUS_LEGEND: LegendEntry[] = DOOR_SET_STATUSES.map((status) => ({
 function buildDonutLegend(slices: { status: DoorSetStatus; count: number }[], total: number): LegendEntry[] {
   return slices.map((slice) => ({
     id: slice.status,
-    label: `${slice.status} ${slice.count} (${total > 0 ? ((slice.count / total) * 100).toFixed(2) : '0.00'}%)`,
+    label: `${slice.status} ${slice.count} (${total > 0 ? formatHalfUp((slice.count * 100) / total, 2) : '0.00'}%)`,
     color: DOOR_SET_STATUS_COLOR[slice.status],
   }))
 }
@@ -131,7 +131,7 @@ export function SimulationDashboard({ simulation }: Props) {
               suffix={wasteRatio == null ? '' : '%'}
             />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {simulation.totalWasteM.toFixed(1)} m phế / {simulation.totalStockUsedM.toFixed(1)} m tiêu hao
+              {formatHalfUp(simulation.totalWasteM, 1)} m phế / {formatHalfUp(simulation.totalStockUsedM, 1)} m tiêu hao
             </Typography.Text>
           </Card>
         </Col>
