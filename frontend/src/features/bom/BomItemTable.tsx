@@ -5,6 +5,7 @@ import { extractErrorMessage } from '../../api/apiError'
 import { ListLoadError } from '../../components/ListLoadError'
 import { tablePagination, type PageParams } from '../../api/pagination'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { formatMeters } from '../../utils/formatMeters'
 import { usePagedList } from '../../hooks/usePagedList'
 import { SLAT_GROUP_COLOR, SLAT_GROUP_LABEL, SLAT_GROUP_OPTIONS, buildSlatGroupLookup } from '../inventory/constants'
 import type { SlatGroup, SlatMaterialResponse } from '../inventory/types'
@@ -20,6 +21,9 @@ import type { BomItemResponse, DoorProductResponse } from './types'
  * Dữ liệu SAP mang cả W lẫn H trên rất nhiều dòng, kể cả nhóm không dùng tới chúng. In theo kiểu
  * "có W thì in W" khiến dòng ray hiện W — con số thuật toán bỏ qua — trong khi H mới là con số quyết
  * định độ dài đoạn cắt.
+ *
+ * Offset ghi theo đúng cách ghi độ dài của mọi màn khác (`formatMeters`: 0.05 thay vì 0.050). Cột
+ * lưu DECIMAL(6,3), tức đúng tới milimet, nên đổi sang milimet không mất chữ số nào.
  */
 function offsetLabel(group: SlatGroup | undefined, item: BomItemResponse): string {
   switch (group) {
@@ -29,9 +33,9 @@ function offsetLabel(group: SlatGroup | undefined, item: BomItemResponse): strin
       if (item.slatCountSlope == null || item.slatCountIntercept == null) {
         return 'Thiếu hệ số số lượng nan — bị bỏ qua khi tính'
       }
-      return item.widthOffsetM != null ? `W: ${item.widthOffsetM.toFixed(3)} m` : 'W: theo hệ số 0,976'
+      return item.widthOffsetM != null ? `W: ${formatMeters(item.widthOffsetM * 1000)} m` : 'W: theo hệ số 0,976'
     case 'RAIL':
-      return item.heightOffsetM != null ? `H: ${item.heightOffsetM.toFixed(3)} m` : 'Thiếu H — bị bỏ qua khi tính'
+      return item.heightOffsetM != null ? `H: ${formatMeters(item.heightOffsetM * 1000)} m` : 'Thiếu H — bị bỏ qua khi tính'
     case 'BOTTOM_BAR':
     case 'SUB_SLAT':
       return 'Không trừ offset'
