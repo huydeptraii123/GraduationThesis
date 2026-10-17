@@ -60,3 +60,8 @@ export function importBomExcel(file: File): Promise<BomImportResult> {
   formData.append('file', file)
   return httpClient.post<BomImportResult>(`${BOM_ITEMS_URL}/import`, formData).then((res) => res.data)
 }
+
+/** File Excel mẫu hợp lệ (dòng tiêu đề đúng tên cột, cột định dạng sẵn, dòng ví dụ, sheet hướng dẫn) để điền dữ liệu rồi nhập lên. */
+export function downloadBomImportTemplate(): Promise<Blob> {
+  return httpClient.get(`${BOM_ITEMS_URL}/import/template`, { responseType: 'blob' }).then((res) => res.data)
+}

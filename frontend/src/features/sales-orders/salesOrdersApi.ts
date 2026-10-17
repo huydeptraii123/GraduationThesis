@@ -49,3 +49,10 @@ export function importSalesOrdersExcel(file: File): Promise<SalesOrderImportResu
   formData.append('file', file)
   return httpClient.post<SalesOrderImportResult>(`${SALES_ORDERS_URL}/import`, formData).then((res) => res.data)
 }
+
+/** File Excel mẫu hợp lệ (dòng tiêu đề đúng tên cột, cột định dạng sẵn, dòng ví dụ, sheet hướng dẫn) để điền dữ liệu rồi nhập lên. */
+export function downloadSalesOrderImportTemplate(): Promise<Blob> {
+  return httpClient
+    .get(`${SALES_ORDERS_URL}/import/template`, { responseType: 'blob' })
+    .then((res) => res.data)
+}

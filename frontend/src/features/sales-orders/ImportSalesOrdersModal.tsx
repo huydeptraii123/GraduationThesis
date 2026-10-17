@@ -3,7 +3,8 @@ import { Alert, Button, Modal, Table, Typography, Upload } from 'antd'
 import { useState } from 'react'
 import { extractErrorMessage, extractImportRowErrors, type ImportRowError } from '../../api/apiError'
 import { localPagination } from '../../api/pagination'
-import { importSalesOrdersExcel } from './salesOrdersApi'
+import { DownloadTemplateButton } from '../../components/DownloadTemplateButton'
+import { downloadSalesOrderImportTemplate, importSalesOrdersExcel } from './salesOrdersApi'
 import type { SalesOrderImportResult } from './types'
 
 /** Khớp với spring.servlet.multipart.max-file-size của backend và client_max_body_size của nginx. */
@@ -78,6 +79,15 @@ export function ImportSalesOrdersModal({ open, onClose, onImported }: Props) {
         title="Chỉ nhận các dòng thuộc nhóm vật tư cửa"
         description="Các dòng khác trong file (vật tư bộ tời, motor cuốn cửa...) sẽ tự động bị bỏ qua, không tính là lỗi."
       />
+
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}
+      >
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Chưa có file đúng định dạng? Tải file mẫu, điền dữ liệu rồi chọn lại ở đây — nhớ xóa các dòng ví dụ tô vàng trước khi nhập.
+        </Typography.Text>
+        <DownloadTemplateButton download={downloadSalesOrderImportTemplate} filename="mau-nhap-don-hang.xlsx" />
+      </div>
 
       <Upload.Dragger
         accept=".xlsx,.xls"

@@ -3,7 +3,8 @@ import { Alert, Button, Modal, Table, Typography, Upload } from 'antd'
 import { useState } from 'react'
 import { extractErrorMessage, extractImportRowErrors, type ImportRowError } from '../../api/apiError'
 import { localPagination } from '../../api/pagination'
-import { importInventoryExcel } from './inventoryApi'
+import { DownloadTemplateButton } from '../../components/DownloadTemplateButton'
+import { downloadInventoryImportTemplate, importInventoryExcel } from './inventoryApi'
 import type { InventoryImportResult } from './types'
 
 /** Khớp với spring.servlet.multipart.max-file-size của backend và client_max_body_size của nginx. */
@@ -78,6 +79,15 @@ export function ImportInventoryModal({ open, onClose, onImported }: Props) {
         title="Mỗi lần nhập là một ảnh chụp tồn kho tại thời điểm xuất file"
         description="Các tổ hợp loại thanh nan và chiều dài không còn xuất hiện trong file sẽ được đưa về 0 thanh, không phải cộng dồn vào tồn kho hiện có."
       />
+
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}
+      >
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Chưa có file đúng định dạng? Tải file mẫu, điền dữ liệu rồi chọn lại ở đây — nhớ xóa các dòng ví dụ tô vàng trước khi nhập, nếu không mọi lô khác sẽ bị đưa về 0 thanh.
+        </Typography.Text>
+        <DownloadTemplateButton download={downloadInventoryImportTemplate} filename="mau-nhap-ton-kho.xlsx" />
+      </div>
 
       <Upload.Dragger
         accept=".xlsx,.xls"
