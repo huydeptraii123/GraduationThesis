@@ -146,12 +146,15 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
                 new Endpoint("PUT /inventory-batches/{id}", Set.of(PLANNER), () -> json(put("/api/v1/inventory-batches/{id}", MISSING_ID), INVENTORY_BATCH_JSON)),
                 new Endpoint("DELETE /inventory-batches/{id}", Set.of(PLANNER), () -> delete("/api/v1/inventory-batches/{id}", MISSING_ID)),
                 new Endpoint("POST /inventory/import", Set.of(PLANNER), () -> upload("/api/v1/inventory/import")),
+                // File mẫu cùng quyền với nút nhập tương ứng: ai nhập được mới cần tải mẫu.
+                new Endpoint("GET /inventory/import/template", Set.of(PLANNER), () -> get("/api/v1/inventory/import/template")),
 
                 // Dữ liệu nền tảng (định mức BOM, mẫu cửa): ghi dành riêng cho ADMIN.
                 new Endpoint("POST /bom-items", Set.of(ADMIN), () -> json(post("/api/v1/bom-items"), BOM_ITEM_JSON)),
                 new Endpoint("PUT /bom-items/{id}", Set.of(ADMIN), () -> json(put("/api/v1/bom-items/{id}", MISSING_ID), BOM_ITEM_JSON)),
                 new Endpoint("DELETE /bom-items/{id}", Set.of(ADMIN), () -> delete("/api/v1/bom-items/{id}", MISSING_ID)),
                 new Endpoint("POST /bom-items/import", Set.of(ADMIN), () -> upload("/api/v1/bom-items/import")),
+                new Endpoint("GET /bom-items/import/template", Set.of(ADMIN), () -> get("/api/v1/bom-items/import/template")),
                 new Endpoint("POST /door-products", Set.of(ADMIN), () -> json(post("/api/v1/door-products"), DOOR_PRODUCT_JSON)),
                 new Endpoint("PUT /door-products/{id}", Set.of(ADMIN), () -> json(put("/api/v1/door-products/{id}", MISSING_ID), DOOR_PRODUCT_JSON)),
                 new Endpoint("DELETE /door-products/{id}", Set.of(ADMIN), () -> delete("/api/v1/door-products/{id}", MISSING_ID)),
@@ -161,6 +164,7 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
                 new Endpoint("PUT /sales-orders/{id}", Set.of(ADMIN, PLANNER), () -> json(put("/api/v1/sales-orders/{id}", MISSING_ID), SALES_ORDER_JSON)),
                 new Endpoint("DELETE /sales-orders/{id}", Set.of(ADMIN, PLANNER), () -> delete("/api/v1/sales-orders/{id}", MISSING_ID)),
                 new Endpoint("POST /sales-orders/import", Set.of(PLANNER), () -> upload("/api/v1/sales-orders/import")),
+                new Endpoint("GET /sales-orders/import/template", Set.of(PLANNER), () -> get("/api/v1/sales-orders/import/template")),
 
                 // Tính phương án cắt CỐ Ý mở cho cả ADMIN dù là POST: nó chỉ đọc và không chốt
                 // quyết định sản xuất nào, nên đứng cùng nhóm với các endpoint đọc bên dưới chứ

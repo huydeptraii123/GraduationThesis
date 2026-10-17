@@ -39,9 +39,14 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class SalesOrderImportService {
 
-    private static final String DOOR_MATERIAL_GROUP_PREFIX = "CA-";
+    /** Không private: sheet hướng dẫn của file mẫu ({@link ImportTemplateService}) nêu đúng tiền tố này. */
+    static final String DOOR_MATERIAL_GROUP_PREFIX = "CA-";
 
-    private static final List<String> REQUIRED_COLUMNS = List.of(
+    /** Cột lệnh sản xuất — tùy chọn, vắng mặt thì bỏ qua (xem {@code parseRow}). */
+    static final String OPTIONAL_PRODUCTION_ORDER_COLUMN = "order";
+
+    /** Không private: {@link ImportTemplateService} đối chiếu cột của file mẫu với danh sách này lúc khởi động. */
+    static final List<String> REQUIRED_COLUMNS = List.of(
             "ycsx",
             "z_item",
             "sales_document",
@@ -169,7 +174,7 @@ public class SalesOrderImportService {
 
         // Lệnh sản xuất chỉ để in báo cáo nên đọc bằng đường cột tùy chọn: hồ sơ nguồn cũ không có
         // cột này, và thiếu nó không phải lỗi nhập.
-        Double lenhSxRaw = readOptionalNumeric(row, col.get("order"), evaluator);
+        Double lenhSxRaw = readOptionalNumeric(row, col.get(OPTIONAL_PRODUCTION_ORDER_COLUMN), evaluator);
         Long lenhSx = lenhSxRaw == null ? null : lenhSxRaw.longValue();
 
         Double salesOrderItemRaw = readNumeric(row, col.get("sales_order_item"), evaluator);
