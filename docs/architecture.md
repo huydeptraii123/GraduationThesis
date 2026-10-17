@@ -94,10 +94,10 @@ Với các nhóm dữ liệu nghiệp vụ, phân quyền tách theo **đọc** 
 
 | Nhóm chức năng | Tiền tố endpoint | Đọc | Ghi |
 |---|---|---|---|
-| Đơn hàng | `/sales-orders` | PLANNER, ADMIN | PLANNER, ADMIN — riêng `/import` chỉ PLANNER |
-| Tồn kho | `/inventory-batches`, `/inventory/import` | PLANNER, ADMIN | PLANNER |
+| Đơn hàng | `/sales-orders` | PLANNER, ADMIN — riêng tải file mẫu `/import/template` chỉ PLANNER | PLANNER, ADMIN — riêng `/import` chỉ PLANNER |
+| Tồn kho | `/inventory-batches`, `/inventory/import` | PLANNER, ADMIN — riêng tải file mẫu `/inventory/import/template` chỉ PLANNER | PLANNER |
 | Danh mục loại thanh nan | `/slat-materials` | PLANNER, ADMIN | PLANNER, ADMIN |
-| Định mức BOM | `/bom-items`, `/bom-items/import` | PLANNER, ADMIN | ADMIN |
+| Định mức BOM | `/bom-items`, `/bom-items/import` | PLANNER, ADMIN — riêng tải file mẫu `/bom-items/import/template` chỉ ADMIN | ADMIN |
 | Mẫu cửa | `/door-products` | PLANNER, ADMIN | ADMIN |
 | Khách hàng | `/customers` | PLANNER, ADMIN | — (chỉ sinh ra khi nhập đơn hàng) |
 | Số liệu trang chủ | `/dashboard` | PLANNER, ADMIN | — |

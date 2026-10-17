@@ -8,8 +8,12 @@ Các sơ đồ dưới đây bổ sung góc nhìn **luồng hoạt động và q
 
 ```mermaid
 flowchart TD
-    A([Bắt đầu]) --> B["Người dùng chọn loại dữ liệu cần nhập<br/>(đơn hàng / tồn kho: PLANNER — BOM: ADMIN)<br/>và chọn file Excel"]
-    B --> C["Tải file lên qua API import"]
+    A([Bắt đầu]) --> B["Người dùng chọn loại dữ liệu cần nhập<br/>(đơn hàng / tồn kho: PLANNER — BOM: ADMIN)<br/>và mở hộp thoại nhập"]
+    B --> A1{"Đã có file Excel<br/>đúng định dạng?"}
+    A1 -- "Chưa" --> A2["Tải file mẫu của loại dữ liệu đó,<br/>xóa dòng ví dụ, điền dữ liệu"]
+    A2 --> B2["Chọn file Excel"]
+    A1 -- "Có" --> B2
+    B2 --> C["Tải file lên qua API import"]
     C --> D["Backend parse file thành danh sách dòng dữ liệu"]
     D --> E{"Còn dòng chưa kiểm tra?"}
     E -- "Có" --> F["Kiểm tra định dạng + trường bắt buộc của dòng hiện tại"]
@@ -41,6 +45,8 @@ flowchart TD
 ```
 
 Nhánh "đã được duyệt" ở vòng lặp upsert là ranh giới bất biến của đơn hàng đã chốt: nan của bộ cửa đó đã cắt theo kích thước đã lưu, ghi đè chỉ làm hồ sơ lệch với vật tư đã ra khỏi kho mà không khiến bộ cửa được cắt lại. Cảnh báo **không** hủy lượt nhập — khác hẳn nhánh lỗi định dạng ở trên: dòng lỗi định dạng nghĩa là file nguồn sai và phải sửa rồi nhập lại, còn ở đây file nguồn không sai, chỉ là hệ thống không được phép tự ý áp thay đổi lên một việc đã làm xong; quyết định tạo bộ cửa mới để cắt lại thuộc về PLANNER.
+
+Nhánh tải file mẫu ở đầu sơ đồ không ghi gì xuống hệ thống: file mẫu được sinh ra tại chỗ, có dòng tiêu đề đúng tên cột mà luồng nhập đọc, định dạng sẵn từng cột và hai dòng ví dụ giả lập phải xóa trước khi nhập (xem đoạn "Tính dễ dùng khi nhập liệu: file Excel mẫu" ở mục 3.1.4 của `docs/requirements-functional.md`).
 
 Điểm cần lưu ý: hai vòng lặp (kiểm tra định dạng và upsert) được tách rời — chỉ bước sang giai đoạn upsert khi **toàn bộ** các dòng đã qua kiểm tra định dạng, tránh trường hợp nhập được một phần rồi mới phát hiện lỗi ở dòng sau.
 
