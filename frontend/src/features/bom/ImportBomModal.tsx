@@ -3,7 +3,8 @@ import { Alert, Button, Modal, Table, Typography, Upload } from 'antd'
 import { useState } from 'react'
 import { extractErrorMessage, extractImportRowErrors, type ImportRowError } from '../../api/apiError'
 import { localPagination } from '../../api/pagination'
-import { importBomExcel } from './bomApi'
+import { DownloadTemplateButton } from '../../components/DownloadTemplateButton'
+import { downloadBomImportTemplate, importBomExcel } from './bomApi'
 import type { BomImportResult } from './types'
 
 /** Khớp với spring.servlet.multipart.max-file-size của backend và client_max_body_size của nginx. */
@@ -78,6 +79,15 @@ export function ImportBomModal({ open, onClose, onImported }: Props) {
         title="Chỉ thêm mới/cập nhật, không xóa"
         description="Định mức mẫu cửa + thanh nan có trong file sẽ được thêm mới hoặc cập nhật lại thông số. Định mức cũ không còn xuất hiện trong file vẫn được giữ nguyên, không bị xóa."
       />
+
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}
+      >
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Chưa có file đúng định dạng? Tải file mẫu, điền dữ liệu rồi chọn lại ở đây — nhớ xóa các dòng ví dụ tô vàng trước khi nhập.
+        </Typography.Text>
+        <DownloadTemplateButton download={downloadBomImportTemplate} filename="mau-nhap-dinh-muc.xlsx" />
+      </div>
 
       <Upload.Dragger
         accept=".xlsx,.xls"
