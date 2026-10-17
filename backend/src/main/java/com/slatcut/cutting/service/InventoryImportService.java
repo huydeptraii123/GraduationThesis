@@ -31,7 +31,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class InventoryImportService {
 
-    private static final List<String> REQUIRED_COLUMNS =
+    /** Không private: {@link ImportTemplateService} đối chiếu cột của file mẫu với danh sách này lúc khởi động. */
+    static final List<String> REQUIRED_COLUMNS =
             List.of("material", "material_description", "batch", "unrestricted");
 
     private final SlatMaterialRepository slatMaterialRepository;

@@ -40,7 +40,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class BomImportService {
 
-    private static final List<String> REQUIRED_COLUMNS = List.of(
+    /** Không private: {@link ImportTemplateService} đối chiếu cột của file mẫu với danh sách này lúc khởi động. */
+    static final List<String> REQUIRED_COLUMNS = List.of(
             "material",
             "door_material_name",
             "z_mau_sac",
