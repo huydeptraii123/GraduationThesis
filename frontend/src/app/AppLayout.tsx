@@ -63,7 +63,7 @@ const MENU_ITEMS: {
     editorHint: 'Chỉ PLANNER duyệt được phương án cắt — đây là thao tác làm thay đổi tồn kho.',
   },
   // Không gắn nhãn vai trò: lịch sử là màn chỉ-đọc, cả hai vai trò đều xem và xuất Excel được.
-  { key: '/cutting-plans', icon: <ScissorOutlined />, label: 'Phương án đã duyệt' },
+  { key: '/cutting-plans', icon: <ScissorOutlined />, label: 'Lịch sử duyệt' },
   // Mục duy nhất bị ẩn hẳn theo vai trò, không chỉ khóa nút ghi: endpoint danh sách tài khoản là
   // ADMIN-only nên PLANNER vào cũng chỉ nhận về một trang trống kèm lỗi quyền.
   {

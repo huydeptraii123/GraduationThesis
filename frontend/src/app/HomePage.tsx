@@ -44,7 +44,7 @@ const SHORTCUTS = [
   {
     path: '/cutting-plans',
     icon: <ScissorOutlined />,
-    title: 'Phương án đã duyệt',
+    title: 'Lịch sử duyệt',
     description: 'Tra cứu lịch sử các đợt duyệt và số liệu phế liệu cộng dồn.',
     action: 'Xem lịch sử',
   },
@@ -59,7 +59,7 @@ const SHORTCUTS = [
  * người dùng đọc một con số không rõ tính từ lúc nào. Kết quả giữ ở bộ nhớ module nên chuyển trang
  * qua lại không mất, nhưng cũng không bao giờ tự làm mới.
  *
- * Số liệu cộng dồn qua các đợt đã duyệt nằm ở màn "Phương án đã duyệt", không phải ở đây: trộn hai
+ * Số liệu cộng dồn qua các đợt đã duyệt nằm ở màn "Lịch sử duyệt", không phải ở đây: trộn hai
  * loại số trên cùng một màn hình thì "tỷ lệ phế" của lần tính này đứng cạnh "tỷ lệ phế cộng dồn"
  * và không ai đọc ra chúng khác nhau.
  */

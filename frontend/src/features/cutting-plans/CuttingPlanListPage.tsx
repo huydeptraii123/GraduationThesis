@@ -112,7 +112,7 @@ export function CuttingPlanListPage() {
       <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
         <div>
           <Typography.Title level={3} style={{ margin: 0 }}>
-            Phương án đã duyệt
+            Lịch sử duyệt
           </Typography.Title>
           <Typography.Text type="secondary">
             Lịch sử các đợt duyệt phương án cắt. Mỗi dòng ở đây là một lần tồn kho đã bị trừ thật.
