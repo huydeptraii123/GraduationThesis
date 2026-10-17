@@ -6,6 +6,7 @@ import { REMAINDER_COLOR, type LegendEntry } from '../../components/charts/chart
 import { localPagination } from '../../api/pagination'
 import { formatMeters } from '../../utils/formatMeters'
 import { formatHalfUp } from '../../utils/roundHalfUp'
+import { cutLevelLabel } from './cutLevelLabels'
 import { expandDetailToPieces } from './expandDetailToPieces'
 import { REMAINDER_TYPE_LABEL } from './remainderLabels'
 import type { CuttingPlanDetailResponse, CuttingPlanResponse } from './types'
@@ -122,6 +123,8 @@ export function CuttingPlanByStickTab({ plan, assignOrderColor }: Props) {
             title={`Phôi #${index + 1} - ${detail.slatMaterialName} · ${formatMeters(detail.sourceLengthMm)}m`}
             extra={
               <Space>
+                {/* Đứng đầu, trước cả số thanh/mã cắt: đây là câu chủ nhà máy đọc cho công nhân. */}
+                <Tag color="processing">{cutLevelLabel(detail.cutLevel)}</Tag>
                 <span>SL: {detail.stickCount} thanh</span>
                 <span>Mã: {detail.patternCode}</span>
                 <StatusChip detail={detail} />

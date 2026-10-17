@@ -3,6 +3,7 @@ import { Button, Card, Col, Input, Row, Select, Space, Statistic, Table, Tag } f
 import { useMemo, useState } from 'react'
 import { localPagination } from '../../api/pagination'
 import { formatMeters } from '../../utils/formatMeters'
+import { cutLevelLabel } from './cutLevelLabels'
 import { REMAINDER_TYPE_LABEL } from './remainderLabels'
 import { shortageCutLengthMm } from './shortageLengths'
 import type { CuttingPlanResponse } from './types'
@@ -30,7 +31,8 @@ function buildRows(plan: CuttingPlanResponse): DemandRow[] {
   const rows: DemandRow[] = []
 
   plan.details.forEach((detail) => {
-    const cutDescription = `Phôi ${formatMeters(detail.sourceLengthMm)}m → dư ${formatMeters(detail.remainderMm)}m (${REMAINDER_TYPE_LABEL[detail.remainderType]})`
+    // Nối thêm "Phương án N" để chủ nhà máy đọc đúng 1 câu là đủ nói công nhân cắt theo kiểu nào.
+    const cutDescription = `Phôi ${formatMeters(detail.sourceLengthMm)}m → dư ${formatMeters(detail.remainderMm)}m (${REMAINDER_TYPE_LABEL[detail.remainderType]}) · ${cutLevelLabel(detail.cutLevel)}`
     detail.items.forEach((item) => {
       rows.push({
         key: `item-${item.id}`,

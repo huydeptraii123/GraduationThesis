@@ -4,6 +4,9 @@ export type CuttingPlanStatus = 'COMPLETED' | 'FAILED'
 
 export type RemainderType = 'DISCARDED' | 'WASTE' | 'RESTOCK'
 
+/** Mức ưu tiên mà thuật toán đã dùng để cắt phôi này — xem `domain.CutLevel` ở backend. */
+export type CutLevel = 'PA1' | 'PA2' | 'PA3' | 'PA4'
+
 export interface CuttingPlanSummaryResponse {
   id: number
   runAt: string
@@ -55,6 +58,8 @@ export interface CuttingPlanDetailResponse {
   patternCode: string
   remainderMm: number
   remainderType: RemainderType
+  /** Rỗng với phương án lưu từ trước khi hệ thống bắt đầu ghi lại mức (trước di trú V14). */
+  cutLevel: CutLevel | null
   stickCount: number
   items: CuttingPlanDetailItemResponse[]
 }
