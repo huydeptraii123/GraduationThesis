@@ -20,7 +20,7 @@ Kịch bản nào chưa gắn được vào (A) hoặc (B) thì không được 
 | Cơ sở dữ liệu | MySQL 8.0 (Docker), lược đồ do Flyway dựng từ 15 phiên bản di trú trên lược đồ trống (TC-NFR-07) |
 | Máy chủ ứng dụng | Spring Boot; số liệu (B) của lượt đo hiện hành lấy trên bản đóng gói chạy trong vùng chứa Docker (JDK 21, mục 4.12) |
 | Giao diện | React + TypeScript + Ant Design, kiểm bằng trình duyệt thật điều khiển tự động |
-| Kiểm thử tự động | **460 ca, 0 thất bại, 0 lỗi** trên 25 lớp kiểm thử |
+| Kiểm thử tự động | **462 ca, 0 thất bại, 0 lỗi** trên 25 lớp kiểm thử |
 
 Dữ liệu dùng cho nhóm (B) là bộ dữ liệu thật của doanh nghiệp, **nhập lại từ đầu trên một lược đồ trống**, trên phiên bản mã nguồn hiện hành và theo luật xác định đơn bị chặn hiện hành (TC-DAT-05, TC-SO-08, TC-SIM-07, TC-SIM-08). Toàn bộ chuỗi thao tác — dựng lược đồ, nhập dữ liệu, tính, duyệt — được chạy **ba lượt độc lập** và cho cùng một kết quả nghiệp vụ tới từng milimet (TC-NFR-08), nên mọi con số phụ thuộc dữ liệu trong tài liệu thuộc về cùng một trạng thái dữ liệu. Có bốn ngoại lệ:
 
@@ -46,7 +46,7 @@ Trong đợt kiểm thử có **hai thời điểm đo**, và mỗi ô kết qu�
 |---|---|---|---|
 | Xác thực và phiên làm việc (TC-AUTH) | 6 | 6 | 0 |
 | Phân quyền theo vai trò (TC-PERM) | 6 | 6 | 0 |
-| Nhập dữ liệu từ Excel (TC-IMP) | 11 | 11 | 0 |
+| Nhập dữ liệu từ Excel (TC-IMP) | 12 | 12 | 0 |
 | Tồn kho và định mức (TC-DAT) | 8 | 8 | 0 |
 | Đơn hàng (TC-SO) | 10 | 10 | 0 |
 | Thuật toán cắt (TC-ALG) | 12 | 12 | 0 |
@@ -58,7 +58,7 @@ Trong đợt kiểm thử có **hai thời điểm đo**, và mỗi ô kết qu�
 | Triển khai đóng gói (TC-DEP) | 8 | 8 | 0 |
 | Kiểm tra tự động khi đẩy mã (TC-CI) | 7 | 7 | 0 |
 | Biểu đồ thống kê và nhãn số (TC-CHT) | 12 | 12 | 0 |
-| **Tổng** | **122** | **122** | **0** |
+| **Tổng** | **123** | **123** | **0** |
 
 ## 4. Kịch bản kiểm thử theo nhóm
 
@@ -99,6 +99,7 @@ Trong đợt kiểm thử có **hai thời điểm đo**, và mỗi ô kết qu�
 | TC-IMP-09 | File nhập có một dòng không hợp lệ ở giữa | **Hủy toàn bộ lượt nhập**, không ghi một dòng nào — tránh trạng thái nhập dở dang | Đạt | (A) `InventoryImportServiceTest.importFromExcel_writesNothingWhenAnyRowIsInvalid` |
 | TC-IMP-10 | Tải file Excel mẫu ở hộp thoại nhập của cả ba luồng (định mức với ADMIN; tồn kho và đơn hàng với PLANNER) | Dòng 1 ghi đúng tên các cột mà trình đọc nhập yêu cầu (đơn hàng thêm cột tùy chọn lệnh sản xuất), mỗi ô tiêu đề có ghi chú; sheet hướng dẫn của cả ba file có đúng một dòng giải thích cho mỗi cột và lưu ý số 1 là "xóa dòng ví dụ", file tồn kho nhắc mỗi lượt nhập là ảnh chụp toàn bộ; mọi cột của cả ba file được định dạng theo kiểu của nó — cột chữ để kiểu văn bản, cột ngày kiểu ngày, cột nhóm thanh nan có danh sách chọn đúng năm nhóm; danh sách cột của mẫu lệch với trình đọc thì hệ thống từ chối khởi động; quyền tải file mẫu trùng quyền nhập của luồng đó | Đạt — trên giao diện: cả ba hộp thoại hiện nút tải và câu nhắc xóa dòng ví dụ ở hai bề rộng màn hình (1280 và 900 điểm ảnh, nút nằm gọn trong hộp thoại); file tải về đúng tên, đúng hai sheet, đúng dòng tiêu đề, có hai dòng ví dụ, mã màu ví dụ ở dạng chữ, ngày giao ví dụ là ô ngày — **42 phép kiểm, 0 sai** | (A) `ImportTemplateServiceTest.headerRow_isExactlyWhatEachReaderRequires`, `.columns_arePreformattedSoExcelKeepsTheTypeTheReaderExpects`, `.everyColumnOfEveryTemplate_hasTheFormatOfItsType`, `.guideSheet_ofEveryTemplate_explainsEveryColumn_andStartsWithTheDeleteExamplesWarning`, `.guideSheet_putsTheDeleteExamplesWarningFirst_andInventoryWarnsAboutZeroOut`, `.checked_rejectsATemplateThatDriftsFromItsReader`, `RolePermissionMatrixTest.endpoint_enforcesDeclaredRole` (ba đường `GET …/import/template`) · (B) phần giao diện |
 | TC-IMP-11 | Nhập **nguyên trạng** ba file mẫu theo thứ tự định mức → tồn kho → đơn hàng, rồi tính phương án cắt | Cả ba lượt nhập thành công, mỗi file 2 dòng, không dòng nào bị bỏ qua; mã màu, kích thước, ngày giao giữ đúng giá trị ô ví dụ; thanh nan mang nhóm theo định mức chứ không rơi về nhóm khác; hai bộ cửa ví dụ cắt đủ — 86 đoạn nan chính và 4 đoạn ray, mỗi phôi dư 100mm (dưới ngưỡng bỏ đi) — không thiếu vật tư; file mẫu định mức và đơn hàng đã xóa dòng ví dụ nhập được như một file rỗng (file tồn kho chỉ còn tiêu đề vẫn nhập được nhưng là ảnh chụp một kho trống, nên không được kiểm như một file rỗng — xem hạn chế 22) | Đạt | (A) `ImportTemplateServiceTest.allThreeTemplates_importAsIsInOrder_andTheExamplesCutWithoutShortage`, `.templatesWithExamplesDeleted_importAsEmptyFilesWithoutErrors` |
+| TC-IMP-12 | File tồn kho có nhiều dòng cùng tổ hợp (mã thanh nan, độ dài) — một mã nằm ở nhiều kho vật lý | Cộng dồn số thanh của các dòng trùng thành một lô duy nhất thay vì báo lỗi trùng lặp, kể cả khi trùng từ 3 dòng trở lên; mỗi dòng trong nhóm trùng vẫn được xác thực định dạng riêng — một dòng không chia hết độ dài vẫn báo đúng lỗi của dòng đó, không bị phép cộng dồn che đi | Đạt | (A) `InventoryImportServiceTest.importFromExcel_sumsQuantitiesOfDuplicateMaterialAndLengthWithinSameFile`, `.importFromExcel_sumsThreeOrMoreDuplicateRowsAtOnce`, `.importFromExcel_stillValidatesEachRowWithinADuplicateGroup` |
 
 ### 4.4. Tồn kho và định mức vật tư
 
@@ -264,7 +265,7 @@ Số liệu dưới đây lấy từ lượt chạy đầu tiên, trên đúng p
 
 Điểm đáng nói của TC-CI-02: bộ kiểm thử này dựng cơ sở dữ liệu thật trong vùng chứa chứ không dùng cơ sở dữ liệu trong bộ nhớ, nên việc nó chạy được trên một máy chưa hề được chuẩn bị gì là bằng chứng rằng **toàn bộ phụ thuộc môi trường đã được khai báo trong mã nguồn**, không có bước cài đặt tay nào còn sót lại trong đầu người làm.
 
-Một lưu ý khi đọc lại nhóm này: máy sạch **không có bộ dữ liệu của doanh nghiệp** — bộ dữ liệu đó không được đưa lên kho mã vì lý do bảo mật. Ba ca kiểm thử nhập liệu có gắn điều kiện tiên quyết vào tệp dữ liệu thật vì vậy tự bỏ qua, và **đúng 3 ca bỏ qua** là con số quan sát được. Chênh lệch giữa **428 ca của chính lượt chạy đó** và 425 ca thật sự chạy hoàn toàn nằm ở ba ca đó, không phải ở đâu khác. Mục 2 ghi 460 vì bộ kiểm thử có thêm ba mươi hai ca sau lượt chạy này — hai con số thuộc hai phiên bản mã nguồn khác nhau nên không trừ thẳng cho nhau được. Xem thêm mục 6.
+Một lưu ý khi đọc lại nhóm này: máy sạch **không có bộ dữ liệu của doanh nghiệp** — bộ dữ liệu đó không được đưa lên kho mã vì lý do bảo mật. Ba ca kiểm thử nhập liệu có gắn điều kiện tiên quyết vào tệp dữ liệu thật vì vậy tự bỏ qua, và **đúng 3 ca bỏ qua** là con số quan sát được. Chênh lệch giữa **428 ca của chính lượt chạy đó** và 425 ca thật sự chạy hoàn toàn nằm ở ba ca đó, không phải ở đâu khác. Mục 2 ghi 462 vì bộ kiểm thử có thêm ba mươi tư ca sau lượt chạy này — hai con số thuộc hai phiên bản mã nguồn khác nhau nên không trừ thẳng cho nhau được. Xem thêm mục 6.
 
 Bảng trên thuộc về **lượt chạy đầu tiên**, và mã nguồn đã đổi thêm vài lần kể từ đó. Lượt chạy gần nhất đã đối chiếu — trên phiên bản lúc TC-CHT-07 được đo lại lần đầu — **cũng kết luận thành công ở cả ba công việc**: máy chủ ứng dụng 81 giây (riêng bước chạy kiểm thử 69 giây), dựng ảnh triển khai 91 giây, giao diện 19 giây. Số ca đạt và số ca bỏ qua của lượt đó **cố ý không ghi ở đây**: chúng chỉ nằm trong nhật ký chạy, mà nhật ký đòi đăng nhập kể cả với kho mã công khai, nên chưa quan sát được. Mục 6 có số ca đạt và số ca bỏ qua đo tại chỗ, nhưng trên một phiên bản mới hơn nữa (thêm hai mươi chín ca kiểm thử tự động: sáu của TC-SO-07 đến TC-SO-09, một của TC-DAT-06, ba của TC-RPT-09, hai của TC-SIM-08, tám của TC-IMP-10 và TC-IMP-11, chín của ma trận phân quyền cho ba đường tải file mẫu), nên đó không phải số đối ứng của lượt chạy này.
 
@@ -353,7 +354,7 @@ Thứ ba, trong bảng có **bốn đường cố ý không phân trang** — da
 - **Nhóm (B) cho triển khai đóng gói (TC-DEP)**: dựng ba dịch vụ bằng một lệnh từ tệp mô tả trong mã nguồn, rồi gọi **qua cổng của Nginx**, không gọi thẳng máy chủ ứng dụng.
 - **Nhóm (B) cho kiểm tra tự động (TC-CI)**: không cần thao tác gì — đẩy mã lên nhánh chính là quy trình tự chạy.
 
-**Một điểm phải lưu ý khi chạy lại nhóm (A) ở nơi khác.** Bộ dữ liệu của doanh nghiệp không được đưa lên kho mã, nên trên máy không có sẵn bộ dữ liệu đó thì **ba ca kiểm thử nhập liệu tự bỏ qua** thay vì thất bại: chúng có điều kiện tiên quyết là sự tồn tại của tệp dữ liệu thật. Đây là cách cố ý — một ca không chạy được vì thiếu dữ liệu đầu vào thì báo "đã bỏ qua" trung thực hơn là báo thất bại. Người chạy lại vì vậy nên đối chiếu **cả số ca đạt lẫn số ca bỏ qua**, đừng chỉ nhìn tổng. Con số cụ thể: **457 trên 460 ca đạt, 3 ca bỏ qua**, không ca nào thất bại — đo bằng cách chạy lại trọn bộ kiểm thử từ một bản sao mã nguồn đặt ở nơi không có bộ dữ liệu bên cạnh. Việc bỏ qua **đúng ba ca** chứ không phải con số khác là hành vi ổn định của bộ kiểm thử khi thiếu dữ liệu đầu vào, không phải đặc thù của một máy: nó cũng là con số quan sát được trên máy của dịch vụ kiểm tra tự động (TC-CI-02).
+**Một điểm phải lưu ý khi chạy lại nhóm (A) ở nơi khác.** Bộ dữ liệu của doanh nghiệp không được đưa lên kho mã, nên trên máy không có sẵn bộ dữ liệu đó thì **ba ca kiểm thử nhập liệu tự bỏ qua** thay vì thất bại: chúng có điều kiện tiên quyết là sự tồn tại của tệp dữ liệu thật. Đây là cách cố ý — một ca không chạy được vì thiếu dữ liệu đầu vào thì báo "đã bỏ qua" trung thực hơn là báo thất bại. Người chạy lại vì vậy nên đối chiếu **cả số ca đạt lẫn số ca bỏ qua**, đừng chỉ nhìn tổng. Con số cụ thể: **459 trên 462 ca đạt, 3 ca bỏ qua**, không ca nào thất bại — đo bằng cách chạy lại trọn bộ kiểm thử từ một bản sao mã nguồn đặt ở nơi không có bộ dữ liệu bên cạnh. Việc bỏ qua **đúng ba ca** chứ không phải con số khác là hành vi ổn định của bộ kiểm thử khi thiếu dữ liệu đầu vào, không phải đặc thù của một máy: nó cũng là con số quan sát được trên máy của dịch vụ kiểm tra tự động (TC-CI-02).
 
 ## 7. Hạn chế đã biết của đợt kiểm thử
 
