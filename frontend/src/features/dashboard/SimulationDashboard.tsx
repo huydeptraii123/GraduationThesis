@@ -7,7 +7,7 @@
  * luôn bằng ô "Số bộ cửa Open" bên cạnh.
  */
 
-import { Card, Col, Empty, Row, Statistic, Table, Typography } from 'antd'
+import { Card, Col, Empty, Row, Statistic, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useMemo } from 'react'
 import {
@@ -25,8 +25,6 @@ import {
   YAxis,
 } from 'recharts'
 import type { CuttingPlanPreviewResponse } from '../cutting-plans/types'
-import { SLAT_GROUP_LABEL } from '../inventory/constants'
-import type { SlatGroup } from '../inventory/types'
 import {
   byDeliveryDate,
   byModel,
@@ -34,8 +32,8 @@ import {
   shortagesByMaterial,
   toDoorSets,
   wasteRatioPercent,
-  type ShortageByMaterial,
 } from './demandAggregates'
+import { ShortageByMaterialTable } from './ShortageByMaterialTable'
 import { ChartLegend, ChartTooltip } from '../../components/charts/ChartParts'
 import { StackTotalLabel, StackedSegmentLabel } from '../../components/charts/chartLabels'
 import {
@@ -50,7 +48,6 @@ import {
   type LegendEntry,
 } from '../../components/charts/chartTheme'
 import { DOOR_SET_STATUSES, DOOR_SET_STATUS_COLOR, type DoorSetStatus } from './simulationSeries'
-import { formatMeters } from '../../utils/formatMeters'
 import { formatHalfUp, roundHalfUp } from '../../utils/roundHalfUp'
 
 interface Props {
@@ -256,37 +253,7 @@ export function SimulationDashboard({ simulation }: Props) {
       </Row>
 
       <Card size="small" style={{ marginTop: 16 }} title="Cảnh báo vật tư thiếu hụt (gộp theo loại thanh nan)">
-        <Table<ShortageByMaterial>
-          size="small"
-          rowKey="slatMaterialCode"
-          pagination={false}
-          dataSource={shortages}
-          locale={{ emptyText: 'Tồn kho đáp ứng đủ mọi bộ cửa đang chờ' }}
-          columns={[
-            { title: 'Mã vật tư', dataIndex: 'slatMaterialCode' },
-            { title: 'Mô tả vật tư', dataIndex: 'slatMaterialName' },
-            {
-              title: 'Nhóm',
-              dataIndex: 'slatGroup',
-              render: (value: SlatGroup) => SLAT_GROUP_LABEL[value] ?? value,
-            },
-            {
-              title: 'SL thanh thiếu',
-              dataIndex: 'missingSticks',
-              align: 'right',
-              render: (value: number) => value.toLocaleString('vi-VN'),
-            },
-            {
-              title: 'Tổng độ dài thiếu',
-              dataIndex: 'missingLengthMm',
-              align: 'right',
-              // Đúng tới milimet như file Excel và màn báo thiếu vật tư — doanh nghiệp lập kế hoạch
-              // sản xuất bù theo chính con số này.
-              render: (value: number) => `${formatMeters(value)} m`,
-            },
-            { title: 'Số bộ cửa ảnh hưởng', dataIndex: 'affectedDoorSetCount', align: 'right' },
-          ]}
-        />
+        <ShortageByMaterialTable shortages={shortages} />
       </Card>
     </>
   )

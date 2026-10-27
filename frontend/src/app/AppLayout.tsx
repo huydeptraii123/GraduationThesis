@@ -11,6 +11,7 @@ import {
   MenuUnfoldOutlined,
   ScissorOutlined,
   TeamOutlined,
+  WarningOutlined,
 } from '@ant-design/icons'
 import { Avatar, Breadcrumb, Dropdown, Layout, Menu, Tag, Typography } from 'antd'
 import { useState, type ReactNode } from 'react'
@@ -64,6 +65,8 @@ const MENU_ITEMS: {
   },
   // Không gắn nhãn vai trò: lịch sử là màn chỉ-đọc, cả hai vai trò đều xem và xuất Excel được.
   { key: '/cutting-plans', icon: <ScissorOutlined />, label: 'Lịch sử duyệt' },
+  // Chỉ đọc như trang chủ (cùng nguồn tính), nên cũng không gắn nhãn vai trò.
+  { key: '/shortage-report', icon: <WarningOutlined />, label: 'Báo cáo thiếu vật tư' },
   // Mục duy nhất bị ẩn hẳn theo vai trò, không chỉ khóa nút ghi: endpoint danh sách tài khoản là
   // ADMIN-only nên PLANNER vào cũng chỉ nhận về một trang trống kèm lỗi quyền.
   {

@@ -12,7 +12,8 @@
  * Bộ nhớ này mất khi tải lại trang — đúng như mong muốn: lúc đó màn hình quay về trạng thái trống
  * kèm lời giải thích, chứ không hiện số liệu không rõ tính từ bao giờ. Nó cũng bị xóa khi đăng
  * xuất (xem {@link clearLastSimulation}), vì đăng xuất chỉ đổi trạng thái trong cùng một trang:
- * không xóa thì người đăng nhập kế tiếp thấy nguyên số liệu đơn hàng của phiên trước.
+ * không xóa thì người đăng nhập kế tiếp thấy nguyên số liệu đơn hàng của phiên trước. Và bị xóa
+ * ngay sau khi duyệt phương án hoặc nhập Excel thành công — lúc đó nó chắc chắn đã cũ.
  */
 
 import { simulateCuttingPlan } from '../cutting-plans/cuttingPlansApi'
@@ -57,7 +58,7 @@ export function getPendingSimulation(): Promise<CuttingPlanPreviewResponse> | nu
 export function runSimulation(): Promise<CuttingPlanPreviewResponse> {
   if (pending == null) {
     const startedAt = generation
-    pending = simulateCuttingPlan()
+    const request: Promise<CuttingPlanPreviewResponse> = simulateCuttingPlan()
       .then((result) => {
         if (startedAt === generation) {
           lastSimulation = result
@@ -65,19 +66,28 @@ export function runSimulation(): Promise<CuttingPlanPreviewResponse> {
         return result
       })
       .finally(() => {
-        pending = null
+        // Chỉ gỡ đúng lượt của mình: lượt này có thể đã bị xóa rồi một lượt mới bắt đầu sau đó.
+        if (pending === request) {
+          pending = null
+        }
       })
+    pending = request
   }
   return pending
 }
 
 /**
- * Xóa kết quả đang giữ — dùng khi một lần tính thất bại và khi đăng xuất.
+ * Xóa kết quả đang giữ — dùng khi một lần tính thất bại, khi đăng xuất, và ngay sau khi duyệt
+ * phương án hoặc nhập Excel thành công: lúc đó kết quả chắc chắn đã cũ, mà trang chủ và màn báo
+ * cáo thiếu vật tư toàn hệ thống đều đọc nó (sau khi duyệt, để lại thì phần thiếu của các đơn vừa
+ * duyệt bị tính hai lần).
  *
  * Vô hiệu hóa luôn lượt tính đang chạy dở: hủy một lời gọi HTTP đang bay là việc không làm được,
- * nhưng chặn nó ghi kết quả thì được, và đó mới là thứ quan trọng.
+ * nhưng chặn nó ghi kết quả thì được, và bỏ nó khỏi vai "lượt đang chạy" để màn dựng lại sau đó
+ * không nối vào nó, cũng như lần bấm tính kế tiếp chạy một lượt mới thay vì nhận lại kết quả cũ.
  */
 export function clearLastSimulation(): void {
   lastSimulation = null
+  pending = null
   generation += 1
 }

@@ -9,22 +9,16 @@ import {
 } from '@ant-design/icons'
 import { App, Alert, Button, Card, Col, Empty, Row, Space, Spin, Typography } from 'antd'
 import dayjs from 'dayjs'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { extractBlobErrorMessage, extractErrorMessage } from '../api/apiError'
+import { extractBlobErrorMessage } from '../api/apiError'
 import { downloadFile } from '../api/downloadFile'
 import { RoleRestrictionNotice } from '../components/RoleRestrictionNotice'
 import { useAuth } from '../features/auth/AuthContext'
 import { canApproveCuttingPlan } from '../features/auth/permissions'
 import { exportSimulation } from '../features/cutting-plans/cuttingPlansApi'
-import type { CuttingPlanPreviewResponse } from '../features/cutting-plans/types'
 import { SimulationDashboard } from '../features/dashboard/SimulationDashboard'
-import {
-  clearLastSimulation,
-  getLastSimulation,
-  getPendingSimulation,
-  runSimulation,
-} from '../features/dashboard/simulationStore'
+import { useSimulation } from '../features/dashboard/useSimulation'
 
 const SHORTCUTS = [
   {
@@ -57,7 +51,8 @@ const SHORTCUTS = [
  * Màn hình cố ý **không tự tính khi mở trang**: một lần tính chạy thuật toán trên toàn bộ sổ đơn,
  * và con số chỉ có nghĩa với trạng thái tại đúng thời điểm bấm — tự chạy nền sẽ vừa tốn vừa khiến
  * người dùng đọc một con số không rõ tính từ lúc nào. Kết quả giữ ở bộ nhớ module nên chuyển trang
- * qua lại không mất, nhưng cũng không bao giờ tự làm mới.
+ * qua lại không mất, nhưng cũng không bao giờ tự làm mới — chỉ bị xóa khi duyệt phương án hoặc nhập
+ * Excel thành công (xem `clearLastSimulation`).
  *
  * Số liệu cộng dồn qua các đợt đã duyệt nằm ở màn "Lịch sử duyệt", không phải ở đây: trộn hai
  * loại số trên cùng một màn hình thì "tỷ lệ phế" của lần tính này đứng cạnh "tỷ lệ phế cộng dồn"
@@ -71,51 +66,8 @@ export function HomePage() {
   // Việc TÍNH thì mở cho cả hai vai trò nên không có vị từ quyền riêng.
   const canApprove = canApproveCuttingPlan(user)
 
-  const [simulation, setSimulation] = useState<CuttingPlanPreviewResponse | null>(() => getLastSimulation())
-  const [computing, setComputing] = useState(false)
+  const { simulation, computing, loadError, compute } = useSimulation()
   const [exporting, setExporting] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
-
-  const latestRunId = useRef(0)
-
-  const compute = useCallback(async () => {
-    const runId = ++latestRunId.current
-    setComputing(true)
-    try {
-      const computed = await runSimulation()
-      if (runId !== latestRunId.current) {
-        return
-      }
-      setSimulation(computed)
-      setLoadError(null)
-    } catch (error) {
-      if (runId !== latestRunId.current) {
-        return
-      }
-      // Xóa hẳn kết quả cũ: giữ lại nghĩa là màn hình hiện số liệu của một lần tính khác trong khi
-      // nhãn lỗi nói lần này thất bại — người đọc không có cách nào biết mình đang nhìn cái nào.
-      clearLastSimulation()
-      setSimulation(null)
-      setLoadError(extractErrorMessage(error, 'Không tính được phương án cắt.'))
-    } finally {
-      if (runId === latestRunId.current) {
-        setComputing(false)
-      }
-    }
-  }, [])
-
-  // Nối lại vào lượt tính đang chạy dở khi người dùng rời trang giữa chừng rồi quay lại. Không có
-  // bước này thì màn hình hiện trạng thái trống trong lúc máy chủ vẫn đang chạy, và người dùng bấm
-  // tính thêm một lượt nữa cho cùng một câu hỏi. Cố ý KHÔNG tự chạy lượt mới ở đây.
-  useEffect(() => {
-    if (getPendingSimulation() == null) {
-      return
-    }
-    // Đây đúng là trường hợp effect dùng để đồng bộ với một nguồn bên ngoài React (bộ nhớ module
-    // đang giữ lượt tính dở), nên việc đặt state ngay trong effect là có chủ đích.
-    // oxlint-disable-next-line react/set-state-in-effect
-    void compute()
-  }, [compute])
 
   const exportExcel = useCallback(async () => {
     setExporting(true)

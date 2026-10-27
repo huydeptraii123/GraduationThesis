@@ -46,6 +46,17 @@ export function exportSimulation(): Promise<Blob> {
     .then((res) => res.data)
 }
 
+/**
+ * Báo cáo thiếu vật tư của TOÀN BỘ sổ đơn chưa duyệt, không giới hạn ngày giao hay số đơn như đợt
+ * duyệt. Cùng nguồn tính với {@link exportSimulation} — máy chủ chạy lại thuật toán lúc bấm — chỉ
+ * khác là lọc còn các dòng thiếu.
+ */
+export function exportSystemShortageReport(): Promise<Blob> {
+  return httpClient
+    .post(`${CUTTING_PLANS_URL}/simulate/shortage-report`, undefined, { responseType: 'blob' })
+    .then((res) => res.data)
+}
+
 /** Phương án đề xuất cho đợt duyệt kế tiếp. Không ghi gì — chỉ khi bấm duyệt dữ liệu mới đổi. */
 export function getApprovalPreview(): Promise<CuttingPlanApprovalPreviewResponse> {
   return httpClient

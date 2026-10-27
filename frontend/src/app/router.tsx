@@ -5,6 +5,7 @@ import { CuttingPlanApprovalPage } from '../features/cutting-plans/CuttingPlanAp
 import { CuttingPlanDetailPage } from '../features/cutting-plans/CuttingPlanDetailPage'
 import { CuttingPlanListPage } from '../features/cutting-plans/CuttingPlanListPage'
 import { CuttingPlanShortagesPage } from '../features/cutting-plans/CuttingPlanShortagesPage'
+import { ShortageReportPage } from '../features/cutting-plans/ShortageReportPage'
 import { InventoryPage } from '../features/inventory/InventoryPage'
 import { SalesOrderPage } from '../features/sales-orders/SalesOrderPage'
 import { UsersPage } from '../features/users/UsersPage'
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
       { path: 'cutting-plans/approval', element: <CuttingPlanApprovalPage /> },
       { path: 'cutting-plans/:id', element: <CuttingPlanDetailPage /> },
       { path: 'cutting-plans/:id/shortages', element: <CuttingPlanShortagesPage /> },
+      { path: 'shortage-report', element: <ShortageReportPage /> },
       { path: 'users', element: <UsersPage /> },
     ],
   },

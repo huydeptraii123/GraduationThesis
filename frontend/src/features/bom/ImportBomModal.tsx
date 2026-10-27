@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { extractErrorMessage, extractImportRowErrors, type ImportRowError } from '../../api/apiError'
 import { localPagination } from '../../api/pagination'
 import { DownloadTemplateButton } from '../../components/DownloadTemplateButton'
+import { clearLastSimulation } from '../dashboard/simulationStore'
 import { downloadBomImportTemplate, importBomExcel } from './bomApi'
 import type { BomImportResult } from './types'
 
@@ -43,6 +44,7 @@ export function ImportBomModal({ open, onClose, onImported }: Props) {
     resetOutcome()
     try {
       const imported = await importBomExcel(file)
+      clearLastSimulation()
       setResult(imported)
       onImported()
     } catch (error) {

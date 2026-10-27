@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { extractErrorMessage, extractImportRowErrors, type ImportRowError } from '../../api/apiError'
 import { localPagination } from '../../api/pagination'
 import { DownloadTemplateButton } from '../../components/DownloadTemplateButton'
+import { clearLastSimulation } from '../dashboard/simulationStore'
 import { downloadInventoryImportTemplate, importInventoryExcel } from './inventoryApi'
 import type { InventoryImportResult } from './types'
 
@@ -43,6 +44,7 @@ export function ImportInventoryModal({ open, onClose, onImported }: Props) {
     resetOutcome()
     try {
       const imported = await importInventoryExcel(file)
+      clearLastSimulation()
       setResult(imported)
       onImported()
     } catch (error) {

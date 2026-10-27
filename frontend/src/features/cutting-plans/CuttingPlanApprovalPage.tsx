@@ -7,6 +7,7 @@ import { extractErrorMessage, hasStatus } from '../../api/apiError'
 import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
 import { useAuth } from '../auth/AuthContext'
 import { canApproveCuttingPlan } from '../auth/permissions'
+import { clearLastSimulation } from '../dashboard/simulationStore'
 import { CuttingPlanByOrderTab } from './CuttingPlanByOrderTab'
 import { CuttingPlanByStickTab } from './CuttingPlanByStickTab'
 import { CuttingPlanOverviewTab } from './CuttingPlanOverviewTab'
@@ -77,6 +78,7 @@ export function CuttingPlanApprovalPage() {
     setApproving(true)
     try {
       const approved = await approveCuttingPlan(preview.stateFingerprint)
+      clearLastSimulation()
       message.success(`Đã duyệt phương án cắt #CP-${approved.id}.`)
       navigate(`/cutting-plans/${approved.id}`)
     } catch (error) {
