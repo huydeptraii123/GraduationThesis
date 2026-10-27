@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,15 +50,26 @@ public class InventoryImportService {
         List<ParsedRow> rows = parseAndValidate(file);
 
         Map<Long, SlatMaterial> materialsByCode = upsertSlatMaterials(rows);
-        Set<BatchKey> fileKeys = new HashSet<>();
+
+        // Một mã thanh nan có thể tồn tại ở nhiều kho (nhiều dòng trùng (material, batch) trong cùng
+        // file) — cộng dồn số thanh của các dòng đó thành một lô duy nhất, không coi là lỗi.
+        Map<RawKey, Integer> quantityByKey = new LinkedHashMap<>();
         for (ParsedRow row : rows) {
-            SlatMaterial material = materialsByCode.get(row.material());
-            upsertInventoryBatch(row, material);
-            fileKeys.add(new BatchKey(material.getId(), row.doDaiThanhMm()));
+            RawKey key = new RawKey(row.material(), row.doDaiThanhMm());
+            quantityByKey.merge(key, row.soThanh(), Integer::sum);
         }
 
+        Set<BatchKey> fileKeys = new HashSet<>();
+        for (Map.Entry<RawKey, Integer> entry : quantityByKey.entrySet()) {
+            RawKey key = entry.getKey();
+            SlatMaterial material = materialsByCode.get(key.material());
+            upsertInventoryBatch(material, key.doDaiThanhMm(), entry.getValue());
+            fileKeys.add(new BatchKey(material.getId(), key.doDaiThanhMm()));
+        }
+
+        int mergedRowCount = rows.size() - quantityByKey.size();
         int zeroedOut = zeroOutMissingBatches(fileKeys);
-        return new InventoryImportResult(rows.size(), zeroedOut);
+        return new InventoryImportResult(rows.size(), zeroedOut, mergedRowCount);
     }
 
     private List<ParsedRow> parseAndValidate(MultipartFile file) {
@@ -69,14 +81,13 @@ public class InventoryImportService {
 
             List<ParsedRow> rows = new ArrayList<>();
             List<ImportRowError> errors = new ArrayList<>();
-            Set<RawKey> seenKeys = new HashSet<>();
 
             for (int r = 1; r <= sheet.getLastRowNum(); r++) {
                 Row row = sheet.getRow(r);
                 if (row == null || isBlankRow(row)) {
                     continue;
                 }
-                parseRow(row, columnIndex, r + 1, evaluator, rows, errors, seenKeys);
+                parseRow(row, columnIndex, r + 1, evaluator, rows, errors);
             }
 
             if (!errors.isEmpty()) {
@@ -97,8 +108,7 @@ public class InventoryImportService {
             int excelRowNumber,
             FormulaEvaluator evaluator,
             List<ParsedRow> rows,
-            List<ImportRowError> errors,
-            Set<RawKey> seenKeys) {
+            List<ImportRowError> errors) {
         List<String> rowErrors = new ArrayList<>();
 
         String materialRaw = readString(row, col.get("material"), evaluator);
@@ -147,14 +157,6 @@ public class InventoryImportService {
             }
         }
 
-        if (material != null && doDaiThanhMm != null) {
-            RawKey key = new RawKey(material, doDaiThanhMm);
-            if (!seenKeys.add(key)) {
-                rowErrors.add("Trùng tổ hợp (mã thanh nan, độ dài) với 1 dòng khác trong cùng file: " + material + " / "
-                        + doDaiThanhMm + "mm");
-            }
-        }
-
         if (!rowErrors.isEmpty()) {
             rowErrors.forEach(msg -> errors.add(new ImportRowError(excelRowNumber, msg)));
             return;
@@ -179,13 +181,13 @@ public class InventoryImportService {
         return result;
     }
 
-    private void upsertInventoryBatch(ParsedRow row, SlatMaterial material) {
+    private void upsertInventoryBatch(SlatMaterial material, Integer doDaiThanhMm, Integer soThanh) {
         InventoryBatch entity = inventoryBatchRepository
-                .findBySlatMaterial_IdAndDoDaiThanhMm(material.getId(), row.doDaiThanhMm())
+                .findBySlatMaterial_IdAndDoDaiThanhMm(material.getId(), doDaiThanhMm)
                 .orElseGet(InventoryBatch::new);
         entity.setSlatMaterial(material);
-        entity.setDoDaiThanhMm(row.doDaiThanhMm());
-        entity.setSoThanh(row.soThanh());
+        entity.setDoDaiThanhMm(doDaiThanhMm);
+        entity.setSoThanh(soThanh);
         inventoryBatchRepository.save(entity);
     }
 

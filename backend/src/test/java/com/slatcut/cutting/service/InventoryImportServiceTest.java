@@ -317,15 +317,50 @@ class InventoryImportServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void importFromExcel_rejectsDuplicateMaterialAndLengthWithinSameFile() {
-        MultipartFile file = excel(
+    void importFromExcel_sumsQuantitiesOfDuplicateMaterialAndLengthWithinSameFile() {
+        InventoryImportResult result = service.importFromExcel(excel(
                 HEADER,
                 new Object[] {74000019L, "Nan trùng", 2500, 15},
-                new Object[] {74000019L, "Nan trùng", 2500, 20});
+                new Object[] {74000019L, "Nan trùng", 2500, 20}));
+
+        assertThat(result.totalRowsImported()).isEqualTo(2);
+        assertThat(result.mergedRowCount()).isEqualTo(1);
+        SlatMaterial material = slatMaterialRepository.findBySlatMaterial(74000019L).orElseThrow();
+        assertThat(inventoryBatchRepository
+                        .findBySlatMaterial_IdAndDoDaiThanhMm(material.getId(), 2500)
+                        .orElseThrow()
+                        .getSoThanh())
+                .isEqualTo(14);
+    }
+
+    @Test
+    void importFromExcel_sumsThreeOrMoreDuplicateRowsAtOnce() {
+        InventoryImportResult result = service.importFromExcel(excel(
+                HEADER,
+                new Object[] {74000023L, "Nan trùng ba dòng", 2500, 10},
+                new Object[] {74000023L, "Nan trùng ba dòng", 2500, 5},
+                new Object[] {74000023L, "Nan trùng ba dòng", 2500, 2.5}));
+
+        assertThat(result.totalRowsImported()).isEqualTo(3);
+        assertThat(result.mergedRowCount()).isEqualTo(2);
+        SlatMaterial material = slatMaterialRepository.findBySlatMaterial(74000023L).orElseThrow();
+        assertThat(inventoryBatchRepository
+                        .findBySlatMaterial_IdAndDoDaiThanhMm(material.getId(), 2500)
+                        .orElseThrow()
+                        .getSoThanh())
+                .isEqualTo(7);
+    }
+
+    @Test
+    void importFromExcel_stillValidatesEachRowWithinADuplicateGroup() {
+        MultipartFile file = excel(
+                HEADER,
+                new Object[] {74000024L, "Nan trùng nhưng lỗi", 2500, 15},
+                new Object[] {74000024L, "Nan trùng nhưng lỗi", 2500, 16});
 
         assertThat(errorsOf(file)).singleElement().satisfies(error -> {
             assertThat(error.rowNumber()).isEqualTo(3);
-            assertThat(error.message()).contains("Trùng tổ hợp");
+            assertThat(error.message()).contains("không chia hết");
         });
     }
 
@@ -373,7 +408,7 @@ class InventoryImportServiceTest extends AbstractIntegrationTest {
 
         assertThat(result.totalRowsImported()).isPositive();
         assertThat(inventoryBatchRepository.findAll())
-                .hasSize(result.totalRowsImported())
+                .hasSize(result.totalRowsImported() - result.mergedRowCount())
                 .allSatisfy(batch -> {
                     assertThat(batch.getDoDaiThanhMm()).isPositive();
                     assertThat(batch.getSoThanh()).isNotNegative();
