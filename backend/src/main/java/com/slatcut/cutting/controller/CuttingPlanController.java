@@ -130,6 +130,18 @@ public class CuttingPlanController {
         return excelResponse(excelExportService.exportCuttingPlan(rows), "phuong-an-cat-" + id + ".xlsx");
     }
 
+    /**
+     * Báo cáo thiếu vật tư cho TOÀN BỘ sổ đơn chưa duyệt, không giới hạn theo ngày giao hay số đơn
+     * như đợt duyệt — doanh nghiệp dùng để lập kế hoạch sản xuất bù, tách hẳn khỏi "Duyệt phương án
+     * cắt". Dùng lại đúng nguồn tính của {@code POST /simulate}, chỉ lọc xuống các dòng còn thiếu.
+     */
+    @PostMapping("/simulate/shortage-report")
+    @PreAuthorize("hasAnyRole('ADMIN','PLANNER')")
+    public ResponseEntity<byte[]> simulateShortageReport() {
+        List<CuttingPlanDemandView> rows = reportService.buildFromPreview(service.simulate());
+        return excelResponse(excelExportService.exportShortageReport(rows), "bao-cao-thieu-vat-tu-toan-he-thong.xlsx");
+    }
+
     @GetMapping("/{id}/shortage-report")
     public ResponseEntity<byte[]> shortageReport(@PathVariable Long id) {
         List<CuttingPlanDemandView> rows = reportService.buildFromApprovedPlan(id);

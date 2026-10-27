@@ -32,9 +32,18 @@ import com.slatcut.cutting.repository.SalesOrderRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
 import com.slatcut.cutting.security.JwtService;
 import com.slatcut.cutting.service.CuttingPlanService;
+import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -183,6 +192,53 @@ class CuttingPlanControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.demands[0].quantityMissing").value(0))
                 .andExpect(jsonPath("$.demands[0].statusText").value("✔Đủ"));
 
+        assertThat(cuttingPlanRepository.count()).isEqualTo(plansBefore);
+    }
+
+    /**
+     * Báo cáo thiếu vật tư toàn hệ thống phải bao cả đơn NGOÀI phạm vi đợt duyệt (ngày giao quá t+3)
+     * — đúng thứ doanh nghiệp yêu cầu khi tách nó khỏi màn duyệt — và chỉ giữ dòng còn thiếu. Một thanh
+     * duy nhất trong kho: đơn giao hôm nay lấy mất, đơn giao sau 30 ngày thiếu.
+     */
+    @Test
+    void simulateShortageReport_includesShortOrdersBeyondTheApprovalScope_andOnlyShortRows() throws Exception {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 2000, 1);
+        SalesOrder suppliedToday = persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
+        SalesOrder shortLater = persistSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
+        shortLater.setReqdDeliveryDate(LocalDate.now().plusDays(30));
+        salesOrderRepository.save(shortLater);
+        long plansBefore = cuttingPlanRepository.count();
+
+        byte[] file = mockMvc.perform(post("/api/v1/cutting-plans/simulate/shortage-report")
+                        .header("Authorization", "Bearer " + plannerToken()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"bao-cao-thieu-vat-tu-toan-he-thong.xlsx\""))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(file))) {
+            Sheet sheet = workbook.getSheetAt(0);
+            List<String> headers = new ArrayList<>();
+            sheet.getRow(0).forEach(cell -> headers.add(cell.getStringCellValue()));
+            int ycsxColumn = headers.indexOf("ycsx");
+            int missingColumn = headers.indexOf("SL thanh thiếu");
+            assertThat(headers).hasSize(13);
+
+            Map<String, Double> missingByYcsx = new HashMap<>();
+            for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+                Row row = sheet.getRow(r);
+                missingByYcsx.put(
+                        row.getCell(ycsxColumn).getStringCellValue(), row.getCell(missingColumn).getNumericCellValue());
+            }
+            assertThat(missingByYcsx).containsEntry(shortLater.getYcsx(), 1.0).doesNotContainKey(suppliedToday.getYcsx());
+            assertThat(missingByYcsx.values()).allSatisfy(missing -> assertThat(missing).isPositive());
+        }
         assertThat(cuttingPlanRepository.count()).isEqualTo(plansBefore);
     }
 
