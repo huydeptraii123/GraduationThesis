@@ -41,4 +41,6 @@ export interface InventoryImportResult {
   totalRowsImported: number
   /** Số tổ hợp tồn kho có trong hệ thống nhưng không còn trong file, bị đưa về 0. */
   zeroedOutCount: number
+  /** Số dòng trong file bị cộng dồn vào một tổ hợp (mã, độ dài) khác (cùng mã thanh nan có ở nhiều kho). */
+  mergedRowCount: number
 }

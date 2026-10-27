@@ -125,7 +125,7 @@ export function ImportInventoryModal({ open, onClose, onImported }: Props) {
           type="success"
           showIcon
           title="Nhập tồn kho thành công"
-          description={`Đã ghi nhận ${result.totalRowsImported.toLocaleString('vi-VN')} dòng; ${result.zeroedOutCount.toLocaleString('vi-VN')} tổ hợp không còn trong file đã được đưa về 0 thanh.`}
+          description={`Đã ghi nhận ${result.totalRowsImported.toLocaleString('vi-VN')} dòng (trong đó ${result.mergedRowCount.toLocaleString('vi-VN')} dòng trùng mã + độ dài với dòng khác đã được cộng dồn); ${result.zeroedOutCount.toLocaleString('vi-VN')} tổ hợp không còn trong file đã được đưa về 0 thanh.`}
         />
       )}
 
