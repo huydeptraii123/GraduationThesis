@@ -98,7 +98,7 @@ flowchart TD
 
 ## 3. Luồng tính và duyệt phương án cắt (luồng lõi)
 
-Đây là luồng nghiệp vụ quan trọng nhất của khóa luận. Nó được trình bày thành hai sơ đồ vì hai câu hỏi khác nhau cần trả lời riêng: sơ đồ 3.1 cho biết **đơn hàng nào được đưa vào và tới lúc nào dữ liệu mới thực sự thay đổi** — đây là phần khác nhau giữa chức năng tính và chức năng duyệt; sơ đồ 3.2 cho biết **thuật toán quyết định cắt thanh nào như thế nào** — phần này hai chức năng dùng chung y hệt, chỉ khác tập đơn đưa vào. Gộp cả hai vào một sơ đồ sẽ khiến nhánh quyết định của thuật toán bị lẫn với nhánh quyết định của quy trình phê duyệt, trong khi chúng thuộc hai tầng khác nhau.
+Đây là luồng nghiệp vụ quan trọng nhất của khóa luận. Nó được trình bày thành hai sơ đồ vì hai câu hỏi khác nhau cần trả lời riêng: sơ đồ 3.1 cho biết **đơn hàng nào được đưa vào và tới lúc nào dữ liệu mới thực sự thay đổi** — đây là phần khác nhau giữa chức năng tính và chức năng duyệt; sơ đồ 3.2 cho biết **thuật toán quyết định cắt thanh nào như thế nào** — phần này hai chức năng dùng chung y hệt, chỉ khác tập đơn đưa vào và phạm vi ghép của Mức 3. Gộp cả hai vào một sơ đồ sẽ khiến nhánh quyết định của thuật toán bị lẫn với nhánh quyết định của quy trình phê duyệt, trong khi chúng thuộc hai tầng khác nhau.
 
 Cả hai sơ đồ bổ sung góc nhìn ra quyết định cho luồng đã có ở `docs/sequence-diagrams.md` mục "2. Luồng tính và duyệt phương án cắt" (thể hiện thành phần nào gọi thành phần nào); công thức chi tiết sinh `CuttingDemand` từ `SalesOrder`+`BomItem` cũng đã trình bày đầy đủ ở đó, không lặp lại ở đây.
 
@@ -109,12 +109,13 @@ flowchart TD
     A([Bắt đầu]) --> B{"Người dùng chọn<br/>chức năng nào?"}
 
     B -- "Tính phương án cắt<br/>(PLANNER hoặc ADMIN)" --> C["Phạm vi: TOÀN BỘ đơn chưa duyệt<br/>(approved_plan_id rỗng và định mức<br/>của mẫu cửa đầy đủ);<br/>không giới hạn ngày giao, không giới hạn số đơn"]
-    C --> D["Chạy thuật toán 4 mức ưu tiên<br/>(xem sơ đồ 3.2)"]
+    C --> C1["Lấy thêm tập đơn của một đợt duyệt<br/>(t+3, tối đa 70 đơn — cùng quy tắc nhánh duyệt)<br/>làm phạm vi ghép của Mức 3"]
+    C1 --> D["Chạy thuật toán 4 mức ưu tiên<br/>(xem sơ đồ 3.2)"]
     D --> E["Hiển thị mức tổng quan + mức chi tiết theo đơn hàng,<br/>kèm số đơn đang bị chặn vì định mức mẫu cửa chưa đầy đủ;<br/>cho phép xuất Excel"]
     E --> Z1([Kết thúc — KHÔNG thay đổi dữ liệu nào])
 
     B -- "Duyệt phương án cắt<br/>(chỉ PLANNER)" --> F["Trong CÙNG một lượt đọc: lấy phạm vi và ghi dấu vân trạng thái.<br/>Phạm vi = đơn chưa duyệt, định mức của mẫu cửa đầy đủ,<br/>reqd_delivery_date sớm hơn hoặc bằng t+3 ngày,<br/>tổng số đơn tối đa 70 (ngoài phạm vi → 'nhóm 99', chờ lần duyệt sau)"]
-    F --> G["Chạy thuật toán 4 mức ưu tiên<br/>(xem sơ đồ 3.2)"]
+    F --> G["Chạy thuật toán 4 mức ưu tiên<br/>(xem sơ đồ 3.2),<br/>phạm vi ghép Mức 3 = chính tập đơn này"]
     G --> I["Trình phương án đề xuất kèm danh sách đợt cắt<br/>để PLANNER xem xét"]
     I --> J{"PLANNER chấp nhận<br/>phương án?"}
     J -- "Không" --> Z2([Kết thúc — KHÔNG thay đổi dữ liệu nào])
@@ -128,7 +129,7 @@ flowchart TD
     L --> Z3([Kết thúc — dữ liệu đã thay đổi])
 ```
 
-Hai điểm quyết định cách đọc sơ đồ này. Thứ nhất, **nhánh tính không có ô nào ghi dữ liệu** — đó là toàn bộ lý do tách chức năng: người dùng chạy thử bao nhiêu lần tùy ý trên trạng thái đang có mà không làm lệch tồn kho, nên mới dám bỏ giới hạn t+3 ngày và giới hạn 70 đơn để nhìn bức tranh thiếu hụt của toàn bộ đơn tồn. Thứ hai, **ô kiểm dấu vân trạng thái trước khi ghi là bắt buộc, không phải tối ưu**: giữa lúc phương án được tính và lúc PLANNER bấm duyệt, một lượt nhập tồn kho hoặc một đơn vừa sửa có thể đã làm phương án lỗi thời; ghi xuống khi đó sẽ trừ tồn kho những phôi thực tế không còn, hoặc bỏ sót đơn vừa được bổ sung vào phạm vi. Dấu vân phải được lấy **trong cùng một lượt đọc** với danh sách đơn trong phạm vi, không phải sau khi thuật toán chạy xong: nếu chụp sau, dữ liệu đổi ngay trong lúc thuật toán chạy sẽ được ghi vào dấu vân như thể không có gì xảy ra, và cơ chế này mất tác dụng đúng ở tình huống nó sinh ra để chặn. Khi dấu vân lệch, luồng quay lại chính bước lấy phạm vi — không quay lại bước trình phương án, vì dấu vân cũ vẫn lệch thì PLANNER sẽ bị từ chối mãi.
+Hai điểm quyết định cách đọc sơ đồ này. Thứ nhất, **nhánh tính không có ô nào ghi dữ liệu** — đó là toàn bộ lý do tách chức năng: người dùng chạy thử bao nhiêu lần tùy ý trên trạng thái đang có mà không làm lệch tồn kho, nên mới dám bỏ giới hạn t+3 ngày và giới hạn 70 đơn để nhìn bức tranh thiếu hụt của toàn bộ đơn tồn. Ô lấy tập đơn của một đợt duyệt ở nhánh này cũng chỉ đọc, và không thu hẹp tập đơn được tính — nó chỉ thu hẹp phạm vi ghép ở Mức 3. Thứ hai, **ô kiểm dấu vân trạng thái trước khi ghi là bắt buộc, không phải tối ưu**: giữa lúc phương án được tính và lúc PLANNER bấm duyệt, một lượt nhập tồn kho hoặc một đơn vừa sửa có thể đã làm phương án lỗi thời; ghi xuống khi đó sẽ trừ tồn kho những phôi thực tế không còn, hoặc bỏ sót đơn vừa được bổ sung vào phạm vi. Dấu vân phải được lấy **trong cùng một lượt đọc** với danh sách đơn trong phạm vi, không phải sau khi thuật toán chạy xong: nếu chụp sau, dữ liệu đổi ngay trong lúc thuật toán chạy sẽ được ghi vào dấu vân như thể không có gì xảy ra, và cơ chế này mất tác dụng đúng ở tình huống nó sinh ra để chặn. Khi dấu vân lệch, luồng quay lại chính bước lấy phạm vi — không quay lại bước trình phương án, vì dấu vân cũ vẫn lệch thì PLANNER sẽ bị từ chối mãi.
 
 Ô kiểm **phạm vi có đơn nào không** nằm sau ô kiểm dấu vân chứ không phải trước, và nhánh "không có đơn nào" của nó kết thúc luồng chứ không quay lại bước lấy phạm vi — khác hẳn nhánh dấu vân lệch. Lý do: dấu vân lệch nghĩa là có dữ liệu mới, tính lại thì ra phương án khác nên quay lại là đúng; còn phạm vi rỗng thì tính lại bao nhiêu lần cũng vẫn rỗng, quay lại chỉ tạo một vòng lặp không lối ra. Ô này tồn tại vì nếu thiếu nó, một lần bấm duyệt khi không còn đơn nào vẫn ghi xuống một phương án trắng: không đoạn cắt, không dòng thiếu vật tư, không đơn nào được đánh dấu — và vì bản thân nó không làm đổi dữ liệu nào nên dấu vân vẫn khớp ở lần bấm kế tiếp, cho phép lặp lại vô hạn.
 
@@ -140,11 +141,11 @@ Lưu ý ở nhánh duyệt: `approved_plan_id` được gán cho **mọi** đơn
 
 ### 3.2. Thuật toán cắt 4 mức ưu tiên
 
-Sơ đồ dưới đây là thuật toán Best Fit Decreasing mở rộng, nhận vào danh sách đơn hàng trong phạm vi đã xác định ở sơ đồ 3.1 và trả về kết quả cắt — giống hệt nhau dù được gọi từ chức năng tính hay chức năng duyệt.
+Sơ đồ dưới đây là thuật toán Best Fit Decreasing mở rộng, nhận vào danh sách đơn hàng trong phạm vi đã xác định ở sơ đồ 3.1 cùng phạm vi ghép của Mức 3, và trả về kết quả cắt. Các bước giống hệt nhau dù được gọi từ chức năng tính hay chức năng duyệt; chỉ phạm vi ghép của Mức 3 khác nhau — với chức năng duyệt nó trùng toàn bộ danh sách đơn đưa vào, với chức năng tính nó là tập đơn của một đợt duyệt.
 
 ```mermaid
 flowchart TD
-    A([Nhận danh sách đơn hàng trong phạm vi<br/>từ sơ đồ 3.1]) --> C["Sinh CuttingDemand từ SalesOrder + BomItem tương ứng<br/>(công thức chi tiết xem docs/sequence-diagrams.md)"]
+    A([Nhận danh sách đơn hàng trong phạm vi<br/>và phạm vi ghép Mức 3 từ sơ đồ 3.1]) --> C["Sinh CuttingDemand từ SalesOrder + BomItem tương ứng<br/>(công thức chi tiết xem docs/sequence-diagrams.md)"]
     C --> D["Nạp InventoryPool từ tồn kho hiện có"]
     D --> E["Nhóm CuttingDemand theo slatMaterial"]
     E --> F{"Còn nhóm slatMaterial<br/>chưa xử lý?"}
@@ -161,11 +162,11 @@ flowchart TD
     K -- "Có" --> K1["Cắt thanh đó; dư dưới 30cm → 'bỏ';<br/>loại X khỏi hàng đợi"]
     K1 --> I
 
-    K -- "Không" --> L{"Mức 2: có N-1 đoạn khác<br/>cùng độ dài X đang chờ trong<br/>cùng đợt xử lý, và tồn tại thanh<br/>dài gấp k lần cutLength(X), k≥2, đủ dùng?"}
+    K -- "Không" --> L{"Mức 2: có N-1 đoạn khác<br/>cùng độ dài X đang chờ trong<br/>cùng lần chạy, và tồn tại thanh<br/>dài gấp k lần cutLength(X), k≥2, đủ dùng?"}
     L -- "Có" --> L1["Cắt thanh thành k đoạn,<br/>gán X + (k−1) đoạn cùng độ dài;<br/>dư = 0; loại các đoạn đã gán"]
     L1 --> I
 
-    L -- "Không" --> M{"Mức 3: tồn tại ĐÚNG 1 đoạn khác<br/>trong cùng phạm vi lần chạy, ghép với X<br/>vừa 1 thanh, dư dự kiến dưới 30cm?<br/>(lấy đoạn khớp ĐẦU TIÊN tìm được)"}
+    L -- "Không" --> M{"Mức 3: X thuộc phạm vi ghép Mức 3, và tồn tại<br/>ĐÚNG 1 đoạn khác cũng thuộc phạm vi đó, ghép với X<br/>vừa 1 thanh, dư dự kiến dưới 30cm?<br/>(lấy đoạn khớp ĐẦU TIÊN tìm được)"}
     M -- "Có" --> M1["Cắt thanh đó, gán 2 đoạn<br/>về đúng đơn của từng đoạn;<br/>dư dưới 30cm → 'bỏ'; loại 2 đoạn khỏi hàng đợi"]
     M1 --> I
 
@@ -182,7 +183,7 @@ Một hệ quả quan trọng của cách đặt điều kiện ở Mức 4: h�
 
 Mức 3 cố ý chỉ ghép **đúng hai đoạn** và dừng ở đoạn khớp **đầu tiên** tìm được, không tìm tổ hợp ba đoạn trở lên cũng không duyệt hết hàng đợi để chọn tổ hợp tốt nhất: số tổ hợp tăng theo cấp số nhân với số đoạn được phép ghép, trong khi phần lợi thêm rất nhỏ vì điều kiện chấp nhận đã là phần dư dưới 30cm — và giới hạn này giữ cho kết quả tái lập được, không phụ thuộc thứ tự duyệt.
 
-Điểm dễ hiểu nhầm nhất, cần nhấn lại: thứ tự **xử lý** trong hàng đợi luôn theo đúng ưu tiên `(reqd_delivery_date, ycsx, z_item)` — đoạn X ở bước "Lấy đoạn X ưu tiên cao nhất còn lại" luôn là đoạn đầu hàng đợi, không bao giờ bị bỏ qua để chờ ghép; khác với phạm vi **ghép nối** ở Mức 2 và Mức 3, chỉ áp dụng giữa các đoạn cùng nằm trong phạm vi của chính lần chạy đó (đã xác định ở sơ đồ 3.1 — toàn bộ đơn chưa duyệt nếu là chức năng tính, tập đơn đã giới hạn t+3/tối đa 70 đơn nếu là chức năng duyệt), không bao giờ ghép với đơn nằm ngoài phạm vi. Ngoài ra, mỗi nhóm `slatMaterial` ở vòng lặp ngoài được xử lý độc lập với nhau — vì tồn kho (`InventoryBatch`) đã tách riêng theo `slatMaterial`, không có ràng buộc chéo giữa các nhóm.
+Điểm dễ hiểu nhầm nhất, cần nhấn lại: thứ tự **xử lý** trong hàng đợi luôn theo đúng ưu tiên `(reqd_delivery_date, ycsx, z_item)` — đoạn X ở bước "Lấy đoạn X ưu tiên cao nhất còn lại" luôn là đoạn đầu hàng đợi, không bao giờ bị bỏ qua để chờ ghép; khác với phạm vi **ghép nối** ở Mức 2 và Mức 3. Mức 2 gộp các đoạn cùng nằm trong phạm vi của chính lần chạy đó (đã xác định ở sơ đồ 3.1 — toàn bộ đơn chưa duyệt nếu là chức năng tính, tập đơn đã giới hạn t+3/tối đa 70 đơn nếu là chức năng duyệt). Mức 3, theo yêu cầu của doanh nghiệp, luôn chỉ ghép hai đoạn cùng thuộc tập đơn của một đợt duyệt (t+3/tối đa 70 đơn), kể cả ở chức năng tính: đoạn X nằm ngoài tập đó bỏ qua thẳng Mức 3, còn đoạn X nằm trong thì bỏ qua các đoạn ngoài tập đó và tìm tiếp đoạn khớp đầu tiên trong tập. Không mức nào ghép với đơn nằm ngoài phạm vi của lần chạy. Ngoài ra, mỗi nhóm `slatMaterial` ở vòng lặp ngoài được xử lý độc lập với nhau — vì tồn kho (`InventoryBatch`) đã tách riêng theo `slatMaterial`, không có ràng buộc chéo giữa các nhóm.
 
 ## 4. Luồng xem/xuất kết quả phương án cắt
 

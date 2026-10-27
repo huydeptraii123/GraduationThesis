@@ -40,7 +40,7 @@ Kết quả của luồng luôn thuộc đúng một trong hai trường hợp: 
 
 ## 2. Luồng tính và duyệt phương án cắt (luồng lõi)
 
-Đây là luồng quan trọng nhất của khóa luận, và nó có hai cửa vào khác nhau. **Tính phương án cắt** chạy trên toàn bộ đơn hàng chưa duyệt để thấy trước tình trạng đáp ứng vật tư, không chạm vào dữ liệu. **Duyệt phương án cắt** chạy trên tập đơn đã giới hạn theo quy tắc t+3 ngày/tối đa 70 đơn, và là nơi duy nhất ghi dữ liệu xuống hệ thống. Hai luồng dùng chung đúng một thuật toán — 4 mức ưu tiên đã chốt: khớp gần đúng → cắt theo bội số (cùng phạm vi lần chạy) → ghép đúng 2 đoạn của 2 đơn (cùng phạm vi lần chạy, lấy đoạn khớp đầu tiên) → cắt để phần dư nhập lại được kho (trên 3m), hết cách thì báo thiếu vật tư — nên phần `computePlan` chỉ được vẽ chi tiết một lần ở sơ đồ 2a.
+Đây là luồng quan trọng nhất của khóa luận, và nó có hai cửa vào khác nhau. **Tính phương án cắt** chạy trên toàn bộ đơn hàng chưa duyệt để thấy trước tình trạng đáp ứng vật tư, không chạm vào dữ liệu. **Duyệt phương án cắt** chạy trên tập đơn đã giới hạn theo quy tắc t+3 ngày/tối đa 70 đơn, và là nơi duy nhất ghi dữ liệu xuống hệ thống. Hai luồng dùng chung đúng một thuật toán — 4 mức ưu tiên đã chốt: khớp gần đúng → cắt theo bội số (cùng phạm vi lần chạy) → ghép đúng 2 đoạn của 2 đơn (cùng thuộc tập đơn của một đợt duyệt, lấy đoạn khớp đầu tiên) → cắt để phần dư nhập lại được kho (trên 3m), hết cách thì báo thiếu vật tư — nên phần `computePlan` chỉ được vẽ chi tiết một lần ở sơ đồ 2a. Phạm vi ghép của mức thứ ba là tham số của thuật toán: luồng tính truyền vào tập đơn của một đợt duyệt (theo yêu cầu của doanh nghiệp), luồng duyệt không cần bó thêm vì tập đơn đưa vào đã chính là tập đó.
 
 ### 2a. Tính phương án cắt (không thay đổi dữ liệu)
 
@@ -60,6 +60,8 @@ sequenceDiagram
     C->>SVC: simulate()
     SVC->>DB: lấy TOÀN BỘ SalesOrder có approved_plan_id rỗng và định mức mẫu cửa đầy đủ (KHÔNG lọc theo ngày giao, KHÔNG giới hạn số đơn)
     DB-->>SVC: rows
+    SVC->>DB: lấy tập đơn của một đợt duyệt (cùng truy vấn của sơ đồ 2b: t+3, tối đa 70 đơn)
+    DB-->>SVC: rows — SVC rút khóa (ycsx, z_item) làm phạm vi ghép của Mức 3
     SVC->>DS: buildDemands(orders)
     DS->>DB: BomItem của các doorProduct tương ứng
     DB-->>DS: rows
@@ -68,7 +70,7 @@ sequenceDiagram
     SVC->>POOL: load(InventoryBatch hiện có)
     POOL-->>SVC: pool sẵn sàng — ảnh chụp tồn kho tại đúng thời điểm bấm
 
-    SVC->>CS: computePlan(demands, pool)
+    SVC->>CS: computePlan(demands, pool, phạm vi ghép Mức 3)
     loop mỗi slatMaterial group
         CS->>CS: sort hàng đợi theo (reqd_delivery_date, ycsx, z_item)
         loop while hàng đợi còn đoạn X chưa cắt
@@ -78,8 +80,8 @@ sequenceDiagram
             else Mức 2 (PA2) — cắt theo bội số (cùng phạm vi lần chạy, không cần cùng ngày giao)
                 CS->>POOL: findMultipleOfSameLength(X)
                 POOL-->>CS: thanh dài gấp k lần -> cắt k đoạn, dư = 0
-            else Mức 3 (PA3) — ghép ĐÚNG 2 đoạn của 2 đơn (cùng phạm vi lần chạy, không cần cùng ngày giao)
-                CS->>POOL: findCombination(X, hàng đợi trong phạm vi hiện tại) — dừng ở đoạn khớp ĐẦU TIÊN
+            else Mức 3 (PA3) — ghép ĐÚNG 2 đoạn của 2 đơn CÙNG thuộc phạm vi ghép Mức 3 (X ngoài phạm vi đó thì bỏ qua mức này)
+                CS->>POOL: findCombination(X, đoạn trong hàng đợi thuộc phạm vi ghép Mức 3) — dừng ở đoạn khớp ĐẦU TIÊN
                 POOL-->>CS: cặp đoạn khớp 1 thanh -> cắt, gán đúng đơn của từng đoạn, dư "bỏ"
             else Mức 4 (PA4) — cắt để phần dư nhập lại được kho, hoặc shortage
                 CS->>POOL: findRestockFit(X)
@@ -118,7 +120,7 @@ sequenceDiagram
     end
 ```
 
-Nút xuất Excel **tính lại** thay vì dùng lại kết quả của lần bấm trước. Đây là hệ quả trực tiếp của việc không lưu lịch sử: không có bản ghi nào để đọc lại. Đổi lại, file xuất ra luôn phản ánh trạng thái tại thời điểm bấm xuất, đúng tinh thần "mỗi lần bấm là một lần tính trên trạng thái hiện tại" — và vì thuật toán cho kết quả tái lập được với cùng một bộ dữ liệu đầu vào (yêu cầu phi chức năng về tính đúng đắn), file vẫn khớp với những gì màn hình đang hiển thị chừng nào dữ liệu chưa đổi. Báo cáo thiếu vật tư toàn hệ thống đi đúng con đường này: màn hình của nó đọc lại kết quả của lần tính đang giữ trên trình duyệt (tính ở trang chủ thì sang màn này thấy ngay, không chạy lại thuật toán; kết quả đó bị xóa ngay sau khi duyệt phương án hoặc nhập Excel thành công), còn file Excel của nó được máy chủ tính lại lúc tải rồi chỉ giữ các dòng còn thiếu — không có giới hạn ngày giao hay số đơn nào được áp thêm.
+Nút xuất Excel **tính lại** thay vì dùng lại kết quả của lần bấm trước. Đây là hệ quả trực tiếp của việc không lưu lịch sử: không có bản ghi nào để đọc lại. Đổi lại, file xuất ra luôn phản ánh trạng thái tại thời điểm bấm xuất, đúng tinh thần "mỗi lần bấm là một lần tính trên trạng thái hiện tại" — và vì thuật toán cho kết quả tái lập được với cùng một bộ dữ liệu đầu vào (yêu cầu phi chức năng về tính đúng đắn), file vẫn khớp với những gì màn hình đang hiển thị chừng nào dữ liệu chưa đổi. Báo cáo thiếu vật tư toàn hệ thống đi đúng con đường này: màn hình của nó đọc lại kết quả của lần tính đang giữ trên trình duyệt (tính ở trang chủ thì sang màn này thấy ngay, không chạy lại thuật toán; kết quả đó bị xóa ngay sau khi duyệt phương án hoặc nhập Excel thành công), còn file Excel của nó được máy chủ tính lại lúc tải rồi chỉ giữ các dòng còn thiếu. Tập đơn đưa vào báo cáo không bị giới hạn theo ngày giao hay số đơn; còn phạm vi ghép của Mức 3 thì giống hệt lần tính ở trang chủ, vì cả hai dùng chung đúng một cách tính (`simulate()`).
 
 ### 2b. Duyệt phương án cắt (nơi duy nhất ghi dữ liệu)
 
@@ -137,7 +139,7 @@ sequenceDiagram
     C->>SVC: approvalPreview()
     SVC->>DB: trong CÙNG một lượt đọc — lấy SalesOrder có approved_plan_id rỗng và định mức mẫu cửa đầy đủ, reqd_delivery_date <= t+3, giới hạn tối đa 70 đơn (ngoài phạm vi -> "nhóm 99", chờ lần duyệt sau), đồng thời đọc dấu vân trạng thái của bốn nguồn dữ liệu thuật toán sẽ đọc (đơn chưa duyệt trong hạn giao, tồn kho, định mức, danh mục thanh nan)
     DB-->>SVC: rows + stateFingerprint
-    SVC->>CS: computePlan(demands, pool) — 4 mức ưu tiên, chi tiết xem sơ đồ 2a
+    SVC->>CS: computePlan(demands, pool, ANY_DEMAND) — 4 mức ưu tiên, chi tiết xem sơ đồ 2a, phạm vi ghép Mức 3 = toàn bộ tập đơn đưa vào
     CS-->>SVC: CuttingPlanResult
     SVC-->>C: CuttingPlanPreviewDto + stateFingerprint
     C-->>FE: phương án đề xuất + stateFingerprint
@@ -158,7 +160,7 @@ sequenceDiagram
         C-->>FE: 422 "không có đơn nào để duyệt"
         FE-->>U: Hiện thông báo, giữ nguyên màn hình, KHÔNG ghi gì
     else dấu vân còn khớp và phạm vi có đơn
-        SVC->>CS: computePlan(demands, pool) — chạy lại bên trong transaction duyệt
+        SVC->>CS: computePlan(demands, pool, ANY_DEMAND) — chạy lại bên trong transaction duyệt, không bó Mức 3
         CS-->>SVC: CuttingPlanResult
         SVC->>REPO: save(CuttingPlan, CuttingPlanDetail[], CuttingPlanDetailItem[], ShortageRecord[], CuttingPlanStockSnapshot[]) + UPDATE inventory_batch + UPDATE sales_order.approved_plan_id  // trong 1 transaction
         REPO->>DB: INSERT/UPDATE

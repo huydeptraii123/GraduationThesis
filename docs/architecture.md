@@ -41,13 +41,19 @@ Thuật toán cắt tối ưu (BFD mở rộng 4 mức ưu tiên, xem `docs/sequ
 
 ```java
 public interface CuttingStrategy {
-    CuttingPlanResult computePlan(List<CuttingDemand> demands, InventoryPool pool);
+    CuttingPlanResult computePlan(
+            List<CuttingDemand> demands, InventoryPool pool, Predicate<CuttingDemand> level3Eligible);
+
+    // Không bó mức ba: mọi đoạn của lần chạy đều ghép được với nhau.
+    default CuttingPlanResult computePlan(List<CuttingDemand> demands, InventoryPool pool) {
+        return computePlan(demands, pool, demand -> true);
+    }
 }
 ```
 
 Việc tách interface này khỏi phần điều phối nghiệp vụ (`CuttingPlanService` — điều phối luồng: xác định phạm vi đơn hàng, gọi `CuttingDemandService` để sinh `CuttingDemand` từ BOM, gọi `CuttingStrategy` để tính phương án, và riêng ở chức năng duyệt thì lưu `CuttingPlanResult` cùng cập nhật tồn kho, xem chi tiết ở `docs/sequence-diagrams.md`) tuân theo nguyên tắc Open/Closed: thêm một chiến lược cắt khác (ví dụ một cách tiếp cận dựa trên ILP để làm đối chứng ở Chương 4) chỉ cần thêm một lớp cài đặt mới `implements CuttingStrategy`, không cần sửa Controller, Service điều phối hay Repository. Đây cũng là lý do khóa luận không chọn ILP/OR-Tools làm engine chính ngay từ đầu — tránh native dependency nặng trong khi mục tiêu đánh giá là chất lượng kiến trúc, nhưng vẫn giữ đường mở rộng sang benchmark thuật toán khác nếu cần.
 
-Việc tách interface này cũng là thứ giúp tách chức năng **tính** và chức năng **duyệt** phương án cắt mà không phải nhân đôi thuật toán. `computePlan` chỉ nhận vào danh sách nhu cầu cắt và ảnh chụp tồn kho, không biết gì về phạm vi đơn hàng lẫn việc kết quả có được lưu xuống hay không — hai mối quan tâm đó nằm hoàn toàn ở `CuttingPlanService`. Nhờ vậy hai chức năng khác nhau về phạm vi và về tác động dữ liệu vẫn dùng chung đúng một cài đặt thuật toán, và bộ unit test viết cho thuật toán bảo chứng cho cả hai.
+Việc tách interface này cũng là thứ giúp tách chức năng **tính** và chức năng **duyệt** phương án cắt mà không phải nhân đôi thuật toán. `computePlan` chỉ nhận vào danh sách nhu cầu cắt, ảnh chụp tồn kho và một điều kiện cho biết đoạn nào được phép ghép ở mức ba; nó không biết gì về quy tắc phạm vi đơn hàng (ngày giao t+3, tối đa 70 đơn) lẫn việc kết quả có được lưu xuống hay không — hai mối quan tâm đó nằm hoàn toàn ở `CuttingPlanService`. Chức năng tính dựng điều kiện mức ba từ tập đơn của một đợt duyệt (theo yêu cầu của doanh nghiệp, mức ba chỉ ghép trong tập đơn đó), còn chức năng duyệt truyền một điều kiện luôn đúng (`ANY_DEMAND`), vì tập đơn đưa vào đã chính là tập đó. Nhờ vậy hai chức năng khác nhau về phạm vi và về tác động dữ liệu vẫn dùng chung đúng một cài đặt thuật toán, và bộ unit test viết cho thuật toán bảo chứng cho cả hai.
 
 ## 3.2.3 DTO và Mapper — tách domain khỏi API contract
 
