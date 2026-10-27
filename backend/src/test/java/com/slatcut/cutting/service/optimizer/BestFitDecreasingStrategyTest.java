@@ -424,4 +424,86 @@ class BestFitDecreasingStrategyTest {
                 .containsExactlyInAnyOrder(1600, 5000);
         assertThat(pool.remainingCount(24L, 3000)).isEqualTo(1);
     }
+
+    // ================================ Bó Mức 3 theo phạm vi ghép (level3Eligible)
+
+    /**
+     * Cùng bộ dữ liệu với {@link #computePlan_combinesTwoDifferentLengthsFromOneStock}: không bó thì
+     * 3000 + 4000 ghép khít thanh 7000. Đối tác nằm ngoài phạm vi thì đoạn 3000 phải rơi xuống Mức
+     * 4 (dư 4000mm nhập lại kho) và đoạn 4000 lấy chính phần dư đó ở Mức 1 — không cặp Mức 3 nào.
+     */
+    @Test
+    void computePlan_levelThree_doesNotPairWithCandidateOutsideScope() {
+        SlatMaterial material = slatMaterial(26);
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 7000, 1)));
+        CuttingDemand inScope = demand(material, 3000, 1, LocalDate.of(2026, 9, 10), "HY90001", 1);
+        CuttingDemand outOfScope = demand(material, 4000, 1, LocalDate.of(2026, 9, 15), "HY90002", 1);
+
+        CuttingPlanResult result =
+                strategy.computePlan(List.of(inScope, outOfScope), pool, d -> d.ycsx().equals("HY90001"));
+
+        assertThat(result.shortages()).isEmpty();
+        assertThat(result.cuts()).extracting(CutRecord::cutLevel).containsExactly(CutLevel.PA4, CutLevel.PA1);
+        assertThat(result.cuts()).allSatisfy(cut -> assertThat(cut.pieces()).hasSize(1));
+    }
+
+    /**
+     * Chiều ngược lại: đoạn đang xét nằm ngoài phạm vi thì bỏ qua hẳn Mức 3, dù đối tác nằm trong.
+     * Tách thành ca riêng để mỗi vế của điều kiện có một ca đỏ khi chỉ riêng nó bị gỡ.
+     */
+    @Test
+    void computePlan_levelThree_skipsPieceOutsideScopeEvenWithPartnerInsideScope() {
+        SlatMaterial material = slatMaterial(27);
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 7000, 1)));
+        CuttingDemand outOfScope = demand(material, 3000, 1, LocalDate.of(2026, 9, 10), "HY90001", 1);
+        CuttingDemand inScope = demand(material, 4000, 1, LocalDate.of(2026, 9, 15), "HY90002", 1);
+
+        CuttingPlanResult result =
+                strategy.computePlan(List.of(outOfScope, inScope), pool, d -> d.ycsx().equals("HY90002"));
+
+        assertThat(result.shortages()).isEmpty();
+        assertThat(result.cuts()).extracting(CutRecord::cutLevel).containsExactly(CutLevel.PA4, CutLevel.PA1);
+    }
+
+    /**
+     * Mồi nhử: đối tác khớp ĐẦU TIÊN trong hàng đợi (HY90002) nằm ngoài phạm vi, đối tác cùng độ
+     * dài đứng sau (HY90003) nằm trong. Bó phạm vi không được làm Mức 3 dừng lại — nó phải bỏ qua
+     * HY90002 và ghép với HY90003. Thanh 8000mm chỉ để HY90002 có chỗ cắt ở Mức 4.
+     */
+    @Test
+    void computePlan_levelThree_skipsOutOfScopeCandidateAndPairsWithLaterOneInScope() {
+        SlatMaterial material = slatMaterial(28);
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 7000, 1), batch(material, 8000, 1)));
+        CuttingDemand x = demand(material, 3000, 1, LocalDate.of(2026, 9, 10), "HY90001", 1);
+        CuttingDemand firstButOutOfScope = demand(material, 4000, 1, LocalDate.of(2026, 9, 12), "HY90002", 1);
+        CuttingDemand laterInScope = demand(material, 4000, 1, LocalDate.of(2026, 9, 15), "HY90003", 1);
+
+        CuttingPlanResult result = strategy.computePlan(
+                List.of(x, firstButOutOfScope, laterInScope), pool, d -> !d.ycsx().equals("HY90002"));
+
+        assertThat(result.shortages()).isEmpty();
+        CutRecord combinedCut = result.cuts().stream()
+                .filter(c -> c.cutLevel() == CutLevel.PA3)
+                .findFirst()
+                .orElseThrow();
+        assertThat(combinedCut.stockLengthMm()).isEqualTo(7000);
+        assertThat(combinedCut.pieces()).extracting(CuttingDemand::ycsx).containsExactlyInAnyOrder("HY90001", "HY90003");
+    }
+
+    /** Doanh nghiệp chỉ yêu cầu bó Mức 3 — Mức 2 vẫn gộp hai đoạn cùng độ dài dù một đoạn ngoài phạm vi. */
+    @Test
+    void computePlan_levelTwo_ignoresLevelThreeScope() {
+        SlatMaterial material = slatMaterial(29);
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 3000, 1)));
+        CuttingDemand inScope = demand(material, 1500, 1, LocalDate.of(2026, 9, 10), "HY90001", 1);
+        CuttingDemand outOfScope = demand(material, 1500, 1, LocalDate.of(2026, 9, 15), "HY90002", 1);
+
+        CuttingPlanResult result =
+                strategy.computePlan(List.of(inScope, outOfScope), pool, d -> d.ycsx().equals("HY90001"));
+
+        assertThat(result.shortages()).isEmpty();
+        assertThat(result.cuts()).hasSize(1);
+        assertThat(result.cuts().get(0).cutLevel()).isEqualTo(CutLevel.PA2);
+        assertThat(result.cuts().get(0).pieces()).extracting(CuttingDemand::ycsx).containsExactly("HY90001", "HY90002");
+    }
 }

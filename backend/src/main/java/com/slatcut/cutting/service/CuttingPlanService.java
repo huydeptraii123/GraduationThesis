@@ -53,6 +53,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +72,8 @@ import org.springframework.transaction.annotation.Transactional;
  *       giao, không giới hạn số đơn, và KHÔNG ghi một dòng nào. Bỏ cả hai giới hạn chính là giá
  *       trị của chức năng: nó trả lời được "với toàn bộ đơn và toàn bộ tồn kho hiện tại thì còn
  *       thiếu loại thanh nan nào", thứ mà một đợt duyệt tối đa 70 đơn không bao giờ trả lời được.
+ *       Ngoại lệ duy nhất là Mức 3: chỉ ghép hai đoạn cùng thuộc phạm vi đợt duyệt (xem
+ *       {@link #withinApprovalScope}).
  *   <li><b>Duyệt</b> ({@link #approvalPreview()} rồi {@link #approve(String)}) — phạm vi hẹp theo
  *       đúng luật đợt cắt: đơn chưa duyệt sinh được ít nhất 1 nhu cầu cắt, reqdDeliveryDate
  *       &lt;= t+3, tối đa 70 đơn (đơn ngoài phạm vi thuộc "nhóm 99", vẫn suy ra động nên không cần
@@ -139,6 +142,9 @@ public class CuttingPlanService {
      * điểm đó, và một lịch sử các lần tính chỉ là một chồng số liệu đã lỗi thời. Đổi lại, người
      * dùng chạy thử bao nhiêu lần tùy ý mà không làm lệch tồn kho.
      *
+     * <p>Toàn bộ đơn chưa duyệt đi qua cả 4 mức, nhưng Mức 3 chỉ ghép hai đoạn cùng thuộc phạm vi
+     * đợt duyệt ({@link #withinApprovalScope}).
+     *
      * <p>{@code readOnly = true} ở đây không chỉ là gợi ý tối ưu mà là hàng rào cuối cùng: nếu có
      * thao tác ghi nào lọt vào nhánh này, transaction sẽ ném lỗi thay vì âm thầm trừ tồn kho.
      * {@link InventoryPool} cũng sao chép tồn kho sang cấu trúc riêng chứ không sửa entity, nên
@@ -147,9 +153,26 @@ public class CuttingPlanService {
     @Transactional(readOnly = true)
     public CuttingPlanPreview simulate() {
         List<SalesOrder> scopeOrders = salesOrderRepository.findUnapproved();
-        AlgorithmRun run = runAlgorithm(scopeOrders);
+        AlgorithmRun run = runAlgorithm(scopeOrders, withinApprovalScope());
         long blockedOrderCount = salesOrderRepository.countUnapprovedIgnoringBom() - scopeOrders.size();
         return buildPreview(scopeOrders, run, blockedOrderCount);
+    }
+
+    /**
+     * Điều kiện ghép Mức 3 của chức năng tính: đoạn thuộc một đơn nằm trong phạm vi đợt duyệt —
+     * đúng truy vấn {@link #findScopeOrders} mà {@link #readApprovalScope()} dùng (t+3, tối đa
+     * {@value #SCOPE_MAX_ORDERS} đơn) — theo yêu cầu của doanh nghiệp. Hệ quả: một cặp ghép Mức 3
+     * trên trang chủ không bao giờ dựa vào đơn mà đợt duyệt sắp tới không lấy vào cùng; đoạn ngoài
+     * phạm vi vẫn được tính ở Mức 1, 2, 4 như mọi đoạn khác.
+     *
+     * <p>Chỉ đọc danh sách đơn để lấy khóa, không đọc dấu vân trạng thái: chức năng tính không có gì
+     * để PLANNER xác nhận lại sau đó, nên dấu vân không có ai dùng.
+     */
+    private Predicate<CuttingDemand> withinApprovalScope() {
+        Set<OrderKey> scopeKeys = findScopeOrders(scopeCutoffDate()).stream()
+                .map(order -> new OrderKey(order.getYcsx(), order.getItem()))
+                .collect(Collectors.toSet());
+        return demand -> scopeKeys.contains(new OrderKey(demand.ycsx(), demand.item()));
     }
 
     /**
@@ -159,7 +182,7 @@ public class CuttingPlanService {
     @Transactional(readOnly = true)
     public CuttingPlanApprovalPreview approvalPreview() {
         ScopeSnapshot snapshot = readApprovalScope();
-        AlgorithmRun run = runAlgorithm(snapshot.orders());
+        AlgorithmRun run = runAlgorithm(snapshot.orders(), CuttingStrategy.ANY_DEMAND);
         long blockedOrderCount = countPendingMissingBom(snapshot.cutoffDate());
         return new CuttingPlanApprovalPreview(
                 buildPreview(snapshot.orders(), run, blockedOrderCount),
@@ -216,12 +239,16 @@ public class CuttingPlanService {
      * Phần thuần tính toán dùng chung cho cả ba hàm trên: dựng nhu cầu cắt, nạp ảnh chụp tồn kho,
      * chạy 4 mức ưu tiên. Không chạm tới một repository ghi nào — đó là lý do chức năng tính có thể
      * dùng lại y nguyên thuật toán của chức năng duyệt mà không có rủi ro làm đổi dữ liệu.
+     *
+     * @param level3Eligible đoạn nào được ghép ở Mức 3 — luồng duyệt truyền
+     *     {@link CuttingStrategy#ANY_DEMAND} vì tập đơn đưa vào đã là phạm vi đợt duyệt, không có gì
+     *     để bó thêm
      */
-    private AlgorithmRun runAlgorithm(List<SalesOrder> orders) {
+    private AlgorithmRun runAlgorithm(List<SalesOrder> orders, Predicate<CuttingDemand> level3Eligible) {
         List<CuttingDemand> demands = cuttingDemandService.buildDemands(orders);
         List<InventoryBatch> batches = inventoryBatchRepository.findAll();
         InventoryPool pool = new InventoryPool(batches);
-        CuttingPlanResult result = cuttingStrategy.computePlan(demands, pool);
+        CuttingPlanResult result = cuttingStrategy.computePlan(demands, pool, level3Eligible);
 
         // Chỉ giữ lại tồn kho của những loại thanh nan thực sự có mặt trong lần chạy: loại không
         // liên quan thì báo cáo không bao giờ hỏi tới, mà ảnh chụp lại được ghi xuống CSDL mỗi lần
@@ -334,7 +361,7 @@ public class CuttingPlanService {
         List<SalesOrder> scopeOrders = snapshot.orders();
         Map<OrderKey, SalesOrder> orderIndex = scopeOrders.stream()
                 .collect(Collectors.toMap(so -> new OrderKey(so.getYcsx(), so.getItem()), so -> so));
-        AlgorithmRun run = runAlgorithm(scopeOrders);
+        AlgorithmRun run = runAlgorithm(scopeOrders, CuttingStrategy.ANY_DEMAND);
         CuttingPlanResult result = run.result();
 
         CuttingPlan plan = new CuttingPlan();

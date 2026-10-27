@@ -9,6 +9,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +23,9 @@ import org.springframework.stereotype.Service;
  * chạy). Hết cả 4 mức thì báo thiếu vật tư — thuật toán KHÔNG BAO GIỜ tự tạo ra phần dư nằm trong
  * khoảng 30cm–3m, vì đó là phần doanh nghiệp không chấp nhận (không đủ nhỏ để bỏ, không đủ dài để
  * tái sử dụng).
+ *
+ * <p>Mức 3 còn bị bó thêm bởi {@code level3Eligible}: chỉ ghép hai đoạn cùng thỏa điều kiện đó. Đoạn
+ * không thỏa vẫn đi qua Mức 1, 2, 4 như thường — nó chỉ không được ghép đôi.
  */
 @Service
 public class BestFitDecreasingStrategy implements CuttingStrategy {
@@ -31,18 +35,23 @@ public class BestFitDecreasingStrategy implements CuttingStrategy {
             .thenComparing(CuttingDemand::item);
 
     @Override
-    public CuttingPlanResult computePlan(List<CuttingDemand> demands, InventoryPool pool) {
+    public CuttingPlanResult computePlan(
+            List<CuttingDemand> demands, InventoryPool pool, Predicate<CuttingDemand> level3Eligible) {
         List<CutRecord> cuts = new ArrayList<>();
         List<ShortageEntry> shortages = new ArrayList<>();
 
         for (List<CuttingDemand> group : groupBySlatMaterial(demands).values()) {
-            processGroup(group, pool, cuts, shortages);
+            processGroup(group, pool, level3Eligible, cuts, shortages);
         }
         return new CuttingPlanResult(cuts, shortages);
     }
 
     private void processGroup(
-            List<CuttingDemand> group, InventoryPool pool, List<CutRecord> cuts, List<ShortageEntry> shortages) {
+            List<CuttingDemand> group,
+            InventoryPool pool,
+            Predicate<CuttingDemand> level3Eligible,
+            List<CutRecord> cuts,
+            List<ShortageEntry> shortages) {
         LinkedList<CuttingDemand> queue = new LinkedList<>(expandByQuantity(group));
         queue.sort(PRIORITY_ORDER);
 
@@ -67,14 +76,24 @@ public class BestFitDecreasingStrategy implements CuttingStrategy {
                 continue;
             }
 
+            // Mức 3 chỉ ghép hai đoạn cùng thỏa level3Eligible: X ngoài phạm vi thì bỏ qua hẳn mức
+            // này, còn đối tác ngoài phạm vi thì bị bỏ qua để tìm tiếp đối tác khớp đầu tiên TRONG
+            // phạm vi. Mức 2 ở trên cố ý không đọc điều kiện này — doanh nghiệp chỉ yêu cầu thu hẹp
+            // Mức 3.
             CuttingDemand combinePartner = null;
             Integer combinedStockLengthMm = null;
-            for (CuttingDemand candidate : queue) {
-                Optional<Integer> combo = pool.findCombination(material, x.cutLengthMm(), candidate.cutLengthMm());
-                if (combo.isPresent()) {
-                    combinePartner = candidate;
-                    combinedStockLengthMm = combo.get();
-                    break;
+            if (level3Eligible.test(x)) {
+                for (CuttingDemand candidate : queue) {
+                    if (!level3Eligible.test(candidate)) {
+                        continue;
+                    }
+                    Optional<Integer> combo =
+                            pool.findCombination(material, x.cutLengthMm(), candidate.cutLengthMm());
+                    if (combo.isPresent()) {
+                        combinePartner = candidate;
+                        combinedStockLengthMm = combo.get();
+                        break;
+                    }
                 }
             }
             if (combinePartner != null) {

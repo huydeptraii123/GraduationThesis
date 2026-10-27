@@ -33,6 +33,7 @@ import com.slatcut.cutting.repository.InventoryBatchRepository;
 import com.slatcut.cutting.repository.SalesOrderRepository;
 import com.slatcut.cutting.repository.ShortageRecordRepository;
 import com.slatcut.cutting.repository.SlatMaterialRepository;
+import com.slatcut.cutting.service.optimizer.CutRecord;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
@@ -514,19 +515,19 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Mức 3 ghép hai đoạn của hai đơn khác nhau lên cùng một phôi. Phạm vi được phép ghép là tập
-     * đơn của CHÍNH lần chạy đó, nên hai chức năng cho kết quả khác nhau trên cùng một bộ dữ liệu:
-     * chức năng tính ghép được đơn giao gấp với đơn giao xa, còn đợt duyệt thì không — đơn giao xa
-     * không nằm trong phạm vi, và một phương án đưa xuống xưởng không được phép cắt cho một bộ cửa
-     * chưa tới lượt sản xuất.
+     * Mức 3 ghép hai đoạn của hai đơn khác nhau lên cùng một phôi, và ở CẢ hai chức năng chỉ ghép
+     * trong phạm vi đợt duyệt (t+3, tối đa 70 đơn): đợt duyệt vì tập đơn của nó chỉ có thế, chức năng
+     * tính vì doanh nghiệp yêu cầu bó Mức 3 theo đúng phạm vi đó dù nó tính trên toàn bộ sổ đơn.
      *
      * <p>Bộ dữ liệu dựng sao cho ghép hay không ghép cho hai kết quả nhìn thấy được: phôi 7000mm
-     * vừa khít 3000 + 4000 (phần dư 0), còn nếu chỉ cắt đoạn 3000 thì để lại 4000mm nhập lại kho.
-     * Mức 1 không khớp (dư 4000mm quá xa ngưỡng 30cm) và Mức 2 cũng không (7000 không chia hết cho
-     * 3000), nên mức quyết định kết quả đúng là Mức 3.
+     * vừa khít 3000 + 4000 (phần dư 0), còn nếu chỉ cắt đoạn 3000 thì để lại 4000mm nhập lại kho rồi
+     * đoạn 4000 lấy chính phần dư đó. Mức 1 không khớp (dư 4000mm quá xa ngưỡng 30cm) và Mức 2 cũng
+     * không (7000 không chia hết cho 3000), nên mức quyết định kết quả đúng là Mức 3.
+     *
+     * <p>Đơn thứ hai giao đúng ngày t+3 — mép trong của phạm vi; mép ngoài (t+4) ở ca kế tiếp.
      */
     @Test
-    void simulate_pairsAcrossAllOrdersAtLevelThree() {
+    void simulate_pairsWithinTheApprovalScopeAtLevelThree() {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();
         SlatMaterial slatMaterial = persistSlatMaterial();
@@ -534,11 +535,12 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         persistInventoryBatch(slatMaterial, 7000, 1);
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("3.000"), LocalDate.now());
         persistSalesOrder(
-                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("4.000"), LocalDate.now().plusDays(90));
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("4.000"), LocalDate.now().plusDays(3));
 
         CuttingPlanPreview preview = service.simulate();
 
         assertThat(preview.result().cuts()).hasSize(1);
+        assertThat(preview.result().cuts().get(0).cutLevel().name()).isEqualTo("PA3");
         assertThat(preview.result().cuts().get(0).pieces())
                 .extracting(CuttingDemand::cutLengthMm)
                 .containsExactlyInAnyOrder(3000, 4000);
@@ -546,7 +548,105 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         assertThat(preview.result().shortages()).isEmpty();
     }
 
-    /** Cùng bộ dữ liệu, nhưng đợt duyệt chỉ thấy đơn trong hạn giao nên không có đối tác để ghép. */
+    /**
+     * Đơn giao sau mốc t+3 — ở đây t+4, mép ngoài của phạm vi — vẫn được tính (nó có mặt trong phạm
+     * vi chức năng tính và vẫn được cắt), nhưng không được làm đối tác ghép Mức 3 cho đơn giao gấp.
+     */
+    @Test
+    void simulate_doesNotPairBeyondTheDeliveryCutoffAtLevelThree() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 7000, 1);
+        persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("3.000"), LocalDate.now());
+        SalesOrder justBeyond = persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("4.000"), LocalDate.now().plusDays(4));
+
+        CuttingPlanPreview preview = service.simulate();
+
+        assertThat(preview.scopeOrders()).extracting(SalesOrder::getId).contains(justBeyond.getId());
+        assertThat(preview.result().cuts())
+                .extracting(cut -> cut.cutLevel().name(), CutRecord::stockLengthMm, CutRecord::remainderMm)
+                .containsExactly(tuple("PA4", 7000, 4000), tuple("PA1", 4000, 0));
+        assertThat(preview.result().shortages()).isEmpty();
+    }
+
+    /**
+     * Vế "tối đa 70 đơn" của phạm vi ghép, khóa cả hai mép: 71 đơn cùng ngày giao (chưa quá t+3), đơn
+     * thứ 70 còn trong phạm vi đợt duyệt, đơn thứ 71 thì không. Hai loại thanh nan, mỗi loại một cặp
+     * 3000 + 4000 vừa khít phôi 7000:
+     *
+     * <ul>
+     *   <li>loại A: đơn thứ 1 + đơn thứ 70 — cả hai trong phạm vi nên PHẢI ghép (phạm vi hụt còn 69
+     *       đơn thì cặp này rơi xuống Mức 4 + Mức 1);
+     *   <li>loại B: đơn thứ 69 + đơn thứ 71 — đơn 71 ngoài phạm vi nên KHÔNG được ghép (phạm vi lố
+     *       thành 71 đơn thì cặp này thành Mức 3).
+     * </ul>
+     *
+     * Đơn 2–68 thuộc loại thanh nan thứ ba không có tồn kho, chỉ để chiếm chỗ trong phạm vi.
+     */
+    @Test
+    void simulate_levelThreeScopeEndsExactlyAtTheSeventiethOrder() {
+        Customer customer = persistCustomer();
+        DoorProduct fillerProduct = persistDoorProduct();
+        persistBomItem(fillerProduct, persistSlatMaterial());
+        DoorProduct productA = persistDoorProduct();
+        SlatMaterial materialA = persistSlatMaterial();
+        persistBomItem(productA, materialA);
+        persistInventoryBatch(materialA, 7000, 1);
+        DoorProduct productB = persistDoorProduct();
+        SlatMaterial materialB = persistSlatMaterial();
+        persistBomItem(productB, materialB);
+        persistInventoryBatch(materialB, 7000, 1);
+        LocalDate sameDate = LocalDate.now();
+        persistSalesOrder("A001", productA, customer, new BigDecimal("3.000"), sameDate);
+        for (int i = 2; i <= 68; i++) {
+            persistSalesOrder(String.format("A%03d", i), fillerProduct, customer, new BigDecimal("1.000"), sameDate);
+        }
+        persistSalesOrder("A069", productB, customer, new BigDecimal("3.000"), sameDate);
+        persistSalesOrder("A070", productA, customer, new BigDecimal("4.000"), sameDate);
+        persistSalesOrder("A071", productB, customer, new BigDecimal("4.000"), sameDate);
+
+        CuttingPlanPreview preview = service.simulate();
+
+        assertThat(preview.scopeOrders()).hasSize(71);
+        assertThat(preview.result().cuts())
+                .filteredOn(cut -> cut.slatMaterial().getId().equals(materialA.getId()))
+                .extracting(cut -> cut.cutLevel().name(), CutRecord::stockLengthMm, CutRecord::remainderMm)
+                .containsExactly(tuple("PA3", 7000, 0));
+        assertThat(preview.result().cuts())
+                .filteredOn(cut -> cut.slatMaterial().getId().equals(materialB.getId()))
+                .extracting(cut -> cut.cutLevel().name(), CutRecord::stockLengthMm, CutRecord::remainderMm)
+                .containsExactly(tuple("PA4", 7000, 4000), tuple("PA1", 4000, 0));
+    }
+
+    /** Doanh nghiệp chỉ yêu cầu bó Mức 3 — Mức 2 của chức năng tính vẫn gộp đoạn qua mốc t+3. */
+    @Test
+    void simulate_levelTwoStillCombinesBeyondTheDeliveryCutoff() {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial slatMaterial = persistSlatMaterial();
+        persistBomItem(doorProduct, slatMaterial);
+        persistInventoryBatch(slatMaterial, 7000, 1);
+        SalesOrder urgent =
+                persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("3.500"), LocalDate.now());
+        SalesOrder farFuture = persistSalesOrder(
+                "HY9" + (counter + 1), doorProduct, customer, new BigDecimal("3.500"), LocalDate.now().plusDays(90));
+
+        CuttingPlanPreview preview = service.simulate();
+
+        assertThat(preview.result().cuts()).hasSize(1);
+        assertThat(preview.result().cuts().get(0).cutLevel().name()).isEqualTo("PA2");
+        assertThat(preview.result().cuts().get(0).pieces())
+                .extracting(CuttingDemand::ycsx)
+                .containsExactly(urgent.getYcsx(), farFuture.getYcsx());
+    }
+
+    /**
+     * Cùng cặp 3000 + 4000 trên phôi 7000 như {@link #simulate_doesNotPairBeyondTheDeliveryCutoffAtLevelThree},
+     * nhưng đợt duyệt chỉ thấy đơn trong hạn giao: không có đối tác để ghép, và đơn giao xa không được cắt.
+     */
     @Test
     void approve_doesNotPairWithOrderOutsideTheApprovalScope() {
         Customer customer = persistCustomer();

@@ -92,7 +92,8 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long>, J
      *
      * <p>Khác {@link #findUnapproved()} đúng ở hai chỗ: có mốc ngày giao và có hạn mức số đơn.
      * Chức năng "tính phương án cắt" cố ý bỏ cả hai để nhìn được bức tranh thiếu hụt của toàn bộ
-     * đơn tồn.
+     * đơn tồn — nhưng vẫn gọi query này để biết đoạn nào được ghép ở Mức 3, vì Mức 3 của nó chỉ
+     * ghép trong đúng phạm vi đợt duyệt.
      *
      * <p>Điều kiện định mức ở cuối ({@link #HAS_COMPLETE_BOM}) là bắt buộc: đơn sinh ra 0 nhu cầu
      * cắt vẫn sẽ được gán approvedPlan nếu lọt vào phạm vi, tức bị đánh dấu "đã duyệt" trong khi
