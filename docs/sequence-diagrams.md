@@ -108,9 +108,17 @@ sequenceDiagram
         C-->>FE: 200 + file Excel
         FE-->>U: Tải file về máy
     end
+
+    opt Người dùng bấm "Xuất Excel thiếu vật tư" ở màn báo cáo thiếu vật tư toàn hệ thống
+        FE->>C: POST /api/v1/cutting-plans/simulate/shortage-report
+        C->>SVC: simulate() — tính lại trên trạng thái tại thời điểm bấm
+        SVC-->>C: CuttingPlanResult
+        C-->>FE: 200 + file Excel chỉ gồm các dòng còn thiếu
+        FE-->>U: Tải file về máy
+    end
 ```
 
-Nút xuất Excel **tính lại** thay vì dùng lại kết quả của lần bấm trước. Đây là hệ quả trực tiếp của việc không lưu lịch sử: không có bản ghi nào để đọc lại. Đổi lại, file xuất ra luôn phản ánh trạng thái tại thời điểm bấm xuất, đúng tinh thần "mỗi lần bấm là một lần tính trên trạng thái hiện tại" — và vì thuật toán cho kết quả tái lập được với cùng một bộ dữ liệu đầu vào (yêu cầu phi chức năng về tính đúng đắn), file vẫn khớp với những gì màn hình đang hiển thị chừng nào dữ liệu chưa đổi.
+Nút xuất Excel **tính lại** thay vì dùng lại kết quả của lần bấm trước. Đây là hệ quả trực tiếp của việc không lưu lịch sử: không có bản ghi nào để đọc lại. Đổi lại, file xuất ra luôn phản ánh trạng thái tại thời điểm bấm xuất, đúng tinh thần "mỗi lần bấm là một lần tính trên trạng thái hiện tại" — và vì thuật toán cho kết quả tái lập được với cùng một bộ dữ liệu đầu vào (yêu cầu phi chức năng về tính đúng đắn), file vẫn khớp với những gì màn hình đang hiển thị chừng nào dữ liệu chưa đổi. Báo cáo thiếu vật tư toàn hệ thống đi đúng con đường này: màn hình của nó đọc lại kết quả của lần tính đang giữ trên trình duyệt (tính ở trang chủ thì sang màn này thấy ngay, không chạy lại thuật toán; kết quả đó bị xóa ngay sau khi duyệt phương án hoặc nhập Excel thành công), còn file Excel của nó được máy chủ tính lại lúc tải rồi chỉ giữ các dòng còn thiếu — không có giới hạn ngày giao hay số đơn nào được áp thêm.
 
 ### 2b. Duyệt phương án cắt (nơi duy nhất ghi dữ liệu)
 

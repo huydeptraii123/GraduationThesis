@@ -110,6 +110,7 @@ Với nhóm chức năng cắt, cột quan trọng nhất là **có ghi dữ li�
 |---|---|---|---|
 | Tính phương án cắt | `POST /cutting-plans/simulate` | PLANNER, ADMIN | Không |
 | Xuất Excel bản tính | `POST /cutting-plans/simulate/export` | PLANNER, ADMIN | Không |
+| Xuất báo cáo thiếu vật tư toàn hệ thống | `POST /cutting-plans/simulate/shortage-report` | PLANNER, ADMIN | Không |
 | Xem phương án đề xuất để duyệt | `GET /cutting-plans/approval-preview` | PLANNER | Không |
 | **Duyệt phương án cắt** | `POST /cutting-plans/approve` | PLANNER | **Có** |
 | Xem lịch sử / chi tiết phương án | `GET /cutting-plans`, `GET /cutting-plans/{id}` | PLANNER, ADMIN | Không |
@@ -118,7 +119,7 @@ Với nhóm chức năng cắt, cột quan trọng nhất là **có ghi dữ li�
 
 Ba điểm trong hai bảng này dễ bị hiểu nhầm nên cần nói rõ. Thứ nhất, **ranh giới phân quyền của nhóm chức năng cắt nằm ở hành vi ghi, không nằm ở việc nhìn thấy kết quả**: đúng một dòng trong bảng có giá trị "Có" ở cột cuối, và chỉ hai dòng giới hạn riêng PLANNER — thao tác duyệt cùng bước xem phương án ngay trước đó, vì cả hai thuộc về một quy trình phê duyệt mà chỉ PLANNER chịu trách nhiệm. `simulate` mở cho cả hai vai trò vì chỉ đọc dữ liệu và không chốt quyết định sản xuất nào. Thứ hai, **`/users` giới hạn ADMIN kể cả thao tác đọc**, khác với mọi nhóm dữ liệu nghiệp vụ còn lại: danh sách tài khoản là dữ liệu quản trị, không phải dữ liệu nghiệp vụ dùng chung. Thứ ba, **ghi danh mục loại thanh nan mở cho cả hai vai trò** trong khi ghi định mức BOM chỉ ADMIN — danh mục loại thanh nan phát sinh tự nhiên trong lúc PLANNER nhập tồn kho, còn định mức là dữ liệu kỹ thuật do đội kỹ thuật cung cấp.
 
-Về phương thức HTTP: `POST /cutting-plans/simulate` và endpoint xuất Excel của nó dùng `POST` dù không ghi dữ liệu, vì chúng **chạy lại thuật toán trên toàn bộ đơn tồn** mỗi lần gọi — một thao tác tốn kém, không có tài nguyên nào để `GET` và không nên để bị nhớ đệm hay gọi lại tự động. `GET /cutting-plans/approval-preview` giữ `GET` vì nó đọc đúng một thứ xác định: phương án đề xuất cho đợt duyệt kế tiếp, an toàn khi tải lại.
+Về phương thức HTTP: `POST /cutting-plans/simulate` và hai endpoint xuất Excel đi kèm nó (bản tính đầy đủ và báo cáo thiếu vật tư toàn hệ thống) dùng `POST` dù không ghi dữ liệu, vì chúng **chạy lại thuật toán trên toàn bộ đơn tồn** mỗi lần gọi — một thao tác tốn kém, không có tài nguyên nào để `GET` và không nên để bị nhớ đệm hay gọi lại tự động. `GET /cutting-plans/approval-preview` giữ `GET` vì nó đọc đúng một thứ xác định: phương án đề xuất cho đợt duyệt kế tiếp, an toàn khi tải lại.
 
 Bảng này thay thế endpoint `POST /cutting-plans/generate` của thiết kế trước — thao tác vừa tính vừa ghi trong một lần bấm nay đã tách làm hai. Endpoint xem trước phạm vi đi kèm nó cũng không còn cần thiết: `GET /cutting-plans/approval-preview` đã trả về cả phạm vi lẫn phương án đề xuất, nên không phải gọi riêng một endpoint chỉ để đếm số đơn.
 
