@@ -101,11 +101,13 @@ export function canManageUsers(user: RoleHolder | null | undefined): boolean {
 }
 
 /**
- * Đặt lại dữ liệu vận hành (đơn hàng, tồn kho, lịch sử duyệt): `@PreAuthorize("hasRole('ADMIN')")`.
+ * Đặt lại dữ liệu vận hành (đơn hàng, tồn kho, lịch sử duyệt):
+ * `@PreAuthorize("hasAnyRole('ADMIN', 'PLANNER')")`.
  *
- * Nhập đơn hàng và tồn kho hằng ngày là việc của PLANNER, nhưng thao tác này xóa luôn toàn bộ lịch
- * sử duyệt và không hoàn tác được, nên chỉ ADMIN — cùng nhóm với quản lý tài khoản.
+ * Mở cho cả hai vai trò theo yêu cầu của doanh nghiệp: PLANNER là người nhập lại tồn kho và đơn hàng
+ * sau khi đặt lại. Thao tác không hoàn tác được nên được bảo vệ bằng cụm xác nhận (máy chủ kiểm lại),
+ * không bằng vai trò.
  */
 export function canResetOperationalData(user: RoleHolder | null | undefined): boolean {
-  return hasRole(user, 'ADMIN')
+  return hasRole(user, 'ADMIN', 'PLANNER')
 }

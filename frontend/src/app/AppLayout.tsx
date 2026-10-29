@@ -69,9 +69,8 @@ const MENU_ITEMS: {
   { key: '/cutting-plans', icon: <ScissorOutlined />, label: 'Lịch sử duyệt' },
   // Chỉ đọc như trang chủ (cùng nguồn tính), nên cũng không gắn nhãn vai trò.
   { key: '/shortage-report', icon: <WarningOutlined />, label: 'Báo cáo thiếu vật tư' },
-  // Hai mục cuối bị ẩn hẳn theo vai trò, không chỉ khóa nút ghi: endpoint danh sách tài khoản là
-  // ADMIN-only nên PLANNER vào cũng chỉ nhận về một trang trống kèm lỗi quyền; màn đặt lại dữ liệu
-  // thì không có gì để PLANNER xem.
+  // Mục "Người dùng" bị ẩn hẳn với PLANNER, không chỉ khóa nút ghi: endpoint danh sách tài khoản là
+  // ADMIN-only nên PLANNER vào cũng chỉ nhận về một trang trống kèm lỗi quyền.
   {
     key: '/users',
     icon: <TeamOutlined />,
@@ -80,12 +79,12 @@ const MENU_ITEMS: {
     editorHint: 'Chỉ ADMIN xem và quản lý được tài khoản người dùng.',
     visible: canManageUsers,
   },
+  // Cả hai vai trò dùng được nên không gắn nhãn vai trò; vẫn đọc vị từ ở `permissions.ts` để luật
+  // quyền chỉ nằm một chỗ.
   {
     key: '/data-reset',
     icon: <ClearOutlined />,
     label: 'Đặt lại dữ liệu',
-    editorRole: 'ADMIN',
-    editorHint: 'Chỉ ADMIN đặt lại được dữ liệu tồn kho, đơn hàng và lịch sử duyệt.',
     visible: canResetOperationalData,
   },
 ]

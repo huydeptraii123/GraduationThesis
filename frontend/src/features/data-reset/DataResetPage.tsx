@@ -2,7 +2,6 @@ import { ClearOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, Col, Input, Modal, Row, Statistic, Typography } from 'antd'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { extractErrorMessage } from '../../api/apiError'
-import { RoleRestrictionNotice } from '../../components/RoleRestrictionNotice'
 import { useAuth } from '../auth/AuthContext'
 import { canResetOperationalData } from '../auth/permissions'
 import { getBomSummary, listDoorProducts } from '../bom/bomApi'
@@ -157,7 +156,7 @@ export function DataResetPage() {
 
       {!canReset ? (
         <div style={{ marginTop: 16 }}>
-          <RoleRestrictionNotice requiredRole="ADMIN" action="đặt lại dữ liệu tồn kho và đơn hàng" />
+          <Alert type="info" showIcon title="Tài khoản hiện tại không có quyền đặt lại dữ liệu." />
         </div>
       ) : (
         <>

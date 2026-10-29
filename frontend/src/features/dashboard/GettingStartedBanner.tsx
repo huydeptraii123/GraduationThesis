@@ -102,7 +102,7 @@ export function GettingStartedBanner() {
             được việc này vì nó giữ nguyên danh mục loại thanh nan.
           </Typography.Paragraph>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            Cần nhập lại tồn kho và đơn hàng từ đầu (ví dụ khách đổi kích thước cửa) thì ADMIN dùng{' '}
+            Cần nhập lại tồn kho và đơn hàng từ đầu (ví dụ khách đổi kích thước cửa) thì dùng{' '}
             <Link to="/data-reset">Đặt lại dữ liệu</Link> — định mức được giữ nguyên.
           </Typography.Paragraph>
         </div>
