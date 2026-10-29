@@ -99,3 +99,13 @@ export function canApproveCuttingPlan(user: RoleHolder | null | undefined): bool
 export function canManageUsers(user: RoleHolder | null | undefined): boolean {
   return hasRole(user, 'ADMIN')
 }
+
+/**
+ * Đặt lại dữ liệu vận hành (đơn hàng, tồn kho, lịch sử duyệt): `@PreAuthorize("hasRole('ADMIN')")`.
+ *
+ * Nhập đơn hàng và tồn kho hằng ngày là việc của PLANNER, nhưng thao tác này xóa luôn toàn bộ lịch
+ * sử duyệt và không hoàn tác được, nên chỉ ADMIN — cùng nhóm với quản lý tài khoản.
+ */
+export function canResetOperationalData(user: RoleHolder | null | undefined): boolean {
+  return hasRole(user, 'ADMIN')
+}

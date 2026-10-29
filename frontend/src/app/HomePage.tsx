@@ -51,8 +51,8 @@ const SHORTCUTS = [
  * Màn hình cố ý **không tự tính khi mở trang**: một lần tính chạy thuật toán trên toàn bộ sổ đơn,
  * và con số chỉ có nghĩa với trạng thái tại đúng thời điểm bấm — tự chạy nền sẽ vừa tốn vừa khiến
  * người dùng đọc một con số không rõ tính từ lúc nào. Kết quả giữ ở bộ nhớ module nên chuyển trang
- * qua lại không mất, nhưng cũng không bao giờ tự làm mới — chỉ bị xóa khi duyệt phương án hoặc nhập
- * Excel thành công (xem `clearLastSimulation`).
+ * qua lại không mất, nhưng cũng không bao giờ tự làm mới — chỉ bị xóa khi duyệt phương án, nhập
+ * Excel hoặc đặt lại dữ liệu thành công (xem `clearLastSimulation`).
  *
  * Số liệu cộng dồn qua các đợt đã duyệt nằm ở màn "Lịch sử duyệt", không phải ở đây: trộn hai
  * loại số trên cùng một màn hình thì "tỷ lệ phế" của lần tính này đứng cạnh "tỷ lệ phế cộng dồn"

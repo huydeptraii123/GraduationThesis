@@ -1,6 +1,7 @@
 import {
   CalculatorOutlined,
   CheckCircleOutlined,
+  ClearOutlined,
   DatabaseOutlined,
   DownOutlined,
   FileTextOutlined,
@@ -22,6 +23,7 @@ import {
   ROLE_COLOR,
   ROLE_SHORT_LABEL,
   canManageUsers,
+  canResetOperationalData,
   type Role,
   type RoleHolder,
 } from '../features/auth/permissions'
@@ -67,8 +69,9 @@ const MENU_ITEMS: {
   { key: '/cutting-plans', icon: <ScissorOutlined />, label: 'Lịch sử duyệt' },
   // Chỉ đọc như trang chủ (cùng nguồn tính), nên cũng không gắn nhãn vai trò.
   { key: '/shortage-report', icon: <WarningOutlined />, label: 'Báo cáo thiếu vật tư' },
-  // Mục duy nhất bị ẩn hẳn theo vai trò, không chỉ khóa nút ghi: endpoint danh sách tài khoản là
-  // ADMIN-only nên PLANNER vào cũng chỉ nhận về một trang trống kèm lỗi quyền.
+  // Hai mục cuối bị ẩn hẳn theo vai trò, không chỉ khóa nút ghi: endpoint danh sách tài khoản là
+  // ADMIN-only nên PLANNER vào cũng chỉ nhận về một trang trống kèm lỗi quyền; màn đặt lại dữ liệu
+  // thì không có gì để PLANNER xem.
   {
     key: '/users',
     icon: <TeamOutlined />,
@@ -76,6 +79,14 @@ const MENU_ITEMS: {
     editorRole: 'ADMIN',
     editorHint: 'Chỉ ADMIN xem và quản lý được tài khoản người dùng.',
     visible: canManageUsers,
+  },
+  {
+    key: '/data-reset',
+    icon: <ClearOutlined />,
+    label: 'Đặt lại dữ liệu',
+    editorRole: 'ADMIN',
+    editorHint: 'Chỉ ADMIN đặt lại được dữ liệu tồn kho, đơn hàng và lịch sử duyệt.',
+    visible: canResetOperationalData,
   },
 ]
 

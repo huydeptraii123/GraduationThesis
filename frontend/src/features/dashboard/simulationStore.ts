@@ -13,7 +13,7 @@
  * kèm lời giải thích, chứ không hiện số liệu không rõ tính từ bao giờ. Nó cũng bị xóa khi đăng
  * xuất (xem {@link clearLastSimulation}), vì đăng xuất chỉ đổi trạng thái trong cùng một trang:
  * không xóa thì người đăng nhập kế tiếp thấy nguyên số liệu đơn hàng của phiên trước. Và bị xóa
- * ngay sau khi duyệt phương án hoặc nhập Excel thành công — lúc đó nó chắc chắn đã cũ.
+ * ngay sau khi duyệt phương án, nhập Excel hoặc đặt lại dữ liệu thành công — lúc đó nó chắc chắn đã cũ.
  */
 
 import { simulateCuttingPlan } from '../cutting-plans/cuttingPlansApi'
@@ -78,7 +78,7 @@ export function runSimulation(): Promise<CuttingPlanPreviewResponse> {
 
 /**
  * Xóa kết quả đang giữ — dùng khi một lần tính thất bại, khi đăng xuất, và ngay sau khi duyệt
- * phương án hoặc nhập Excel thành công: lúc đó kết quả chắc chắn đã cũ, mà trang chủ và màn báo
+ * phương án, nhập Excel hoặc đặt lại dữ liệu thành công: lúc đó kết quả chắc chắn đã cũ, mà trang chủ và màn báo
  * cáo thiếu vật tư toàn hệ thống đều đọc nó (sau khi duyệt, để lại thì phần thiếu của các đơn vừa
  * duyệt bị tính hai lần).
  *
