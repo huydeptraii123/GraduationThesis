@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1040" font-family="Arial, Helvetica, sans-serif">
-  <rect x="0" y="0" width="1200" height="1040" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1120" font-family="Arial, Helvetica, sans-serif">
+  <rect x="0" y="0" width="1200" height="1120" fill="#ffffff"/>
 
   <!-- Ranh giới hệ thống -->
-  <rect x="190" y="60" width="820" height="920" rx="10" fill="#ffffff" stroke="#333333" stroke-width="2"/>
+  <rect x="190" y="60" width="820" height="1000" rx="10" fill="#ffffff" stroke="#333333" stroke-width="2"/>
   <text x="600" y="90" text-anchor="middle" font-size="16" font-weight="bold" fill="#222222">Hệ thống tối ưu cắt nan cửa cuốn</text>
 
   <!-- Đường liên kết vẽ trước để ellipse phủ lên đầu mút. Đường nào không đi thẳng được qua chỗ trống
@@ -42,6 +42,7 @@
     <line x1="1110" y1="460" x2="820" y2="760"/>
     <polyline points="1110,460 970,880 700,880" fill="none"/>
     <line x1="1110" y1="460" x2="380" y2="482"/>
+    <polyline points="1110,460 1000,600 990,1000 920,1000" fill="none"/>
   </g>
 
   <!-- Ca sử dụng -->
@@ -145,6 +146,13 @@
       <tspan x="600" dy="0">Xuất báo cáo thiếu</tspan>
       <tspan x="600" dy="16">vật tư toàn</tspan>
       <tspan x="600" dy="16">hệ thống</tspan>
+    </text>
+
+    <!-- Hàng 8 -->
+    <ellipse cx="820" cy="1000" rx="100" ry="38" fill="#1f9e88" stroke="#136656" stroke-width="1.5"/>
+    <text x="820" y="995" text-anchor="middle" font-size="13" fill="#ffffff">
+      <tspan x="820" dy="0">Đặt lại dữ liệu</tspan>
+      <tspan x="820" dy="16">vận hành</tspan>
     </text>
   </g>
 

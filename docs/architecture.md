@@ -80,7 +80,7 @@ GraduationtThesis/
 │   └── src/test/java/...   # JUnit5 + Mockito (unit), Testcontainers (integration)
 ├── frontend/                # React + TypeScript + Vite
 │   └── src/
-│       ├── features/{auth,sales-orders,inventory,bom,cutting-plans}/
+│       ├── features/{auth,users,sales-orders,inventory,bom,cutting-plans,dashboard,data-reset}/
 │       ├── components/      # shared UI (Table, CuttingBarChart svg component,...)
 │       ├── api/              # axios client + generated types
 │       └── app/              # routing, layout
@@ -90,7 +90,7 @@ GraduationtThesis/
 └── .github/workflows/ci.yml  # build + test backend & frontend
 ```
 
-Frontend tổ chức theo **feature folder** (`features/auth`, `features/sales-orders`, `features/inventory`, `features/bom`, `features/cutting-plans`) thay vì chia theo loại file (tất cả component ở một chỗ, tất cả hook ở một chỗ...), để mỗi nhóm chức năng ở mục yêu cầu chức năng (3.1.3) ứng với đúng một thư mục độc lập, dễ đối chiếu khi phát triển và dễ mở rộng thêm nhóm chức năng mới sau này mà không ảnh hưởng các nhóm khác.
+Frontend tổ chức theo **feature folder** (`features/auth`, `features/users`, `features/sales-orders`, `features/inventory`, `features/bom`, `features/cutting-plans`, `features/dashboard`, `features/data-reset`) thay vì chia theo loại file (tất cả component ở một chỗ, tất cả hook ở một chỗ...), để mỗi nhóm chức năng ở mục yêu cầu chức năng (3.1.3) nằm gọn trong một hoặc vài thư mục riêng của nó, dễ đối chiếu khi phát triển và dễ mở rộng thêm nhóm chức năng mới sau này mà không ảnh hưởng các nhóm khác.
 
 ## 3.2.5 Giao diện REST và phân quyền theo vai trò
 
@@ -108,6 +108,7 @@ Với các nhóm dữ liệu nghiệp vụ, phân quyền tách theo **đọc** 
 | Khách hàng | `/customers` | PLANNER, ADMIN | — (chỉ sinh ra khi nhập đơn hàng) |
 | Số liệu trang chủ | `/dashboard` | PLANNER, ADMIN | — |
 | Tài khoản người dùng | `/users` | **ADMIN** | ADMIN |
+| Đặt lại dữ liệu vận hành | `POST /data-reset` | — | **ADMIN** — xóa sạch đơn hàng, khách hàng, tồn kho và lịch sử duyệt; máy chủ kiểm lại cụm xác nhận |
 | Tài khoản cá nhân | `/auth/login`, `/auth/change-password` | — | PLANNER, ADMIN |
 
 Với nhóm chức năng cắt, cột quan trọng nhất là **có ghi dữ liệu hay không**:
@@ -131,4 +132,4 @@ Bảng này thay thế endpoint `POST /cutting-plans/generate` của thiết k�
 
 ## 3.2.6 Xác thực và phân quyền
 
-Xác thực dùng JSON Web Token (JWT): `POST /auth/login` trả token, mọi request tiếp theo gửi kèm token qua header `Authorization: Bearer`. Một filter ở tầng Spring Security xác thực token trước khi request đến Controller; phân quyền theo vai trò (ADMIN/PLANNER) được kiểm tra khai báo ngay tại Controller bằng annotation, khớp với ranh giới trách nhiệm đã xác định ở use case diagram (mục 3.1.2) và với bảng endpoint ở mục 3.2.5 — PLANNER tra cứu được định mức BOM nhưng không sửa được, và không đụng được tới nhóm endpoint quản lý tài khoản; còn ADMIN tuy được phép tính thử phương án cắt nhưng không được duyệt, tức không chạm được vào tồn kho và trạng thái đơn hàng.
+Xác thực dùng JSON Web Token (JWT): `POST /auth/login` trả token, mọi request tiếp theo gửi kèm token qua header `Authorization: Bearer`. Một filter ở tầng Spring Security xác thực token trước khi request đến Controller; phân quyền theo vai trò (ADMIN/PLANNER) được kiểm tra khai báo ngay tại Controller bằng annotation, khớp với ranh giới trách nhiệm đã xác định ở use case diagram (mục 3.1.2) và với bảng endpoint ở mục 3.2.5 — PLANNER tra cứu được định mức BOM nhưng không sửa được, và không đụng được tới nhóm endpoint quản lý tài khoản; còn ADMIN tuy được phép tính thử phương án cắt nhưng không được duyệt, tức không làm thay đổi tồn kho và trạng thái đơn hàng qua luồng cắt — ngoại lệ duy nhất là đặt lại toàn bộ dữ liệu vận hành, xóa sạch cả hai.
