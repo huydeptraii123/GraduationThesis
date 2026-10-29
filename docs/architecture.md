@@ -108,7 +108,7 @@ Với các nhóm dữ liệu nghiệp vụ, phân quyền tách theo **đọc** 
 | Khách hàng | `/customers` | PLANNER, ADMIN | — (chỉ sinh ra khi nhập đơn hàng) |
 | Số liệu trang chủ | `/dashboard` | PLANNER, ADMIN | — |
 | Tài khoản người dùng | `/users` | **ADMIN** | ADMIN |
-| Đặt lại dữ liệu vận hành | `POST /data-reset` | — | **ADMIN** — xóa sạch đơn hàng, khách hàng, tồn kho và lịch sử duyệt; máy chủ kiểm lại cụm xác nhận |
+| Đặt lại dữ liệu vận hành | `POST /data-reset` | — | PLANNER, ADMIN — xóa sạch đơn hàng, khách hàng, tồn kho và lịch sử duyệt; máy chủ kiểm lại cụm xác nhận |
 | Tài khoản cá nhân | `/auth/login`, `/auth/change-password` | — | PLANNER, ADMIN |
 
 Với nhóm chức năng cắt, cột quan trọng nhất là **có ghi dữ liệu hay không**:

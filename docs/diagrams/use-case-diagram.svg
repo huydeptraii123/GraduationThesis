@@ -25,6 +25,7 @@
     <line x1="90" y1="460" x2="600" y2="640"/>
     <polyline points="90,460 230,880 500,880" fill="none"/>
     <polyline points="90,460 240,700 600,700 600,722" fill="none"/>
+    <polyline points="90,460 30,560 210,1000 720,1000" fill="none"/>
 
     <!-- ADMIN -->
     <line x1="1110" y1="460" x2="380" y2="160"/>
