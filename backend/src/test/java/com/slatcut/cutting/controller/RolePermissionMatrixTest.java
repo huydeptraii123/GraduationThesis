@@ -104,6 +104,11 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
             """
             {"currentPassword":"khong-phai-mat-khau","newPassword":"matkhau123"}
             """;
+    /** Cụm xác nhận cố ý sai: nhánh "được phép" dừng ở 422 thay vì xóa sạch dữ liệu vận hành. */
+    private static final String DATA_RESET_JSON =
+            """
+            {"confirmation":"khong-phai-cum-xac-nhan"}
+            """;
     private static final String SALES_ORDER_JSON =
             """
             {"ycsx":"HY9000","item":1,"customerId":999999999,"doorProductId":999999999,
@@ -198,6 +203,10 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
                 new Endpoint("POST /users/{id}/reset-password", Set.of(ADMIN), () -> json(post("/api/v1/users/{id}/reset-password", MISSING_ID), RESET_PASSWORD_JSON)),
                 new Endpoint("GET /users", Set.of(ADMIN), () -> get("/api/v1/users")),
                 new Endpoint("GET /users/{id}", Set.of(ADMIN), () -> get("/api/v1/users/{id}", MISSING_ID)),
+
+                // Đặt lại dữ liệu vận hành: xóa luôn lịch sử duyệt, không hoàn tác được — nặng hơn mọi
+                // việc vận hành của PLANNER nên chỉ ADMIN, cùng nhóm với quản lý tài khoản.
+                new Endpoint("POST /data-reset", Set.of(ADMIN), () -> json(post("/api/v1/data-reset"), DATA_RESET_JSON)),
 
                 // Đổi mật khẩu cá nhân: mở cho cả hai vai trò vì ai cũng chỉ đổi được của chính mình
                 // (tên đăng nhập lấy từ JWT, không phải từ thân request).
