@@ -15,9 +15,9 @@ import org.springframework.web.bind.annotation.RestController;
  * Đặt lại dữ liệu vận hành (đơn hàng, khách hàng, tồn kho, lịch sử duyệt) — xem
  * {@link DataResetService}.
  *
- * <p>Chỉ ADMIN, dù nhập đơn hàng và tồn kho hằng ngày là việc của PLANNER: thao tác này xóa luôn
- * toàn bộ lịch sử duyệt và không hoàn tác được, nặng hơn hẳn mọi việc vận hành thường ngày, nên đứng
- * cùng nhóm với quản lý tài khoản.
+ * <p>Mở cho cả ADMIN lẫn PLANNER theo yêu cầu của doanh nghiệp: PLANNER là người nhập lại tồn kho và
+ * đơn hàng sau khi đặt lại, nên không phải chờ ADMIN xóa giúp. Thao tác vẫn xóa luôn toàn bộ lịch sử
+ * duyệt và không hoàn tác được — phần bảo vệ nằm ở cụm xác nhận mà máy chủ kiểm lại, không ở vai trò.
  */
 @RestController
 @RequestMapping("/api/v1/data-reset")
@@ -30,7 +30,7 @@ public class DataResetController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'PLANNER')")
     public DataResetResult reset(@Valid @RequestBody DataResetRequest request, Authentication authentication) {
         return service.resetInventoryAndOrders(request.confirmation(), authentication.getName());
     }

@@ -204,9 +204,9 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
                 new Endpoint("GET /users", Set.of(ADMIN), () -> get("/api/v1/users")),
                 new Endpoint("GET /users/{id}", Set.of(ADMIN), () -> get("/api/v1/users/{id}", MISSING_ID)),
 
-                // Đặt lại dữ liệu vận hành: xóa luôn lịch sử duyệt, không hoàn tác được — nặng hơn mọi
-                // việc vận hành của PLANNER nên chỉ ADMIN, cùng nhóm với quản lý tài khoản.
-                new Endpoint("POST /data-reset", Set.of(ADMIN), () -> json(post("/api/v1/data-reset"), DATA_RESET_JSON)),
+                // Đặt lại dữ liệu vận hành: mở cho cả hai vai trò theo yêu cầu của doanh nghiệp (PLANNER
+                // là người nhập lại tồn kho và đơn hàng sau đó); bảo vệ nằm ở cụm xác nhận, không ở vai trò.
+                new Endpoint("POST /data-reset", Set.of(ADMIN, PLANNER), () -> json(post("/api/v1/data-reset"), DATA_RESET_JSON)),
 
                 // Đổi mật khẩu cá nhân: mở cho cả hai vai trò vì ai cũng chỉ đổi được của chính mình
                 // (tên đăng nhập lấy từ JWT, không phải từ thân request).

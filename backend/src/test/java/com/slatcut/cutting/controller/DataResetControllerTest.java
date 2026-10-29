@@ -17,8 +17,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * Hợp đồng HTTP của {@code POST /api/v1/data-reset}. Phân quyền (chỉ ADMIN, không token → 401) nằm ở
- * {@link RolePermissionMatrixTest}; logic xóa từng bảng nằm ở {@code DataResetServiceTest}.
+ * Hợp đồng HTTP của {@code POST /api/v1/data-reset}. Phân quyền (ADMIN và PLANNER, không token → 401)
+ * nằm ở {@link RolePermissionMatrixTest} — ma trận đó gửi cụm sai nên chỉ chứng minh được "qua cổng
+ * vai trò"; việc PLANNER xóa được thật thì khóa ở đây. Logic xóa từng bảng nằm ở
+ * {@code DataResetServiceTest}.
  */
 @AutoConfigureMockMvc
 class DataResetControllerTest extends AbstractIntegrationTest {
@@ -37,6 +39,10 @@ class DataResetControllerTest extends AbstractIntegrationTest {
 
     private String adminToken() {
         return jwtService.generateToken("admin", "ADMIN");
+    }
+
+    private String plannerToken() {
+        return jwtService.generateToken("planner", "PLANNER");
     }
 
     private void persistCustomer() {
@@ -60,6 +66,22 @@ class DataResetControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.customers").value((int) customersBefore))
                 .andExpect(jsonPath("$.salesOrders").value((int) salesOrdersBefore));
+
+        assertThat(customerRepository.count()).isZero();
+    }
+
+    /** PLANNER là người nhập lại tồn kho và đơn hàng sau khi đặt lại, nên cũng tự xóa được. */
+    @Test
+    void reset_asPlannerWithPhrase_deletesOperationalData() throws Exception {
+        persistCustomer();
+        long customersBefore = customerRepository.count();
+
+        mockMvc.perform(post("/api/v1/data-reset")
+                        .header("Authorization", "Bearer " + plannerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"confirmation\":\"XOA DU LIEU\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customers").value((int) customersBefore));
 
         assertThat(customerRepository.count()).isZero();
     }
