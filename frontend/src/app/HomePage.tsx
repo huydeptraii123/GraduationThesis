@@ -17,6 +17,7 @@ import { RoleRestrictionNotice } from '../components/RoleRestrictionNotice'
 import { useAuth } from '../features/auth/AuthContext'
 import { canApproveCuttingPlan } from '../features/auth/permissions'
 import { exportSimulation } from '../features/cutting-plans/cuttingPlansApi'
+import { GettingStartedBanner } from '../features/dashboard/GettingStartedBanner'
 import { SimulationDashboard } from '../features/dashboard/SimulationDashboard'
 import { useSimulation } from '../features/dashboard/useSimulation'
 
@@ -83,6 +84,7 @@ export function HomePage() {
 
   return (
     <div>
+      <GettingStartedBanner />
       <Card>
         <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
           <div>
