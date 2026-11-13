@@ -1394,13 +1394,13 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Mẫu số của "tỷ lệ phế" là tồn kho THỰC TIÊU HAO, không phải tổng độ dài mọi phôi đã qua máy
-     * cắt. Cùng kịch bản 8m → dư 6m nhập lại kho → 6m lại được cắt tiếp trong chính lượt đó: chỉ
-     * đúng 4m rời kho vĩnh viễn (8m ra, 4m nằm lại), nên mẫu số phải là 4.00m. Công thức cũ cộng
-     * thẳng 8000 + 6000 = 14.00m, đếm hai lần phần 6m trung gian và làm tỷ lệ phế thấp giả tạo.
+     * Mẫu số của "tỷ lệ phế" là tổng độ dài MỌI thanh đã qua máy cắt, theo cách doanh nghiệp tính.
+     * Kịch bản 8m → dư 6m nhập lại kho → 6m lại được cắt tiếp trong chính lượt đó: cả hai thanh đều
+     * là thanh đã cắt nên mẫu số là 8000 + 6000 = 14.00m. Công thức trừ phần dư nhập kho (bản trước)
+     * ra 4.00m.
      */
     @Test
-    void generate_totalStockUsedM_excludesRemainderRestockedToInventory() {
+    void generate_totalStockUsedM_countsEveryCutBarIncludingReusedRemainder() {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();
         SlatMaterial slatMaterial = persistSlatMaterial();
@@ -1412,16 +1412,16 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         CuttingPlan plan = approvePlan();
 
         assertThat(plan.getTotalStockUsedM())
-                .as("8m ra kho, 4m nhập lại → chỉ 4m thực tiêu hao")
-                .isEqualByComparingTo(new BigDecimal("4.00"));
+                .as("thanh 8m + phần dư 6m được cắt tiếp")
+                .isEqualByComparingTo(new BigDecimal("14.00"));
         assertThat(plan.getTotalWasteM()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     /**
      * Khoá chung một định nghĩa mẫu số cho cả tầng service lẫn migration tính lại dữ liệu cũ:
-     * {@code Σ stickCount × (sourceLengthMm − remainderMm nếu RESTOCK)}. Kịch bản có đủ cả hai
-     * nhánh — 1 loại thanh dư 0.2m (bỏ đi, tính trọn vào mẫu số) và 1 loại thanh dư 4m (nhập lại
-     * kho, KHÔNG tính vào mẫu số) — nên nếu bỏ nhánh RESTOCK thì assertion sai ngay.
+     * {@code Σ stickCount × sourceLengthMm}. Kịch bản có đủ cả hai loại phần dư — 1 loại thanh dư
+     * 0.2m (bỏ đi) và 1 loại thanh dư 4m (nhập lại kho) — và cả hai thanh đều tính trọn vào mẫu số,
+     * nên nếu còn trừ phần dư nhập kho thì assertion sai ngay.
      */
     @Test
     void generate_totalStockUsedM_matchesRecomputeFormulaOverDetailRows() {
@@ -1431,7 +1431,7 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         SlatMaterial restockMaterial = persistSlatMaterial();
         persistBomItem(doorProduct, discardMaterial);
         persistBomItem(doorProduct, restockMaterial);
-        // 2200 − 2000 = 200mm: dưới 30cm nên cắt được và bỏ đi, tiêu hao trọn thanh.
+        // 2200 − 2000 = 200mm: dưới 30cm nên cắt được và bỏ đi (vào tử số).
         persistInventoryBatch(discardMaterial, 2200, 1);
         persistInventoryBatch(restockMaterial, 6000, 1);
         persistSalesOrder("HY9" + (counter + 1), doorProduct, customer, new BigDecimal("2.000"), LocalDate.now());
@@ -1439,14 +1439,15 @@ class CuttingPlanServiceTest extends AbstractIntegrationTest {
         CuttingPlan plan = approvePlan();
 
         int recomputedMm = cuttingPlanDetailRepository.findByCuttingPlan_Id(plan.getId()).stream()
-                .mapToInt(detail -> detail.getStickCount()
-                        * (detail.getSourceLengthMm()
-                                - (detail.getRemainderType() == RemainderType.RESTOCK ? detail.getRemainderMm() : 0)))
+                .mapToInt(detail -> detail.getStickCount() * detail.getSourceLengthMm())
                 .sum();
-        assertThat(recomputedMm).isEqualTo(4200);
+        assertThat(recomputedMm).isEqualTo(8200);
+        assertThat(cuttingPlanDetailRepository.findByCuttingPlan_Id(plan.getId()))
+                .as("kịch bản phải sinh được một dòng nhập lại kho, nếu không ca này không phân biệt hai công thức")
+                .anyMatch(detail -> detail.getRemainderType() == RemainderType.RESTOCK);
         assertThat(plan.getTotalStockUsedM())
-                .as("2.2m tiêu hao trọn + (6m − 4m nhập lại kho)")
-                .isEqualByComparingTo(new BigDecimal("4.20"));
+                .as("thanh 2.2m + thanh 6m, không trừ 4m nhập lại kho")
+                .isEqualByComparingTo(new BigDecimal("8.20"));
         assertThat(plan.getTotalWasteM()).isEqualByComparingTo(new BigDecimal("0.20"));
     }
 }

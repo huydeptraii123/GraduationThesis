@@ -282,7 +282,7 @@ class DashboardControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.wasteByGroup.length()").value(1))
                 .andExpect(jsonPath("$.wasteByGroup[0].slatGroup").value("RAIL"))
                 .andExpect(jsonPath("$.wasteByGroup[0].totalM").value(0.40))
-                // Mẫu số của nhóm phải bằng đúng tồn kho thực tiêu hao, tức 2 phôi 2.2m.
+                // Mẫu số của nhóm phải bằng đúng tổng độ dài thanh đã cắt, tức 2 phôi 2.2m.
                 .andExpect(jsonPath("$.wasteByGroup[0].stockUsedM").value(4.40))
                 .andExpect(jsonPath("$.wasteByGroup[0].wasteRatioPercent").value(9.1))
                 // Chỉ 1 bộ cửa nên toàn bộ phế quy về nó, không có gì để chia tỷ lệ.
@@ -353,7 +353,7 @@ class DashboardControllerTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Tổng phế (và tổng tiêu hao) quy về từng bộ cửa phải bằng đúng tổng của phương án. Đọc cả hai
+     * Tổng phế (và tổng độ dài thanh đã cắt) quy về từng bộ cửa phải bằng đúng tổng của phương án. Đọc cả hai
      * vế từ CÙNG một thân phản hồi nên phép so này thật sự chạm vào {@code orderWasteTrend()} —
      * mảng rỗng hoặc phép chia làm mất/nhân đôi vật liệu đều bị bắt ngay.
      */
@@ -407,14 +407,14 @@ class DashboardControllerTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Nhánh phần dư NHẬP LẠI KHO là thứ duy nhất phân biệt công thức mới với một phép cộng ngây
-     * thơ, mà trước ca này thì <b>không test nào sinh ra nổi một dòng phôi kiểu đó</b> — thay cả
-     * hai mệnh đề {@code CASE WHEN} bằng tổng trần thì 430 test vẫn xanh.
+     * Nhánh phần dư NHẬP LẠI KHO là thứ duy nhất phân biệt mẫu số tổng độ dài thanh đã cắt với
+     * mẫu số trừ phần dư nhập kho, và tử số chỉ cộng phần dư không nhập kho với tử số cộng mọi phần
+     * dư — trước ca này thì <b>không test nào sinh ra nổi một dòng phôi kiểu đó</b>.
      *
      * <p>Phôi 8m cắt một đoạn 4m: phần dư 4m vượt 3m nên Mức 4 nhận, thanh dư quay lại kho. Hai
-     * hệ quả phải đúng cùng lúc: phần dư đó <b>không</b> vào tử số (0 mét phế), và nó <b>bị trừ
-     * khỏi</b> mẫu số (tiêu hao 4m chứ không phải 8m) — đúng định nghĩa tồn kho thực tiêu hao của
-     * {@code CuttingPlanService#totalStockUsedM}. Dùng tổng trần cho mẫu số sẽ ra 8m.
+     * hệ quả phải đúng cùng lúc: phần dư đó <b>không</b> vào tử số (0 mét phế), nhưng thanh 8m chứa
+     * nó vẫn <b>vào trọn</b> mẫu số (8m, không phải 4m) — đúng định nghĩa tổng độ dài thanh đã cắt
+     * của {@code CuttingPlanService#totalStockUsedM}. Còn trừ phần dư nhập kho thì ra 4m.
      *
      * <p>Dùng nhóm THANH ĐÁY chứ không dùng ray dẫn hướng như các ca khác trong lớp này: mỗi bộ
      * cửa cần 2 ray nhưng chỉ cần 1 thanh đáy. Với 2 đoạn 4m thì Mức 2 gói vừa khít phôi 8m và
@@ -424,7 +424,7 @@ class DashboardControllerTest extends AbstractIntegrationTest {
      * chứ không phải {@code totalM > 0}. Giữ nguyên bộ lọc cũ thì {@code wasteByGroup} rỗng.
      */
     @Test
-    void getDashboard_restockedRemainder_addsNoWasteAndIsRemovedFromTheDenominator() throws Exception {
+    void getDashboard_restockedRemainder_addsNoWasteButItsBarStaysInTheDenominator() throws Exception {
         Customer customer = persistCustomer();
         DoorProduct doorProduct = persistDoorProduct();
         SlatMaterial bottomBar = persistSlatMaterial(SlatGroup.BOTTOM_BAR);
@@ -440,11 +440,11 @@ class DashboardControllerTest extends AbstractIntegrationTest {
                 // Nhóm vẫn hiện dù không phát sinh mét phế nào.
                 .andExpect(jsonPath("$.wasteByGroup.length()").value(1))
                 .andExpect(jsonPath("$.wasteByGroup[0].totalM").value(0.00))
-                .andExpect(jsonPath("$.wasteByGroup[0].stockUsedM").value(4.00))
+                .andExpect(jsonPath("$.wasteByGroup[0].stockUsedM").value(8.00))
                 .andExpect(jsonPath("$.wasteByGroup[0].wasteRatioPercent").value(0.0))
                 .andExpect(jsonPath("$.orderWasteTrend.length()").value(1))
                 .andExpect(jsonPath("$.orderWasteTrend[0].wasteM").value(0.00))
-                .andExpect(jsonPath("$.orderWasteTrend[0].stockUsedM").value(4.00))
-                .andExpect(jsonPath("$.cumulativeStockUsedM").value(4.00));
+                .andExpect(jsonPath("$.orderWasteTrend[0].stockUsedM").value(8.00))
+                .andExpect(jsonPath("$.cumulativeStockUsedM").value(8.00));
     }
 }

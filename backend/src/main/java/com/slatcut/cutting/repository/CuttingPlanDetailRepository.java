@@ -31,25 +31,23 @@ public interface CuttingPlanDetailRepository extends JpaRepository<CuttingPlanDe
     List<RemainderTotal> sumRemainderMmByType();
 
     /**
-     * Phế thật và tồn kho thực tiêu hao của từng nhóm thanh nan, để dashboard vẽ được <b>tỷ lệ</b>
-     * phế chứ không chỉ số mét.
+     * Phế thật và tổng độ dài thanh đã cắt của từng nhóm thanh nan, để dashboard vẽ được
+     * <b>tỷ lệ</b> phế chứ không chỉ số mét.
      *
      * <p>Tính bằng mét thì nhóm nan chính luôn cao nhất chỉ vì nó chiếm gần hết vật tư, che mất
      * nhóm thật sự cắt kém. Mẫu số ở đây lặp đúng công thức {@code CuttingPlanService#totalStockUsedM}
-     * — phần dư nhập lại kho bị trừ khỏi lượng tiêu hao vì nó còn dùng được — nên tỷ lệ theo nhóm
-     * và tỷ lệ tổng của một lần chạy không bao giờ nói hai chuyện khác nhau.
+     * — tổng độ dài mọi thanh đã cắt — nên tỷ lệ theo nhóm và tỷ lệ tổng của một lần chạy không
+     * bao giờ nói hai chuyện khác nhau.
      *
-     * <p>Khác truy vấn cũ ở chỗ KHÔNG lọc bỏ dòng nhập lại kho: chúng không góp vào tử số nhưng
-     * bắt buộc phải góp vào mẫu số, và một nhóm chỉ toàn phần dư nhập kho vẫn phải hiện lên với
-     * tỷ lệ 0% thay vì biến mất khỏi biểu đồ.
+     * <p>KHÔNG lọc bỏ dòng nhập lại kho: chúng không góp vào tử số nhưng thanh của chúng vẫn góp
+     * vào mẫu số, và một nhóm chỉ toàn phần dư nhập kho vẫn phải hiện lên với tỷ lệ 0% thay vì
+     * biến mất khỏi biểu đồ.
      */
     @Query(
             """
             SELECT d.slatMaterial.slatGroup AS slatGroup,
                    SUM(CASE WHEN d.remainderType <> :restock THEN d.stickCount * d.remainderMm ELSE 0L END) AS wasteMm,
-                   SUM(d.stickCount * (CASE WHEN d.remainderType = :restock
-                                            THEN d.sourceLengthMm - d.remainderMm
-                                            ELSE d.sourceLengthMm END)) AS stockUsedMm
+                   SUM(d.stickCount * d.sourceLengthMm) AS stockUsedMm
             FROM CuttingPlanDetail d
             GROUP BY d.slatMaterial.slatGroup
             """)

@@ -20,7 +20,7 @@ import java.util.List;
  * @param blockedOrderCount số đơn chưa duyệt bị loại khỏi phạm vi vì định mức của mẫu cửa chưa đầy
  *     đủ (xem {@code SalesOrderRepository.HAS_COMPLETE_BOM}) — đếm và hiển thị tách khỏi kết quả, vì
  *     đó là đơn đang BỊ CHẶN chờ bổ sung định mức chứ không phải đơn đã được xem xét và thấy đủ vật tư
- * @param totalStockUsedM tồn kho thực tiêu hao, tức mẫu số của tỷ lệ phế
+ * @param totalStockUsedM tổng độ dài các thanh đã cắt, tức mẫu số của tỷ lệ phế
  * @param stockAtStart tồn kho của các loại thanh nan có mặt trong lần chạy, ngay TRƯỚC khi thuật
  *     toán tiêu thụ — báo cáo in nguyên danh sách này ở cột ảnh chụp tồn kho
  * @param stockAfterRun số thanh còn lại của từng (loại thanh nan, độ dài) SAU lần chạy — con số ở

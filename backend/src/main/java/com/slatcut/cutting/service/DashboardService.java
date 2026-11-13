@@ -143,7 +143,7 @@ public class DashboardService {
      * chung một thanh), nên phần dư của nó được <b>chia theo tỷ lệ độ dài mỗi bên đã cắt trên
      * chính phôi đó</b>. Cách chia này bảo toàn tổng: mỗi mét phế được quy về đúng một lần, không
      * mất và không nhân đôi, nên cộng hết các bộ cửa lại vẫn ra đúng tổng phế của phương án. Mẫu
-     * số của mỗi bộ cửa chia theo cùng tỷ lệ đó và cũng trừ phần dư nhập lại kho, đúng như
+     * số của mỗi bộ cửa (độ dài thanh đã cắt) chia theo cùng tỷ lệ đó, đúng như
      * {@link #wasteByGroup()} và tỷ lệ tổng.
      *
      * <p>Sắp theo ngày giao rồi {@code ycsx}/{@code item} — cùng khóa ưu tiên thuật toán dùng để
@@ -153,11 +153,10 @@ public class DashboardService {
      * khi cả đợt chỉ dùng đúng một loại thanh nan.
      *
      * <p><b>Hệ quả phân bổ cần biết khi đọc biểu đồ:</b> phôi cắt ở Mức 4 để lại phần dư trên 3m
-     * được nhập lại kho, mà phần dư đó cho tử số 0 và bị trừ khỏi mẫu số. Nên bộ cửa <i>sinh ra</i>
-     * phần dư trên 3m hiện 0% cho phôi đó, còn bộ cửa <i>tiêu thụ</i> phôi tái sử dụng về sau mới
-     * gánh phần phế cuối cùng của nó. Đây là lựa chọn có chủ ý, nhất quán với cách
-     * {@code CuttingPlanService#totalStockUsedM} định nghĩa tồn kho thực tiêu hao: vật liệu chỉ
-     * được tính là mất đi ở lần nó thật sự bị bỏ, không tính ở lần nó quay về kho.
+     * được nhập lại kho, mà phần dư đó cho tử số 0 trong khi cả thanh vẫn vào mẫu số. Nên bộ cửa
+     * <i>sinh ra</i> phần dư trên 3m hiện 0% cho phôi đó, còn bộ cửa <i>tiêu thụ</i> phôi tái sử
+     * dụng về sau mới gánh phần phế cuối cùng của nó: vật liệu chỉ được tính là mất đi ở lần nó
+     * thật sự bị bỏ, không tính ở lần nó quay về kho.
      */
     private List<OrderWastePointResponse> orderWasteTrend() {
         List<CuttingPlanDetailItemRepository.OrderCutShare> rows = cuttingPlanDetailItemRepository.findOrderCutShares();
@@ -184,7 +183,7 @@ public class DashboardService {
             boolean restock = row.getRemainderType() == RemainderType.RESTOCK;
 
             long wasteMm = restock ? 0L : (long) stickCount * remainderMm;
-            long stockUsedMm = (long) stickCount * (restock ? sourceLengthMm - remainderMm : sourceLengthMm);
+            long stockUsedMm = (long) stickCount * sourceLengthMm;
 
             OrderAccumulator accumulator = byOrder.computeIfAbsent(
                     row.getSalesOrderId(),
@@ -248,7 +247,7 @@ public class DashboardService {
     }
 
     /**
-     * Mẫu số là tồn kho THỰC TIÊU HAO (đã trừ phần dư nhập lại kho) — xem CuttingPlanService#totalStockUsedM.
+     * Mẫu số là tổng độ dài thanh đã cắt (không trừ phần dư nhập lại kho) — xem CuttingPlanService#totalStockUsedM.
      *
      * <p>Tử số và mẫu số phải cùng đơn vị, nhưng <b>đơn vị nào cũng được miễn là chưa bị làm tròn</b>:
      * chia trên milimet gốc rồi mới làm tròn kết quả, chứ không làm tròn về mét trước rồi mới chia.

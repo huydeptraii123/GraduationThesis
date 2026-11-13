@@ -576,22 +576,15 @@ public class CuttingPlanService {
     }
 
     /**
-     * Tổng độ dài tồn kho THỰC TIÊU HAO trong lần chạy — mẫu số của "tỷ lệ phế" hiển thị ở FE:
-     * tổng độ dài phôi xuất kho trừ đi phần dư được nhập lại kho (RESTOCK), tức đúng bằng
-     * {@code tổng độ dài các đoạn đã cắt + phần "bỏ" + phần "lãng phí"}.
+     * Tổng độ dài các thanh đã cắt trong lần chạy — mẫu số của "tỷ lệ phế", theo đúng cách doanh
+     * nghiệp tính: phần dư bị bỏ đi chia cho tổng độ dài thanh.
      *
-     * <p>Không cộng thẳng {@code stockLengthMm} của mọi CutRecord: phần dư &gt;3m được
-     * {@code pool.restock()} giữa chừng rồi bị cắt tiếp ngay trong cùng lượt chạy sẽ bị đếm hai lần
-     * (một lần nằm trong thanh nguồn ban đầu, một lần với tư cách phôi nguồn của lát cắt sau), làm
-     * mẫu số phồng lên và tỷ lệ phế hiển thị thấp hơn thực tế. Trừ phần RESTOCK triệt tiêu đúng
-     * phần đếm trùng đó — cùng cách suy delta đã dùng ở {@link #applyInventoryChanges(List)}.
+     * <p>Mỗi CutRecord là một thanh được đưa lên cắt nên được cộng đủ độ dài, kể cả thanh là phần
+     * dư &gt;3m vừa {@code pool.restock()} rồi bị cắt tiếp ngay trong cùng lượt chạy. Phần dư nhập
+     * lại kho không bị trừ ra: nó không góp vào tử số, nhưng thanh chứa nó vẫn là thanh đã cắt.
      */
     private BigDecimal totalStockUsedM(List<CutRecord> cuts) {
-        int totalMm = cuts.stream()
-                .mapToInt(cut -> cut.remainderCategory() == RemainderCategory.RESTOCK
-                        ? cut.stockLengthMm() - cut.remainderMm()
-                        : cut.stockLengthMm())
-                .sum();
+        int totalMm = cuts.stream().mapToInt(CutRecord::stockLengthMm).sum();
         return toMeters(totalMm);
     }
 
