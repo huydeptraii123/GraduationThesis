@@ -178,7 +178,7 @@ export function CuttingPlanListPage() {
             />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               {(stats?.cumulativeWasteM ?? 0).toFixed(2)} m phế / {(stats?.cumulativeStockUsedM ?? 0).toFixed(2)} m
-              tiêu hao
+              thanh đã cắt
             </Typography.Text>
           </Card>
         </Col>

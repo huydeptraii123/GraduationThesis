@@ -21,7 +21,7 @@ export interface RemainderBreakdownResponse {
 export interface SlatGroupWasteResponse {
   slatGroup: SlatGroup
   totalM: number
-  /** Tồn kho thực tiêu hao của nhóm — mẫu số của tỷ lệ, đã trừ phần dư nhập lại kho. */
+  /** Tổng độ dài các thanh đã cắt của nhóm — mẫu số của tỷ lệ. */
   stockUsedM: number
   wasteRatioPercent: number
 }

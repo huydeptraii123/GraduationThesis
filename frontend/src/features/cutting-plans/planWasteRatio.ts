@@ -7,7 +7,7 @@ import { roundHalfUp, toCentimetres } from '../../utils/roundHalfUp'
  * 1.0% ở thẻ nhưng 1.1% ở tiêu đề ngay phía trên.
  *
  * Chia trên centimet nguyên, nhân 100 trước: chỉ nhân 100 trước trên số mét lẻ vẫn lệch ở mốc nửa
- * (xem {@link toCentimetres}). Trả 0 khi chưa tiêu hao mét nào, như cách các màn này vẫn hiển thị.
+ * (xem {@link toCentimetres}). Trả 0 khi chưa cắt mét nào, như cách các màn này vẫn hiển thị.
  */
 export function planWasteRatioPercent(plan: { totalWasteM: number; totalStockUsedM: number }): number {
   const stockUsedCm = toCentimetres(plan.totalStockUsedM)

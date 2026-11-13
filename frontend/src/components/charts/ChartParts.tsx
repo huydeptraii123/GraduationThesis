@@ -56,7 +56,7 @@ interface ChartTooltipProps {
   label?: string | number
   /** Định dạng giá trị một dòng; mặc định in nguyên số. */
   formatValue?: (value: number, entry: TooltipEntry) => ReactNode
-  /** Dòng ghi chú nhạt bên dưới, lấy từ dòng dữ liệu đầu tiên (vd "12 m phế / 300 m tiêu hao"). */
+  /** Dòng ghi chú nhạt bên dưới, lấy từ dòng dữ liệu đầu tiên (vd "12 m phế / 300 m thanh đã cắt"). */
   note?: (row: Record<string, unknown>) => ReactNode
 }
 

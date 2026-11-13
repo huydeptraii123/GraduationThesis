@@ -126,7 +126,7 @@ function TrendTooltip({ active, payload }: TrendTooltipProps) {
             </div>
             <div>Tỷ lệ phế: {formatPercent(point.wasteRatioPercent)}</div>
             <div className="chart-tooltip__note">
-              {formatMeters(point.wasteM)} phế / {formatMeters(point.stockUsedM)} tiêu hao
+              {formatMeters(point.wasteM)} phế / {formatMeters(point.stockUsedM)} thanh đã cắt
             </div>
           </div>
         )
@@ -175,7 +175,7 @@ export function WasteStatsSection({ data }: Props) {
       }
     }
     // Chia trên centimet nguyên, nhân 100 trước: cộng dồn số mét lẻ rồi chia sẽ lệch ở mốc nửa
-    // (0,09 m phế / 20 m tiêu hao hiện 0.4% thay vì 0.5%).
+    // (0,09 m phế / 20 m thanh đã cắt hiện 0.4% thay vì 0.5%).
     return [...byDay.values()]
       .map((day) => {
         const stockUsedCm = toCentimetres(day.stockUsedM)
@@ -317,7 +317,7 @@ export function WasteStatsSection({ data }: Props) {
       <Col span={24}>
         <Card size="small" title="Tỷ lệ phế theo nhóm thanh nan" style={{ marginTop: 16 }}>
           {byGroup.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa tiêu hao vật tư nào" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa cắt thanh nào" />
           ) : (
             <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
               <BarChart data={byGroup} margin={CHART_MARGIN}>
@@ -329,7 +329,7 @@ export function WasteStatsSection({ data }: Props) {
                     <ChartTooltip
                       formatValue={formatPercent}
                       note={(row) =>
-                        `${formatMeters(Number(row.totalM))} phế / ${formatMeters(Number(row.stockUsedM))} tiêu hao`
+                        `${formatMeters(Number(row.totalM))} phế / ${formatMeters(Number(row.stockUsedM))} thanh đã cắt`
                       }
                     />
                   }

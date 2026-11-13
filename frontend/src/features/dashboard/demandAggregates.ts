@@ -183,10 +183,10 @@ export function shortagesByMaterial(demands: CuttingPlanDemandView[]): ShortageB
 }
 
 /**
- * Tỷ lệ phế của lần tính. Mẫu số là tồn kho THỰC TIÊU HAO (phôi xuất kho trừ phần dư đã nhập lại),
+ * Tỷ lệ phế của lần tính. Mẫu số là tổng độ dài các thanh đã cắt (cách doanh nghiệp tính tỷ lệ phế),
  * đúng con số backend trả về — không tự dựng mẫu số khác.
  *
- * Trả `null` khi chưa tiêu hao mét nào: một lần tính không cắt được gì thì tỷ lệ phế không tồn tại,
+ * Trả `null` khi chưa cắt mét nào: một lần tính không cắt được gì thì tỷ lệ phế không tồn tại,
  * và in ra `0.00%` ở đó là nói rằng cắt rất sạch.
  */
 export function wasteRatioPercent(totalWasteM: number, totalStockUsedM: number): number | null {

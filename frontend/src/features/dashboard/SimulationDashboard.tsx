@@ -119,7 +119,7 @@ export function SimulationDashboard({ simulation }: Props) {
           </Card>
           <Card size="small">
             {/* Hai chữ số thập phân theo khuôn mẫu doanh nghiệp, làm tròn trước vì Statistic chỉ cắt
-                cụt (xem roundHalfUp); chưa tiêu hao mét nào thì tỷ lệ
+                cụt (xem roundHalfUp); chưa cắt mét nào thì tỷ lệ
                 phế không tồn tại — hiện gạch ngang thay vì 0,00% (đọc nhầm thành "cắt rất sạch"). */}
             <Statistic
               title="Tỷ lệ phế"
@@ -128,7 +128,7 @@ export function SimulationDashboard({ simulation }: Props) {
               suffix={wasteRatio == null ? '' : '%'}
             />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {formatHalfUp(simulation.totalWasteM, 1)} m phế / {formatHalfUp(simulation.totalStockUsedM, 1)} m tiêu hao
+              {formatHalfUp(simulation.totalWasteM, 1)} m phế / {formatHalfUp(simulation.totalStockUsedM, 1)} m thanh đã cắt
             </Typography.Text>
           </Card>
         </Col>
