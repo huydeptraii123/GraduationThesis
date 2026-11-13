@@ -16,7 +16,10 @@ import com.slatcut.cutting.domain.InventoryBatch;
 import com.slatcut.cutting.domain.SalesOrder;
 import com.slatcut.cutting.domain.SlatGroup;
 import com.slatcut.cutting.domain.SlatMaterial;
+import com.slatcut.cutting.domain.CuttingPlanDetail;
+import com.slatcut.cutting.domain.RemainderType;
 import com.slatcut.cutting.repository.BomItemRepository;
+import com.slatcut.cutting.repository.CuttingPlanDetailRepository;
 import com.slatcut.cutting.repository.CustomerRepository;
 import com.slatcut.cutting.repository.DoorProductRepository;
 import com.slatcut.cutting.repository.InventoryBatchRepository;
@@ -63,6 +66,9 @@ class DashboardControllerTest extends AbstractIntegrationTest {
 
     @Autowired
     private InventoryBatchRepository inventoryBatchRepository;
+
+    @Autowired
+    private CuttingPlanDetailRepository cuttingPlanDetailRepository;
 
     private long counter = 0;
 
@@ -446,5 +452,42 @@ class DashboardControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.orderWasteTrend[0].wasteM").value(0.00))
                 .andExpect(jsonPath("$.orderWasteTrend[0].stockUsedM").value(8.00))
                 .andExpect(jsonPath("$.cumulativeStockUsedM").value(8.00));
+    }
+
+    /**
+     * Tử số của tỷ lệ phế chỉ là phần dư BỊ BỎ ĐI (DISCARDED), đúng cách doanh nghiệp tính — phần dư
+     * 30cm–3m (WASTE) là vùng cấm, thuật toán không tạo ra nên không thuộc công thức. Thuật toán hiện
+     * hành không sinh nổi một dòng WASTE, nên ca này dựng nó như dữ liệu lịch sử: duyệt một phương án
+     * thật rồi sửa dòng phôi thành phôi 3m dư 1m loại WASTE. Còn cộng WASTE vào tử số thì nhóm và
+     * bộ cửa sẽ báo 2.00m phế thay vì 0.
+     */
+    @Test
+    void getDashboard_wasteRemainderFromHistoricalRowsIsNotCountedAsWaste() throws Exception {
+        Customer customer = persistCustomer();
+        DoorProduct doorProduct = persistDoorProduct();
+        SlatMaterial rail = persistSlatMaterial(SlatGroup.RAIL);
+        persistRailBomItem(doorProduct, rail);
+        persistInventoryBatch(rail, 2200, 2);
+        persistRailSalesOrder(doorProduct, customer, new BigDecimal("2.000"));
+        CuttingPlan plan = approvePlan();
+
+        List<CuttingPlanDetail> details = cuttingPlanDetailRepository.findByCuttingPlan_Id(plan.getId());
+        assertThat(details).hasSize(1);
+        CuttingPlanDetail detail = details.get(0);
+        assertThat(detail.getStickCount()).isEqualTo(2);
+        detail.setSourceLengthMm(3000);
+        detail.setRemainderMm(1000);
+        detail.setRemainderType(RemainderType.WASTE);
+        cuttingPlanDetailRepository.saveAndFlush(detail);
+
+        mockMvc.perform(get("/api/v1/dashboard").header("Authorization", "Bearer " + plannerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.remainderBreakdown[?(@.remainderType == 'WASTE')].totalM").value(2.00))
+                .andExpect(jsonPath("$.wasteByGroup.length()").value(1))
+                .andExpect(jsonPath("$.wasteByGroup[0].totalM").value(0.00))
+                .andExpect(jsonPath("$.wasteByGroup[0].stockUsedM").value(6.00))
+                .andExpect(jsonPath("$.wasteByGroup[0].wasteRatioPercent").value(0.0))
+                .andExpect(jsonPath("$.orderWasteTrend[0].wasteM").value(0.00))
+                .andExpect(jsonPath("$.orderWasteTrend[0].stockUsedM").value(6.00));
     }
 }

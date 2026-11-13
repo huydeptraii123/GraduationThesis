@@ -39,19 +39,20 @@ public interface CuttingPlanDetailRepository extends JpaRepository<CuttingPlanDe
      * — tổng độ dài mọi thanh đã cắt — nên tỷ lệ theo nhóm và tỷ lệ tổng của một lần chạy không
      * bao giờ nói hai chuyện khác nhau.
      *
-     * <p>KHÔNG lọc bỏ dòng nhập lại kho: chúng không góp vào tử số nhưng thanh của chúng vẫn góp
-     * vào mẫu số, và một nhóm chỉ toàn phần dư nhập kho vẫn phải hiện lên với tỷ lệ 0% thay vì
-     * biến mất khỏi biểu đồ.
+     * <p>Tử số chỉ cộng phần dư bị bỏ đi ({@code DISCARDED}), đúng cách doanh nghiệp tính tỷ lệ phế.
+     * KHÔNG lọc bỏ các dòng khác: chúng không góp vào tử số nhưng thanh của chúng vẫn góp vào mẫu
+     * số, và một nhóm chỉ toàn phần dư nhập kho vẫn phải hiện lên với tỷ lệ 0% thay vì biến mất
+     * khỏi biểu đồ.
      */
     @Query(
             """
             SELECT d.slatMaterial.slatGroup AS slatGroup,
-                   SUM(CASE WHEN d.remainderType <> :restock THEN d.stickCount * d.remainderMm ELSE 0L END) AS wasteMm,
+                   SUM(CASE WHEN d.remainderType = :discarded THEN d.stickCount * d.remainderMm ELSE 0L END) AS wasteMm,
                    SUM(d.stickCount * d.sourceLengthMm) AS stockUsedMm
             FROM CuttingPlanDetail d
             GROUP BY d.slatMaterial.slatGroup
             """)
-    List<SlatGroupTotal> sumWasteAndStockUsedMmBySlatGroup(@Param("restock") RemainderType restock);
+    List<SlatGroupTotal> sumWasteAndStockUsedMmBySlatGroup(@Param("discarded") RemainderType discarded);
 
     interface RemainderTotal {
         RemainderType getRemainderType();

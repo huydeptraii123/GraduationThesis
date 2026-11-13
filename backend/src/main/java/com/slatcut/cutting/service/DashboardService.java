@@ -119,7 +119,7 @@ public class DashboardService {
      * mất khỏi biểu đồ.
      */
     private List<SlatGroupWasteResponse> wasteByGroup() {
-        return cuttingPlanDetailRepository.sumWasteAndStockUsedMmBySlatGroup(RemainderType.RESTOCK).stream()
+        return cuttingPlanDetailRepository.sumWasteAndStockUsedMmBySlatGroup(RemainderType.DISCARDED).stream()
                 .map(row -> {
                     long wasteMm = row.getWasteMm() == null ? 0L : row.getWasteMm();
                     long stockUsedMm = row.getStockUsedMm() == null ? 0L : row.getStockUsedMm();
@@ -180,9 +180,10 @@ public class DashboardService {
             int stickCount = row.getStickCount() == null ? 0 : row.getStickCount();
             int remainderMm = row.getRemainderMm() == null ? 0 : row.getRemainderMm();
             int sourceLengthMm = row.getSourceLengthMm() == null ? 0 : row.getSourceLengthMm();
-            boolean restock = row.getRemainderType() == RemainderType.RESTOCK;
+            // Chỉ phần dư bị bỏ đi là phế, đúng tử số của tỷ lệ tổng.
+            boolean discarded = row.getRemainderType() == RemainderType.DISCARDED;
 
-            long wasteMm = restock ? 0L : (long) stickCount * remainderMm;
+            long wasteMm = discarded ? (long) stickCount * remainderMm : 0L;
             long stockUsedMm = (long) stickCount * sourceLengthMm;
 
             OrderAccumulator accumulator = byOrder.computeIfAbsent(

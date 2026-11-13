@@ -565,11 +565,14 @@ public class CuttingPlanService {
         return mapper.toResponse(plan, detailResponses, shortageResponses);
     }
 
-    /** Đúng công thức "tỷ lệ phế" ở docs/requirements-functional.md dòng 11: tổng "bỏ" + "lãng phí", KHÔNG tính RESTOCK. */
+    /**
+     * Tử số của "tỷ lệ phế", theo đúng cách doanh nghiệp tính: CHỈ phần dư bị bỏ đi (dưới 30cm).
+     * Phần dư nhập lại kho không phải phế; phần dư 30cm–3m thì thuật toán không bao giờ tạo ra
+     * (vùng cấm), nên nó không thuộc công thức.
+     */
     private BigDecimal totalWasteM(List<CutRecord> cuts) {
         int totalMm = cuts.stream()
-                .filter(cut -> cut.remainderCategory() == RemainderCategory.DISCARDED
-                        || cut.remainderCategory() == RemainderCategory.WASTE)
+                .filter(cut -> cut.remainderCategory() == RemainderCategory.DISCARDED)
                 .mapToInt(CutRecord::remainderMm)
                 .sum();
         return toMeters(totalMm);
