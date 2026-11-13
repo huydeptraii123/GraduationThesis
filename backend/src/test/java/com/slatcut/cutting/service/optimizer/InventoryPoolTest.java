@@ -182,6 +182,57 @@ class InventoryPoolTest {
         assertThat(pool.remainingCount(11L, 4500)).isEqualTo(1);
     }
 
+    @Test
+    void findMultipleOfSameLength_notAnExactMultipleButRemainderUnderThirtyCentimetres_matches() {
+        SlatMaterial material = slatMaterial(40);
+        // 3200 = 2 × 1500 + 200: không chia hết nhưng phần dư 200mm dưới 30cm nên vẫn là Mức 2.
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 3200, 1)));
+
+        Optional<InventoryPool.MultipleMatch> match = pool.findMultipleOfSameLength(material, 1500, 2);
+
+        assertThat(match).isPresent();
+        assertThat(match.get().stockLengthMm()).isEqualTo(3200);
+        assertThat(match.get().multiplier()).isEqualTo(2);
+    }
+
+    @Test
+    void findMultipleOfSameLength_remainderAtThirtyCentimetresBoundary() {
+        SlatMaterial below = slatMaterial(41);
+        SlatMaterial at = slatMaterial(42);
+        // Dư 299mm (dưới 30cm) được nhận; dư đúng 300mm thuộc vùng cấm nên bỏ qua, không tiêu thụ.
+        InventoryPool pool = new InventoryPool(List.of(batch(below, 3299, 1), batch(at, 3300, 1)));
+
+        assertThat(pool.findMultipleOfSameLength(below, 1500, 2)).isPresent();
+        assertThat(pool.findMultipleOfSameLength(at, 1500, 2)).isEmpty();
+        assertThat(pool.remainingCount(42L, 3300)).isEqualTo(1);
+    }
+
+    @Test
+    void findMultipleOfSameLength_cutsTheLargestPossibleNumberOfPiecesOnTheBar() {
+        SlatMaterial material = slatMaterial(43);
+        // 4600 = 3 × 1500 + 100 với 5 đoạn đang chờ: cắt 3 đoạn (k lớn nhất), không phải 2.
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 4600, 1)));
+
+        Optional<InventoryPool.MultipleMatch> match = pool.findMultipleOfSameLength(material, 1500, 5);
+
+        assertThat(match).isPresent();
+        assertThat(match.get().multiplier()).isEqualTo(3);
+    }
+
+    @Test
+    void findMultipleOfSameLength_skipsShorterBarWhoseRemainderIsInTheForbiddenZone() {
+        SlatMaterial material = slatMaterial(44);
+        // 3400 cho 2 đoạn còn dư 400mm (vùng cấm) -> bỏ qua; 4550 cho 3 đoạn dư 50mm -> nhận.
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 3400, 1), batch(material, 4550, 1)));
+
+        Optional<InventoryPool.MultipleMatch> match = pool.findMultipleOfSameLength(material, 1500, 3);
+
+        assertThat(match).isPresent();
+        assertThat(match.get().stockLengthMm()).isEqualTo(4550);
+        assertThat(match.get().multiplier()).isEqualTo(3);
+        assertThat(pool.remainingCount(44L, 3400)).isEqualTo(1);
+    }
+
     // --- findCombination ---
 
     @Test

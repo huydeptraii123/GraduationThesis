@@ -377,7 +377,7 @@ public class CuttingPlanReportService {
     /**
      * Phần dư trên 3m quay lại kho nên ghi nguyên độ dài milimet — đó là con số thủ kho dùng để
      * dán nhãn thanh tái sử dụng. Mọi phần dư còn lại là phế, ghi theo mét như khuôn mẫu, kể cả khi
-     * bằng đúng 0 ở phôi cắt theo bội số: mỗi mệnh đề đều nêu tường minh phần dư của nó thay vì bắt
+     * bằng đúng 0 (phôi cắt vừa khít): mỗi mệnh đề đều nêu tường minh phần dư của nó thay vì bắt
      * người đọc suy ra từ sự vắng mặt của một con số.
      */
     private static String remainderText(StickKey stick) {

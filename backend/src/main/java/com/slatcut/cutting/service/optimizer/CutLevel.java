@@ -16,7 +16,7 @@ public enum CutLevel {
     /** Mức 1 — khớp gần đúng: thanh ngắn nhất đủ dài, phần dư dưới 30cm. */
     PA1,
 
-    /** Mức 2 — cắt theo bội số: một thanh dài đúng k lần độ dài đoạn, không phát sinh phần dư. */
+    /** Mức 2 — cắt theo bội số: một thanh cắt ra k ≥ 2 đoạn cùng độ dài, phần dư dưới 30cm (có thể bằng 0). */
     PA2,
 
     /** Mức 3 — ghép nối: hai đoạn của hai đơn khác nhau dùng chung một thanh. */

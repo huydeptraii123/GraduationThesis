@@ -506,4 +506,26 @@ class BestFitDecreasingStrategyTest {
         assertThat(result.cuts().get(0).cutLevel()).isEqualTo(CutLevel.PA2);
         assertThat(result.cuts().get(0).pieces()).extracting(CuttingDemand::ycsx).containsExactly("HY90001", "HY90002");
     }
+
+    /**
+     * Mức 2 không đòi thanh dài ĐÚNG bội số: 2 đoạn 1500mm trên thanh 3200mm còn dư 200mm (dưới 30cm)
+     * vẫn là một lát cắt Mức 2. Mức 1 trượt trước đó vì một đoạn trên thanh 3200mm để dư 1700mm.
+     * Quy tắc cũ (chỉ nhận thanh chia hết) báo thiếu cả hai đoạn.
+     */
+    @Test
+    void computePlan_levelTwo_acceptsANonExactMultipleWhoseRemainderIsUnderThirtyCentimetres() {
+        SlatMaterial material = slatMaterial(45);
+        InventoryPool pool = new InventoryPool(List.of(batch(material, 3200, 1)));
+
+        CuttingPlanResult result = strategy.computePlan(List.of(demand(material, 1500, 2)), pool);
+
+        assertThat(result.shortages()).isEmpty();
+        assertThat(result.cuts()).hasSize(1);
+        CutRecord cut = result.cuts().get(0);
+        assertThat(cut.cutLevel()).isEqualTo(CutLevel.PA2);
+        assertThat(cut.stockLengthMm()).isEqualTo(3200);
+        assertThat(cut.pieces()).hasSize(2);
+        assertThat(cut.remainderMm()).isEqualTo(200);
+        assertThat(cut.remainderCategory()).isEqualTo(RemainderCategory.DISCARDED);
+    }
 }

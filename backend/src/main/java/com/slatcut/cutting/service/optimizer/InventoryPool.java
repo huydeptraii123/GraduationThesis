@@ -74,13 +74,19 @@ public class InventoryPool {
         return Optional.of(consume(stock, match.getKey()));
     }
 
-    /** Mức 2 — 1 thanh dài đúng {@code k} lần {@code cutLengthMm} (k≥2), tiêu thụ 1 thanh đó. */
+    /** Mức 2 — 1 thanh cắt ra {@code k} đoạn cùng độ dài (k≥2), tiêu thụ 1 thanh đó. */
     public record MultipleMatch(int stockLengthMm, int multiplier) {}
 
     /**
-     * Duyệt tồn kho tăng dần theo độ dài, trả về thanh NGẮN NHẤT là bội số đúng của {@code cutLengthMm}
-     * mà số bội ({@code k}) không vượt quá {@code availableCount} (số đoạn cùng độ dài đang chờ trong
-     * hàng đợi, tính cả X) — giữ tồn kho dài hơn lại cho nhu cầu lớn hơn về sau.
+     * Mức 2 — cắt nhiều đoạn cùng độ dài trên một thanh. Duyệt tồn kho tăng dần theo độ dài, lấy thanh
+     * NGẮN NHẤT mà trên đó cắt được {@code k ≥ 2} đoạn và phần dư còn lại <b>dưới 30cm</b> (kể cả 0).
+     * Trên thanh đó cắt {@code k} lớn nhất có thể: {@code k = min(⌊độ dài thanh / cutLengthMm⌋,
+     * availableCount)}, với {@code availableCount} là số đoạn cùng độ dài đang chờ trong hàng đợi (tính
+     * cả X).
+     *
+     * <p>Không đòi thanh dài ĐÚNG bội số: thanh 3200mm cho hai đoạn 1500mm (dư 200mm, bỏ đi) cũng được
+     * nhận. Phần dư từ 30cm trở lên thì bỏ qua thanh đó — trên 3m là việc của Mức 4, còn 30cm–3m là
+     * vùng cấm. Không đụng vào tồn kho khi không tìm được.
      */
     public Optional<MultipleMatch> findMultipleOfSameLength(SlatMaterial slatMaterial, int cutLengthMm, int availableCount) {
         NavigableMap<Integer, Integer> stock = stockByMaterialId.get(slatMaterial.getId());
@@ -89,14 +95,15 @@ public class InventoryPool {
         }
         for (Map.Entry<Integer, Integer> entry : stock.entrySet()) {
             int lengthMm = entry.getKey();
-            if (lengthMm % cutLengthMm != 0) {
+            int multiplier = Math.min(lengthMm / cutLengthMm, availableCount);
+            if (multiplier < 2) {
                 continue;
             }
-            int multiplier = lengthMm / cutLengthMm;
-            if (multiplier >= 2 && multiplier <= availableCount) {
-                consume(stock, lengthMm);
-                return Optional.of(new MultipleMatch(lengthMm, multiplier));
+            if (lengthMm - multiplier * cutLengthMm >= RemainderCategory.DISCARD_THRESHOLD_MM) {
+                continue;
             }
+            consume(stock, lengthMm);
+            return Optional.of(new MultipleMatch(lengthMm, multiplier));
         }
         return Optional.empty();
     }

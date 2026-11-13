@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
  * Đúng 4 mức ưu tiên đã duyệt (docs/activity-diagrams.md mục "3. Luồng thuật toán sinh phương án
  * cắt"): mỗi nhóm slatMaterial xử lý độc lập, hàng đợi luôn lấy đoạn ưu tiên cao nhất
  * (reqdDeliveryDate, ycsx, item) — không bao giờ trì hoãn để chờ ghép. Với mỗi đoạn X, thử tuần tự
- * Mức 1 (khớp gần đúng) → Mức 2 (bội số) → Mức 3 (ghép đúng 2 đoạn — giới hạn không ghép nhiều hơn,
+ * Mức 1 (khớp gần đúng) → Mức 2 (bội số: k đoạn cùng độ dài trên một thanh, dư < 30cm) → Mức 3 (ghép đúng 2 đoạn — giới hạn không ghép nhiều hơn,
  * tìm tổ hợp tổng quát trên cả hàng đợi là bài toán NP-hard, không khả thi ở quy mô khóa luận) →
  * Mức 4 (thanh ngắn nhất còn để lại phần dư > 3m, nhập lại kho và tái dùng ngay trong cùng lượt
  * chạy). Hết cả 4 mức thì báo thiếu vật tư — thuật toán KHÔNG BAO GIỜ tự tạo ra phần dư nằm trong
