@@ -46,7 +46,16 @@ export interface SalesOrderRequest {
   reqdDeliveryDate: string
 }
 
+/** Bộ cửa đã thuộc phương án duyệt mà file nguồn mang dữ liệu khác — lượt nhập giữ nguyên bản ghi cũ. */
+export interface ApprovedOrderConflict {
+  ycsx: string
+  item: number
+  approvedPlanId: number
+  changedFields: string[]
+}
+
 export interface SalesOrderImportResult {
   totalRowsImported: number
   skippedNonDoorRows: number
+  approvedOrderConflicts: ApprovedOrderConflict[]
 }

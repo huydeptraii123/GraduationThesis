@@ -131,6 +131,38 @@ export function ImportSalesOrdersModal({ open, onClose, onImported }: Props) {
         />
       )}
 
+      {result && result.approvedOrderConflicts.length > 0 && (
+        <>
+          <Alert
+            style={{ marginTop: 12 }}
+            type="warning"
+            showIcon
+            title={`${result.approvedOrderConflicts.length.toLocaleString('vi-VN')} bộ cửa đã duyệt không bị ghi đè`}
+            description="Các bộ cửa này đã thuộc một phương án cắt được duyệt nhưng file mang dữ liệu khác. Hệ thống giữ nguyên dữ liệu đã lưu; nếu số liệu mới là đúng, hãy tự quyết định có tạo bộ cửa mới để cắt lại hay không."
+          />
+          <Table
+            style={{ marginTop: 12 }}
+            size="small"
+            rowKey={(row) => `${row.ycsx}-${row.item}`}
+            dataSource={result.approvedOrderConflicts}
+            pagination={
+              result.approvedOrderConflicts.length > 10 ? localPagination((total) => `${total} bộ cửa`) : false
+            }
+            scroll={{ y: 240 }}
+            columns={[
+              { title: 'Lô sản xuất', dataIndex: 'ycsx', width: 120 },
+              { title: 'Bộ cửa', dataIndex: 'item', width: 80, render: (item: number) => `#${item}` },
+              { title: 'Phương án', dataIndex: 'approvedPlanId', width: 105, render: (id: number) => `#${id}` },
+              {
+                title: 'Trường khác so với file',
+                dataIndex: 'changedFields',
+                render: (fields: string[]) => fields.map((field) => <div key={field}>{field}</div>),
+              },
+            ]}
+          />
+        </>
+      )}
+
       {errorText && <Alert style={{ marginTop: 16 }} type="error" showIcon title={errorText} />}
 
       {rowErrors && (
