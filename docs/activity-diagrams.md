@@ -162,8 +162,8 @@ flowchart TD
     K -- "Có" --> K1["Cắt thanh đó; dư dưới 30cm → 'bỏ';<br/>loại X khỏi hàng đợi"]
     K1 --> I
 
-    K -- "Không" --> L{"Mức 2: có N-1 đoạn khác<br/>cùng độ dài X đang chờ trong<br/>cùng lần chạy, và tồn tại thanh<br/>dài gấp k lần cutLength(X), k≥2, đủ dùng?"}
-    L -- "Có" --> L1["Cắt thanh thành k đoạn,<br/>gán X + (k−1) đoạn cùng độ dài;<br/>dư = 0; loại các đoạn đã gán"]
+    K -- "Không" --> L{"Mức 2: có thanh ngắn nhất cắt được<br/>k≥2 đoạn cùng độ dài X (k ≤ số đoạn<br/>cùng độ dài đang chờ trong lần chạy),<br/>phần dư dưới 30cm?"}
+    L -- "Có" --> L1["Cắt thanh thành k đoạn (k lớn nhất có thể),<br/>gán X + (k−1) đoạn cùng độ dài;<br/>dư dưới 30cm → 'bỏ'; loại các đoạn đã gán"]
     L1 --> I
 
     L -- "Không" --> M{"Mức 3: X thuộc phạm vi ghép Mức 3, và tồn tại<br/>ĐÚNG 1 đoạn khác cũng thuộc phạm vi đó, ghép với X<br/>vừa 1 thanh, dư dự kiến dưới 30cm?<br/>(lấy đoạn khớp ĐẦU TIÊN tìm được)"}
@@ -179,7 +179,7 @@ flowchart TD
     O --> I
 ```
 
-Một hệ quả quan trọng của cách đặt điều kiện ở Mức 4: hệ thống **không bao giờ tự tạo ra phần dư nằm trong khoảng 30cm–3m**. Mức 1 và Mức 3 chỉ nhận thanh khi phần dư dự kiến dưới 30cm, Mức 2 luôn cho phần dư bằng 0, còn Mức 4 chỉ nhận thanh khi phần dư trên 3m — tức là mọi nhánh cắt đều dẫn tới một phần dư hoặc đủ nhỏ để bỏ đi, hoặc đủ dài để nhập lại kho. Khi không nhánh nào thỏa mãn, đoạn cắt được đánh dấu thiếu vật tư thay vì hạ chuẩn để cắt. Điều này có nghĩa một đoạn có thể bị báo thiếu **dù trong kho vẫn còn thanh đủ dài**: nếu thanh đó chỉ để lại phần dư trong khoảng không chấp nhận được, nó được giữ lại nguyên vẹn cho một đoạn khác khớp hơn ở lần chạy sau. Đây là lựa chọn nghiệp vụ có chủ đích — phần dư 30cm–3m không tái sử dụng ngay được mà cũng không đủ nhỏ để bỏ qua, nên doanh nghiệp coi việc bổ sung thanh nan đúng độ dài là cách xử lý đúng, thay vì phá một thanh đang dùng được cho nhu cầu khác.
+Một hệ quả quan trọng của cách đặt điều kiện ở Mức 4: hệ thống **không bao giờ tự tạo ra phần dư nằm trong khoảng 30cm–3m**. Mức 1, Mức 2 và Mức 3 chỉ nhận thanh khi phần dư dự kiến dưới 30cm, còn Mức 4 chỉ nhận thanh khi phần dư trên 3m — tức là mọi nhánh cắt đều dẫn tới một phần dư hoặc đủ nhỏ để bỏ đi, hoặc đủ dài để nhập lại kho. Khi không nhánh nào thỏa mãn, đoạn cắt được đánh dấu thiếu vật tư thay vì hạ chuẩn để cắt. Điều này có nghĩa một đoạn có thể bị báo thiếu **dù trong kho vẫn còn thanh đủ dài**: nếu thanh đó chỉ để lại phần dư trong khoảng không chấp nhận được, nó được giữ lại nguyên vẹn cho một đoạn khác khớp hơn ở lần chạy sau. Đây là lựa chọn nghiệp vụ có chủ đích — phần dư 30cm–3m không tái sử dụng ngay được mà cũng không đủ nhỏ để bỏ qua, nên doanh nghiệp coi việc bổ sung thanh nan đúng độ dài là cách xử lý đúng, thay vì phá một thanh đang dùng được cho nhu cầu khác.
 
 Mức 3 cố ý chỉ ghép **đúng hai đoạn** và dừng ở đoạn khớp **đầu tiên** tìm được, không tìm tổ hợp ba đoạn trở lên cũng không duyệt hết hàng đợi để chọn tổ hợp tốt nhất: số tổ hợp tăng theo cấp số nhân với số đoạn được phép ghép, trong khi phần lợi thêm rất nhỏ vì điều kiện chấp nhận đã là phần dư dưới 30cm — và giới hạn này giữ cho kết quả tái lập được, không phụ thuộc thứ tự duyệt.
 

@@ -79,7 +79,7 @@ sequenceDiagram
                 POOL-->>CS: thanh khớp -> cắt, dư "bỏ"
             else Mức 2 (PA2) — cắt theo bội số (cùng phạm vi lần chạy, không cần cùng ngày giao)
                 CS->>POOL: findMultipleOfSameLength(X)
-                POOL-->>CS: thanh dài gấp k lần -> cắt k đoạn, dư = 0
+                POOL-->>CS: thanh ngắn nhất cắt được k đoạn, dư dưới 30cm -> cắt k đoạn
             else Mức 3 (PA3) — ghép ĐÚNG 2 đoạn của 2 đơn CÙNG thuộc phạm vi ghép Mức 3 (X ngoài phạm vi đó thì bỏ qua mức này)
                 CS->>POOL: findCombination(X, đoạn trong hàng đợi thuộc phạm vi ghép Mức 3) — dừng ở đoạn khớp ĐẦU TIÊN
                 POOL-->>CS: cặp đoạn khớp 1 thanh -> cắt, gán đúng đơn của từng đoạn, dư "bỏ"
